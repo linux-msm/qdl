@@ -13,9 +13,42 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
+#include <libxml/parser.h>
+#include <libxml/tree.h>
 
 #include "qdl.h"
 #include "patch.h"
+
+enum {
+	QDL_FILE_UNKNOWN,
+	QDL_FILE_PATCH,
+	QDL_FILE_PROGRAM,
+};
+
+static int detect_type(const char *xml_file)
+{
+	xmlNode *root;
+	xmlDoc *doc;
+	int type;
+
+	doc = xmlReadFile(xml_file, NULL, 0);
+	if (!doc) {
+		fprintf(stderr, "[PATCH] failed to parse %s\n", xml_file);
+		return -EINVAL;
+	}
+
+	root = xmlDocGetRootElement(doc);
+	if (!xmlStrcmp(root->name, (xmlChar*)"patches"))
+		type = QDL_FILE_PATCH;
+	else if (!xmlStrcmp(root->name, (xmlChar*)"program"))
+		type = QDL_FILE_PROGRAM;
+	else
+		type = QDL_FILE_UNKNOWN;
+
+	xmlFreeDoc(doc);
+
+	return type;
+}
 
 static int readat(int dir, const char *name, char *buf, size_t len)
 {
@@ -138,25 +171,35 @@ int main(int argc, char **argv)
 	extern const char *__progname;
 	struct termios tios;
 	char *prog_mbn;
+	int type;
 	int ret;
 	int fd;
 	int i;
 
-	if (argc < 2 || (argc - 2) % 2 != 0) {
+	if (argc < 3) {
 		fprintf(stderr, "%s <prog.mbn> [<program> <patch> ...]\n", __progname);
 		return 1;
 	}
 
 	prog_mbn = argv[1];
 
-	for (i = 0; i < argc - 3; i += 2) {
-		ret = program_load(argv[2 + i]);
-		if (ret < 0)
-			errx(1, "program_load %s failed", argv[2 + i]);
+	for (i = 2; i < argc; i++) {
+		type = detect_type(argv[i]);
+		if (type < 0 || type == QDL_FILE_UNKNOWN)
+			errx(1, "failed to detect file type of %s\n", argv[i]);
 
-		ret = patch_load(argv[2 + i + 1]);
-		if (ret < 0)
-			errx(1, "patch_load %s failed", argv[2 + i + 1]);
+		switch (type) {
+		case QDL_FILE_PATCH:
+			ret = patch_load(argv[i]);
+			if (ret < 0)
+				errx(1, "patch_load %s failed", argv[i]);
+			break;
+		case QDL_FILE_PROGRAM:
+			ret = program_load(argv[i]);
+			if (ret < 0)
+				errx(1, "program_load %s failed", argv[i]);
+			break;
+		}
 	}
 
 	fd = tty_open(&tios);
