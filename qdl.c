@@ -23,6 +23,7 @@ enum {
 	QDL_FILE_UNKNOWN,
 	QDL_FILE_PATCH,
 	QDL_FILE_PROGRAM,
+	QDL_FILE_CONTENTS,
 };
 
 static int detect_type(const char *xml_file)
@@ -40,8 +41,10 @@ static int detect_type(const char *xml_file)
 	root = xmlDocGetRootElement(doc);
 	if (!xmlStrcmp(root->name, (xmlChar*)"patches"))
 		type = QDL_FILE_PATCH;
-	else if (!xmlStrcmp(root->name, (xmlChar*)"program"))
+	else if (!xmlStrcmp(root->name, (xmlChar*)"data"))
 		type = QDL_FILE_PROGRAM;
+	else if (!xmlStrcmp(root->name, (xmlChar*)"contents"))
+		type = QDL_FILE_CONTENTS;
 	else
 		type = QDL_FILE_UNKNOWN;
 
@@ -198,6 +201,9 @@ int main(int argc, char **argv)
 			ret = program_load(argv[i]);
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[i]);
+			break;
+		default:
+			errx(1, "%s type not yet supported", argv[i]);
 			break;
 		}
 	}
