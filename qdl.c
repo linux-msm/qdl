@@ -26,6 +26,8 @@ enum {
 	QDL_FILE_CONTENTS,
 };
 
+bool qdl_debug;
+
 static int detect_type(const char *xml_file)
 {
 	xmlNode *root;
@@ -178,6 +180,12 @@ int main(int argc, char **argv)
 	int ret;
 	int fd;
 	int i;
+
+	if (argc >= 2 && strcmp(argv[1], "--debug") == 0) {
+		qdl_debug = true;
+		argv++;
+		argc--;
+	}
 
 	if (argc < 3) {
 		fprintf(stderr, "%s <prog.mbn> [<program> <patch> ...]\n", __progname);

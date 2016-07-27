@@ -109,6 +109,8 @@ static int firehose_read(int fd, int timeout, int (*response_parser)(xmlNode *no
 		buf[n] = '\0';
 
 		// printf("%s\n", buf);
+		if (qdl_debug)
+			fprintf(stderr, "FIREHOSE READ: %s\n", buf);
 
 		nodes = firehose_response_parse(buf, n, &error);
 		if (!nodes) {
@@ -134,6 +136,24 @@ static int firehose_read(int fd, int timeout, int (*response_parser)(xmlNode *no
 	return ret;
 }
 
+static int firehose_write(int fd, xmlDoc *doc)
+{
+	int saved_errno;
+	xmlChar *s;
+	int len;
+	int ret;
+
+	xmlDocDumpMemory(doc, &s, &len);
+
+	if (qdl_debug)
+		fprintf(stderr, "FIREHOSE WRITE: %s\n", s);
+
+	ret = write(fd, s, len);
+	saved_errno = errno;
+	xmlFree(s);
+	return ret < 0 ? -saved_errno : 0;
+}
+
 static int firehose_nop_parser(xmlNode *node)
 {
 	xmlChar *value;
@@ -147,8 +167,6 @@ static int firehose_nop(int fd)
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
-	xmlChar *s;
-	int len;
 	int ret;
 
 	doc = xmlNewDoc((xmlChar*)"1.0");
@@ -158,10 +176,9 @@ static int firehose_nop(int fd)
 	node = xmlNewChild(root, NULL, (xmlChar*)"nop", NULL);
 	xml_setpropf(node, "value", "ping");
 
-	xmlDocDumpMemory(doc, &s, &len);
-	ret = write(fd, s, len);
+	ret = firehose_write(fd, doc);
 	if (ret < 0)
-		return -errno;
+		return ret;
 
 	return firehose_read(fd, -1, firehose_nop_parser);
 }
@@ -188,8 +205,6 @@ static int firehose_getstorageinfo(int fd, int partition)
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
-	xmlChar *s;
-	int len;
 	int ret;
 
 	doc = xmlNewDoc((xmlChar*)"1.0");
@@ -199,10 +214,9 @@ static int firehose_getstorageinfo(int fd, int partition)
 	node = xmlNewChild(root, NULL, (xmlChar*)"getstorageinfo", NULL);
 	xml_setpropf(node, "physical_partition_number", "%d", partition);
 
-	xmlDocDumpMemory(doc, &s, &len);
-	ret = write(fd, s, len);
+	ret = firehose_write(fd, doc);
 	if (ret < 0)
-		return -errno;
+		return ret;
 
 	return firehose_read(fd, -1, firehose_getstorageinfo_parser);
 }
@@ -217,8 +231,6 @@ static int firehose_configure(int fd)
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
-	xmlChar *s;
-	int len;
 	int ret;
 
 	doc = xmlNewDoc((xmlChar*)"1.0");
@@ -231,10 +243,9 @@ static int firehose_configure(int fd)
 	xml_setpropf(node, "verbose", "%d", 0);
 	xml_setpropf(node, "ZLPAwareHost", "%d", 0);
 
-	xmlDocDumpMemory(doc, &s, &len);
-	ret = write(fd, s, len);
+	ret = firehose_write(fd, doc);
 	if (ret < 0)
-		return -errno;
+		return ret;
 
 	return firehose_read(fd, -1, firehose_nop_parser);
 }
@@ -246,10 +257,8 @@ static void firehose_program(int usbfd, struct program *program, int fd)
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
-	xmlChar *s;
 	void *buf;
 	int left;
-	int len;
 	int ret;
 	int n;
 
@@ -276,8 +285,7 @@ static void firehose_program(int usbfd, struct program *program, int fd)
 	if (program->filename)
 		xml_setpropf(node, "filename", "%s", program->filename);
 
-	xmlDocDumpMemory(doc, &s, &len);
-	ret = write(usbfd, s, len);
+	ret = firehose_write(fd, doc);
 	if (ret < 0)
 		goto out;
 
@@ -321,8 +329,6 @@ static void firehose_apply_patch(int fd, struct patch *patch)
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
-	xmlChar *s;
-	int len;
 	int ret;
 
 	printf("%s\n", patch->what);
@@ -340,8 +346,7 @@ static void firehose_apply_patch(int fd, struct patch *patch)
 	xml_setpropf(node, "start_sector", "%s", patch->start_sector);
 	xml_setpropf(node, "value", "%s", patch->value);
 
-	xmlDocDumpMemory(doc, &s, &len);
-	ret = write(fd, s, len);
+	ret = firehose_write(fd, doc);
 	if (ret < 0)
 		goto out;
 
@@ -358,8 +363,6 @@ static int firehose_set_bootable(int fd, int lun)
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
-	xmlChar *s;
-	int len;
 	int ret;
 
 	doc = xmlNewDoc((xmlChar*)"1.0");
@@ -369,10 +372,9 @@ static int firehose_set_bootable(int fd, int lun)
 	node = xmlNewChild(root, NULL, (xmlChar*)"setbootablestoragedrive", NULL);
 	xml_setpropf(node, "value", "%d", lun);
 
-	xmlDocDumpMemory(doc, &s, &len);
-	ret = write(fd, s, len);
+	ret = firehose_write(fd, doc);
 	if (ret < 0)
-		return -errno;
+		return ret;
 
 	ret = firehose_read(fd, -1, firehose_nop_parser);
 	if (ret) {
@@ -389,8 +391,6 @@ static int firehose_reset(int fd)
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
-	xmlChar *s;
-	int len;
 	int ret;
 
 	doc = xmlNewDoc((xmlChar*)"1.0");
@@ -400,10 +400,9 @@ static int firehose_reset(int fd)
 	node = xmlNewChild(root, NULL, (xmlChar*)"power", NULL);
 	xml_setpropf(node, "value", "reset");
 
-	xmlDocDumpMemory(doc, &s, &len);
-	ret = write(fd, s, len);
+	ret = firehose_write(fd, doc);
 	if (ret < 0)
-		return -errno;
+		return ret;
 
 	return firehose_read(fd, -1, firehose_nop_parser);
 }
