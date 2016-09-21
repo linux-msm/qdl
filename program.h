@@ -20,6 +20,6 @@ struct program {
 };
 
 int program_load(const char *program_file);
-int program_execute(int usbfd, void (*apply)(int usbfd, struct program *program, int fd));
+int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, int fd));
 
 #endif

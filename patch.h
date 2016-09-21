@@ -15,6 +15,6 @@ struct patch {
 };
 
 int patch_load(const char *patch_file);
-int patch_execute(int fd, void (*apply)(int fd, struct patch *patch));
+int patch_execute(int fd, int (*apply)(int fd, struct patch *patch));
 
 #endif

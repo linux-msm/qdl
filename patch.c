@@ -87,15 +87,18 @@ int patch_load(const char *patch_file)
 	return 0;
 }
 	
-int patch_execute(int fd, void (*apply)(int fd, struct patch *patch))
+int patch_execute(int fd, int (*apply)(int fd, struct patch *patch))
 {
 	struct patch *patch;
+	int ret;
 
 	for (patch = patches; patch; patch = patch->next) {
 		if (strcmp(patch->filename, "DISK"))
 			continue;
 
-		apply(fd, patch);
+		ret = apply(fd, patch);
+		if (ret)
+			return ret;
 	}
 
 	return 0;

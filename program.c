@@ -117,9 +117,10 @@ int program_load(const char *program_file)
 	return 0;
 }
 	
-int program_execute(int usbfd, void (*apply)(int usbfd, struct program *program, int fd))
+int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, int fd))
 {
 	struct program *program;
+	int ret;
 	int fd;
 
 	for (program = programes; program; program = program->next) {
@@ -131,9 +132,11 @@ int program_execute(int usbfd, void (*apply)(int usbfd, struct program *program,
 				continue;
 			}
 		}
-		apply(usbfd, program, fd);
+		ret = apply(usbfd, program, fd);
 
 		close(fd);
+		if (ret)
+			return ret;
 	}
 
 	return 0;

@@ -250,7 +250,7 @@ static int firehose_configure(int fd)
 	return firehose_read(fd, -1, firehose_nop_parser);
 }
 
-static void firehose_program(int usbfd, struct program *program, int fd)
+static int firehose_program(int usbfd, struct program *program, int fd)
 {
 	unsigned num_sectors;
 	struct stat sb;
@@ -324,9 +324,10 @@ static void firehose_program(int usbfd, struct program *program, int fd)
 
 out:
 	xmlFreeDoc(doc);
+	return ret;
 }
 
-static void firehose_apply_patch(int fd, struct patch *patch)
+static int firehose_apply_patch(int fd, struct patch *patch)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -358,6 +359,7 @@ static void firehose_apply_patch(int fd, struct patch *patch)
 
 out:
 	xmlFreeDoc(doc);
+	return ret;
 }
 
 static int firehose_set_bootable(int fd, int lun)
@@ -439,8 +441,13 @@ int firehose_run(int fd)
 	}
 #endif
 
-	program_execute(fd, firehose_program);
-	patch_execute(fd, firehose_apply_patch);
+	ret = program_execute(fd, firehose_program);
+	if (ret)
+		return ret;
+
+	ret = patch_execute(fd, firehose_apply_patch);
+	if (ret)
+		return ret;
 
 	firehose_set_bootable(fd, 1);
 
