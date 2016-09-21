@@ -286,8 +286,10 @@ static void firehose_program(int usbfd, struct program *program, int fd)
 		xml_setpropf(node, "filename", "%s", program->filename);
 
 	ret = firehose_write(usbfd, doc);
-	if (ret < 0)
+	if (ret < 0) {
+		fprintf(stderr, "[PROGRAM] failed to write program command\n");
 		goto out;
+	}
 
 	ret = firehose_read(usbfd, -1, firehose_nop_parser);
 	if (ret) {
