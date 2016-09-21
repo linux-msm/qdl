@@ -285,7 +285,7 @@ static void firehose_program(int usbfd, struct program *program, int fd)
 	if (program->filename)
 		xml_setpropf(node, "filename", "%s", program->filename);
 
-	ret = firehose_write(fd, doc);
+	ret = firehose_write(usbfd, doc);
 	if (ret < 0)
 		goto out;
 
