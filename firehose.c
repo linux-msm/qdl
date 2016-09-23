@@ -91,10 +91,13 @@ static int firehose_read(int fd, int timeout, int (*response_parser)(xmlNode *no
 	xmlNode *nodes;
 	xmlNode *node;
 	int error;
+	char *msg;
+	char *end;
+	bool done = false;
 	int ret = -ENXIO;
 	int n;
 
-	for (;;) {
+	while (!done) {
 		ret = firehose_wait(fd, timeout);
 		if (ret < 0)
 			return ret;
@@ -108,29 +111,39 @@ static int firehose_read(int fd, int timeout, int (*response_parser)(xmlNode *no
 		}
 		buf[n] = '\0';
 
-		// printf("%s\n", buf);
 		if (qdl_debug)
 			fprintf(stderr, "FIREHOSE READ: %s\n", buf);
 
-		nodes = firehose_response_parse(buf, n, &error);
-		if (!nodes) {
-			fprintf(stderr, "unable to parse response\n");
-			return error;
+		msg = buf;
+		for (msg = buf; msg[0]; msg = end) {
+			end = strstr(msg, "</data>");
+			if (!end) {
+				fprintf(stderr, "firehose response truncated\n");
+				exit(1);
+			}
+
+			end += strlen("</data>");
+
+			nodes = firehose_response_parse(msg, end - msg, &error);
+			if (!nodes) {
+				fprintf(stderr, "unable to parse response\n");
+				return error;
+			}
+
+			for (node = nodes; node; node = node->next) {
+				if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
+					firehose_response_log(node);
+				} else if (xmlStrcmp(node->name, (xmlChar*)"response") == 0) {
+					if (!response_parser)
+						fprintf(stderr, "received response with no parser\n");
+					else
+						ret = response_parser(node);
+					done = true;
+				}
+			}
+
+			xmlFreeDoc(nodes->doc);
 		}
-
-		ret = -EAGAIN;
-		for (node = nodes; node; node = node->next) {
-			if (xmlStrcmp(node->name, (xmlChar*)"log") == 0)
-				firehose_response_log(node);
-			else if (response_parser && xmlStrcmp(node->name, (xmlChar*)"response") == 0)
-				ret = response_parser(node);
-		}
-
-		xmlFreeDoc(nodes->doc);
-
-		if (ret == -EAGAIN)
-			continue;
-		break;
 	}
 
 	return ret;
