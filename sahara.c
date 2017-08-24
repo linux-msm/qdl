@@ -140,7 +140,7 @@ static void sahara_read(int fd, struct sahara_pkt *pkt, const char *mbn)
 {
 	int ret;
 
-	assert(pkt->length = 0x14);
+	assert(pkt->length == 0x14);
 
 	printf("READ image: %d offset: 0x%x length: 0x%x\n",
 	       pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
@@ -154,7 +154,7 @@ static void sahara_read64(int fd, struct sahara_pkt *pkt, const char *mbn)
 {
 	int ret;
 
-	assert(pkt->length = 0x20);
+	assert(pkt->length == 0x20);
 
 	printf("READ64 image: %d offset: 0x%lx length: 0x%lx\n",
 	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
