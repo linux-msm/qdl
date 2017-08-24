@@ -51,17 +51,6 @@ static unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors)
 	return strtoul((char*)value, NULL, 10);
 }
 
-static unsigned attr_as_unsignedhex(xmlNode *node, const char *attr, int *errors)
-{
-	xmlChar *value;	
-
-	value = xmlGetProp(node, (xmlChar*)attr);
-	if (!value)
-		(*errors)++;
-
-	return strtoul((char*)value, NULL, 16);
-}
-
 static const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
 {
 	xmlChar *value;	

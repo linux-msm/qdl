@@ -226,49 +226,6 @@ static int firehose_nop(int fd)
 	return firehose_read(fd, -1, firehose_nop_parser);
 }
 
-static int firehose_getstorageinfo_parser(xmlNode *node)
-{
-	xmlChar *value;
-
-	value = xmlGetProp(node, (xmlChar*)"value");
-	if (value)
-		return -EINVAL;
-
-#if 0
-	xmlGetProp("num_partition_sectors");
-	xmlGetProp("SECTOR_SIZE_IN_BYTES");
-	xmlGetProp("num_physical_partitions");
-	printf("%s\n", node->name);
-#endif
-	return 0;
-}
-
-static int firehose_getstorageinfo(int fd, int partition)
-{
-	xmlNode *root;
-	xmlNode *node;
-	xmlDoc *doc;
-	int ret;
-
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
-	xmlDocSetRootElement(doc, root);
-
-	node = xmlNewChild(root, NULL, (xmlChar*)"getstorageinfo", NULL);
-	xml_setpropf(node, "physical_partition_number", "%d", partition);
-
-	ret = firehose_write(fd, doc);
-	if (ret < 0)
-		return ret;
-
-	return firehose_read(fd, -1, firehose_getstorageinfo_parser);
-}
-
-static int firehose_configure_parser(xmlNode *node)
-{
-	return 0;
-}
-
 static int firehose_configure(int fd)
 {
 	xmlNode *root;
@@ -472,17 +429,6 @@ int firehose_run(int fd)
 	ret = firehose_configure(fd);
 	if (ret)
 		return ret;
-
-#if 0
-	int i;
-	for (i = 0; i < 7; i++) {
-		printf("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -\n");
-		printf("LUN%d\n", i);
-
-		ret = firehose_getstorageinfo(fd, i);
-		printf("getstorageinfo: %d\n", ret);
-	}
-#endif
 
 	ret = program_execute(fd, firehose_program);
 	if (ret)
