@@ -165,12 +165,12 @@ close_fd:
 static int tty_open(struct termios *old)
 {
 	struct termios tios;
-	char buf[80];
+	char path[PATH_MAX];
 	int ret;
 	int fd;
 
 retry:
-	ret = find_qdl_tty(buf, sizeof(buf));
+	ret = find_qdl_tty(path, sizeof(path));
 	if (ret < 0) {
 		printf("Waiting for QDL tty...\r");
 		fflush(stdout);
@@ -178,14 +178,14 @@ retry:
 		goto retry;
 	}
 
-	fd = open(buf, O_RDWR | O_NOCTTY | O_EXCL);
+	fd = open(path, O_RDWR | O_NOCTTY | O_EXCL);
 	if (fd < 0) {
-		err(1, "unable to open \"%s\"", buf);
+		err(1, "unable to open \"%s\"", path);
 	}
 
 	ret = tcgetattr(fd, old);
 	if (ret < 0)
-		err(1, "unable to retrieve \"%s\" tios", buf);
+		err(1, "unable to retrieve \"%s\" tios", path);
 
 	memset(&tios, 0, sizeof(tios));
 	tios.c_cflag = B115200 | CRTSCTS | CS8 | CLOCAL | CREAD;
@@ -196,7 +196,7 @@ retry:
 
 	ret = tcsetattr(fd, TCSANOW, &tios);
 	if (ret < 0)
-		err(1, "unable to update \"%s\" tios", buf);
+		err(1, "unable to update \"%s\" tios", path);
 
 	return fd;
 }
