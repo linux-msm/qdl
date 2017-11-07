@@ -160,3 +160,31 @@ int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, 
 	return 0;
 }
 
+/**
+ * program_find_bootable_partition() - find one bootable partition
+ *
+ * Returns partition number, or negative errno on failure.
+ *
+ * Scan program tags for a partition with the label "xbl" or "sbl1" and return
+ * the partition number for this. If more than one line matches we're assuming
+ * our logic is flawed and return an error.
+ */
+int program_find_bootable_partition(void)
+{
+	struct program *program;
+	const char *label;
+	int part = -ENOENT;
+
+	for (program = programes; program; program = program->next) {
+		label = program->label;
+
+		if (!strcmp(label, "xbl") || !strcmp(label, "sbl1")) {
+			if (part != -ENOENT)
+				return -EINVAL;
+
+			part = program->partition;
+		}
+	}
+
+	return part;
+}

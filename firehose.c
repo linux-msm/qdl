@@ -362,7 +362,7 @@ out:
 	return ret;
 }
 
-static int firehose_set_bootable(int fd, int lun)
+static int firehose_set_bootable(int fd, int part)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -374,7 +374,7 @@ static int firehose_set_bootable(int fd, int lun)
 	xmlDocSetRootElement(doc, root);
 
 	node = xmlNewChild(root, NULL, (xmlChar*)"setbootablestoragedrive", NULL);
-	xml_setpropf(node, "value", "%d", lun);
+	xml_setpropf(node, "value", "%d", part);
 
 	ret = firehose_write(fd, doc);
 	if (ret < 0)
@@ -382,11 +382,11 @@ static int firehose_set_bootable(int fd, int lun)
 
 	ret = firehose_read(fd, -1, firehose_nop_parser);
 	if (ret) {
-		fprintf(stderr, "failed to set LUN%d as bootable device\n", lun);
+		fprintf(stderr, "failed to mark partition %d as bootable\n", part);
 		return -1;
 	}
 
-	printf("LUN%d is now bootable device\n", lun);
+	printf("partition %d is now bootable\n", part);
 	return 0;
 }
 
@@ -413,6 +413,7 @@ static int firehose_reset(int fd)
 
 int firehose_run(int fd)
 {
+	int bootable;
 	int ret;
 
 	ret = firehose_wait(fd, 10000);
@@ -438,7 +439,11 @@ int firehose_run(int fd)
 	if (ret)
 		return ret;
 
-	firehose_set_bootable(fd, 1);
+	bootable = program_find_bootable_partition();
+	if (bootable < 0)
+		fprintf(stderr, "no boot partition found\n");
+	else
+		firehose_set_bootable(fd, bootable);
 
 	firehose_reset(fd);
 
