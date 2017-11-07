@@ -198,7 +198,6 @@ int sahara_run(int fd, char *prog_mbn)
 	char buf[4096];
 	char tmp[32];
 	bool done = false;
-	int ret;
 	int n;
 
 	while (!done) {
@@ -235,9 +234,8 @@ int sahara_run(int fd, char *prog_mbn)
 			sahara_eoi(fd, pkt);
 			break;
 		case 6:
-			ret = sahara_done(fd, pkt);
-			if (ret)
-				done = true;
+			sahara_done(fd, pkt);
+			done = true;
 			break;
 		case 0x12:
 			sahara_read64(fd, pkt, prog_mbn);
