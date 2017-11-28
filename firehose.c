@@ -43,6 +43,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
@@ -258,6 +259,8 @@ static int firehose_program(int usbfd, struct program *program, int fd)
 	xmlNode *node;
 	xmlDoc *doc;
 	void *buf;
+	time_t t0;
+	time_t t;
 	int left;
 	int ret;
 	int n;
@@ -297,6 +300,8 @@ static int firehose_program(int usbfd, struct program *program, int fd)
 		goto out;
 	}
 
+	t0 = time(NULL);
+
 	lseek(fd, program->file_offset * program->sector_size, SEEK_SET);
 	for (left = num_sectors; left > 0; left--) {
 		if (fd >= 0) {
@@ -318,9 +323,20 @@ static int firehose_program(int usbfd, struct program *program, int fd)
 			err(1, "failed to write full sector");
 	}
 
+	t = time(NULL) - t0;
+
 	ret = firehose_read(usbfd, -1, firehose_nop_parser);
-	if (ret)
+	if (ret) {
 		fprintf(stderr, "[PROGRAM] failed\n");
+	} else if (t) {
+		fprintf(stderr,
+			"[PROGRAM] flashed \"%s\" successfully at %ldkB/s\n",
+			program->label,
+			program->sector_size * num_sectors / t / 1024);
+	} else {
+		fprintf(stderr, "[PROGRAM] flashed \"%s\" successfully\n",
+			program->label);
+	}
 
 out:
 	xmlFreeDoc(doc);
