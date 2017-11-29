@@ -229,6 +229,21 @@ static int firehose_nop(int fd)
 
 static size_t max_payload_size = 1048576;
 
+static int firehose_configure_response_parser(xmlNode *node)
+{
+	xmlChar *value;
+
+	value = xmlGetProp(node, (xmlChar*)"value");
+	if (xmlStrcmp(value, (xmlChar*)"ACK"))
+		return -EINVAL;
+
+	value = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytes");
+	if (value)
+		max_payload_size = strtoul((char*)value, NULL, 10);
+
+	return 0;
+}
+
 static int firehose_configure(int fd)
 {
 	xmlNode *root;
@@ -250,7 +265,7 @@ static int firehose_configure(int fd)
 	if (ret < 0)
 		return ret;
 
-	return firehose_read(fd, -1, firehose_nop_parser);
+	return firehose_read(fd, -1, firehose_configure_response_parser);
 }
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
