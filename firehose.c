@@ -227,6 +227,8 @@ static int firehose_nop(int fd)
 	return firehose_read(fd, -1, firehose_nop_parser);
 }
 
+static size_t max_payload_size = 1048576;
+
 static int firehose_configure(int fd)
 {
 	xmlNode *root;
@@ -240,7 +242,7 @@ static int firehose_configure(int fd)
 
 	node = xmlNewChild(root, NULL, (xmlChar*)"configure", NULL);
 	xml_setpropf(node, "MemoryName", "ufs");
-	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%d", 1024 * 1024);
+	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%d", max_payload_size);
 	xml_setpropf(node, "verbose", "%d", 0);
 	xml_setpropf(node, "ZLPAwareHost", "%d", 0);
 
@@ -251,10 +253,14 @@ static int firehose_configure(int fd)
 	return firehose_read(fd, -1, firehose_nop_parser);
 }
 
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
+
 static int firehose_program(int usbfd, struct program *program, int fd)
 {
 	unsigned num_sectors;
 	struct stat sb;
+	size_t chunk_size;
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
@@ -272,7 +278,7 @@ static int firehose_program(int usbfd, struct program *program, int fd)
 		num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
 	}
 
-	buf = malloc(program->sector_size);
+	buf = malloc(max_payload_size);
 	if (!buf)
 		err(1, "failed to allocate sector buffer");
 
@@ -303,24 +309,29 @@ static int firehose_program(int usbfd, struct program *program, int fd)
 	t0 = time(NULL);
 
 	lseek(fd, program->file_offset * program->sector_size, SEEK_SET);
-	for (left = num_sectors; left > 0; left--) {
+	left = num_sectors;
+	while (left > 0) {
+		chunk_size = MIN(max_payload_size / program->sector_size, left);
+
 		if (fd >= 0) {
-			n = read(fd, buf, program->sector_size);
+			n = read(fd, buf, chunk_size * program->sector_size);
 			if (n < 0)
 				err(1, "failed to read");
 		} else {
 			n = 0;
 		}
 
-		if (n < program->sector_size)
-			memset(buf + n, 0, program->sector_size - n);
+		if (n < max_payload_size)
+			memset(buf + n, 0, max_payload_size - n);
 
-		n = write(usbfd, buf, program->sector_size);
+		n = write(usbfd, buf, chunk_size * program->sector_size);
 		if (n < 0)
 			err(1, "failed to write");
 
-		if (n != program->sector_size)
+		if (n != chunk_size * program->sector_size)
 			err(1, "failed to write full sector");
+
+		left -= chunk_size;
 	}
 
 	t = time(NULL) - t0;
