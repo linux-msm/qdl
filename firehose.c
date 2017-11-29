@@ -229,22 +229,41 @@ static int firehose_nop(int fd)
 
 static size_t max_payload_size = 1048576;
 
+/**
+ * firehose_configure_response_parser() - parse a configure response
+ * @node:	response xmlNode
+ *
+ * Return: max size supported by the remote, or negative errno on failure
+ */
 static int firehose_configure_response_parser(xmlNode *node)
 {
+	xmlChar *payload;
 	xmlChar *value;
+	size_t max_size;
 
 	value = xmlGetProp(node, (xmlChar*)"value");
-	if (xmlStrcmp(value, (xmlChar*)"ACK"))
+	payload = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytes");
+	if (!value || !payload)
 		return -EINVAL;
 
-	value = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytes");
-	if (value)
-		max_payload_size = strtoul((char*)value, NULL, 10);
+	max_size = strtoul((char*)payload, NULL, 10);
 
-	return 0;
+	/*
+	 * When receiving an ACK the remote may indicate that we should attempt
+	 * a larger payload size
+	 */
+	if (!xmlStrcmp(value, (xmlChar*)"ACK")) {
+		payload = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytesSupported");
+		if (!payload)
+			return -EINVAL;
+
+		max_size = strtoul((char*)payload, NULL, 10);
+	}
+
+	return max_size;
 }
 
-static int firehose_configure(int fd)
+static int firehose_send_configure(int fd, size_t payload_size)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -257,7 +276,7 @@ static int firehose_configure(int fd)
 
 	node = xmlNewChild(root, NULL, (xmlChar*)"configure", NULL);
 	xml_setpropf(node, "MemoryName", "ufs");
-	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%d", max_payload_size);
+	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%d", payload_size);
 	xml_setpropf(node, "verbose", "%d", 0);
 	xml_setpropf(node, "ZLPAwareHost", "%d", 0);
 
@@ -266,6 +285,31 @@ static int firehose_configure(int fd)
 		return ret;
 
 	return firehose_read(fd, -1, firehose_configure_response_parser);
+}
+
+static int firehose_configure(int fd)
+{
+	int ret;
+
+	ret = firehose_send_configure(fd, max_payload_size);
+	if (ret < 0)
+		return ret;
+
+	/* Retry if remote proposed different size */
+	if (ret != max_payload_size) {
+		ret = firehose_send_configure(fd, ret);
+		if (ret < 0)
+			return ret;
+
+		max_payload_size = ret;
+	}
+
+	if (qdl_debug) {
+		fprintf(stderr, "[CONFIGURE] max payload size: %ld\n",
+			max_payload_size);
+	}
+
+	return 0;
 }
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
