@@ -240,7 +240,7 @@ static int firehose_configure(int fd)
 
 	node = xmlNewChild(root, NULL, (xmlChar*)"configure", NULL);
 	xml_setpropf(node, "MemoryName", "ufs");
-	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%d", 8192);
+	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%d", 1024 * 1024);
 	xml_setpropf(node, "verbose", "%d", 0);
 	xml_setpropf(node, "ZLPAwareHost", "%d", 0);
 
