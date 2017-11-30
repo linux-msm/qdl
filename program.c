@@ -142,14 +142,15 @@ int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, 
 	int fd;
 
 	for (program = programes; program; program = program->next) {
-		fd = -1;
-		if (program->filename) {
-			fd = open(program->filename, O_RDONLY);
-			if (fd < 0) {
-				printf("Unable to open %s...ignoring\n", program->filename);
-				continue;
-			}
+		if (!program->filename)
+			continue;
+
+		fd = open(program->filename, O_RDONLY);
+		if (fd < 0) {
+			printf("Unable to open %s...ignoring\n", program->filename);
+			continue;
 		}
+
 		ret = apply(usbfd, program, fd);
 
 		close(fd);

@@ -332,16 +332,17 @@ static int firehose_program(int usbfd, struct program *program, int fd)
 
 	num_sectors = program->num_sectors;
 
-	if (fd >= 0) {
-		fstat(fd, &sb);
-		num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
+	ret = fstat(fd, &sb);
+	if (ret < 0)
+		err(1, "failed to stat \"%s\"\n", program->filename);
 
-		if (num_sectors > program->num_sectors) {
-			fprintf(stderr, "[PROGRAM] %s truncated to %d\n",
-				program->label,
-				program->num_sectors * program->sector_size);
-			num_sectors = program->num_sectors;
-		}
+	num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
+
+	if (num_sectors > program->num_sectors) {
+		fprintf(stderr, "[PROGRAM] %s truncated to %d\n",
+			program->label,
+			program->num_sectors * program->sector_size);
+		num_sectors = program->num_sectors;
 	}
 
 	buf = malloc(max_payload_size);
@@ -379,13 +380,9 @@ static int firehose_program(int usbfd, struct program *program, int fd)
 	while (left > 0) {
 		chunk_size = MIN(max_payload_size / program->sector_size, left);
 
-		if (fd >= 0) {
-			n = read(fd, buf, chunk_size * program->sector_size);
-			if (n < 0)
-				err(1, "failed to read");
-		} else {
-			n = 0;
-		}
+		n = read(fd, buf, chunk_size * program->sector_size);
+		if (n < 0)
+			err(1, "failed to read");
 
 		if (n < max_payload_size)
 			memset(buf + n, 0, max_payload_size - n);
