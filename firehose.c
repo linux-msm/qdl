@@ -338,7 +338,7 @@ static int firehose_program(int usbfd, struct program *program, int fd)
 
 	num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
 
-	if (num_sectors > program->num_sectors) {
+	if (program->num_sectors && num_sectors > program->num_sectors) {
 		fprintf(stderr, "[PROGRAM] %s truncated to %d\n",
 			program->label,
 			program->num_sectors * program->sector_size);
