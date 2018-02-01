@@ -221,6 +221,7 @@ static int firehose_nop(int fd)
 	xml_setpropf(node, "value", "ping");
 
 	ret = firehose_write(fd, doc);
+	xmlFreeDoc(doc);
 	if (ret < 0)
 		return ret;
 
@@ -281,6 +282,7 @@ static int firehose_send_configure(int fd, size_t payload_size)
 	xml_setpropf(node, "ZLPAwareHost", "%d", 0);
 
 	ret = firehose_write(fd, doc);
+	xmlFreeDoc(doc);
 	if (ret < 0)
 		return ret;
 
@@ -467,6 +469,7 @@ static int firehose_set_bootable(int fd, int part)
 	xml_setpropf(node, "value", "%d", part);
 
 	ret = firehose_write(fd, doc);
+	xmlFreeDoc(doc);
 	if (ret < 0)
 		return ret;
 
@@ -495,6 +498,7 @@ static int firehose_reset(int fd)
 	xml_setpropf(node, "value", "reset");
 
 	ret = firehose_write(fd, doc);
+	xmlFreeDoc(doc);
 	if (ret < 0)
 		return ret;
 
