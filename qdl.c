@@ -35,6 +35,7 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -201,50 +202,66 @@ retry:
 	return fd;
 }
 
-int main(int argc, char **argv)
+static void print_usage(void)
 {
 	extern const char *__progname;
+	fprintf(stderr, "%s <prog.mbn> [<program> <patch> ...]\n", __progname);
+}
+
+int main(int argc, char **argv)
+{
 	struct termios tios;
 	char *prog_mbn;
 	int type;
 	int ret;
 	int fd;
-	int i;
+	int opt;
 
-	if (argc >= 2 && strcmp(argv[1], "--debug") == 0) {
-		qdl_debug = true;
-		argv++;
-		argc--;
+	static struct option options[] = {
+		{"debug", no_argument, 0, 'd'},
+		{0, 0, 0, 0}
+	};
+
+	while ((opt = getopt_long(argc, argv, "d", options, NULL )) != -1) {
+		switch (opt) {
+		case 'd':
+			qdl_debug = true;
+			break;
+		default:
+			print_usage();
+			return 1;
+		}
 	}
 
-	if (argc < 3) {
-		fprintf(stderr, "%s <prog.mbn> [<program> <patch> ...]\n", __progname);
+	/* at least 2 non optional args required */
+	if ((optind + 2) > argc) {
+		print_usage();
 		return 1;
 	}
 
-	prog_mbn = argv[1];
+	prog_mbn = argv[optind++];
 
-	for (i = 2; i < argc; i++) {
-		type = detect_type(argv[i]);
+	do {
+		type = detect_type(argv[optind]);
 		if (type < 0 || type == QDL_FILE_UNKNOWN)
-			errx(1, "failed to detect file type of %s\n", argv[i]);
+			errx(1, "failed to detect file type of %s\n", argv[optind]);
 
 		switch (type) {
 		case QDL_FILE_PATCH:
-			ret = patch_load(argv[i]);
+			ret = patch_load(argv[optind]);
 			if (ret < 0)
-				errx(1, "patch_load %s failed", argv[i]);
+				errx(1, "patch_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_PROGRAM:
-			ret = program_load(argv[i]);
+			ret = program_load(argv[optind]);
 			if (ret < 0)
-				errx(1, "program_load %s failed", argv[i]);
+				errx(1, "program_load %s failed", argv[optind]);
 			break;
 		default:
-			errx(1, "%s type not yet supported", argv[i]);
+			errx(1, "%s type not yet supported", argv[optind]);
 			break;
 		}
-	}
+	} while (++optind < argc);
 
 	fd = tty_open(&tios);
 	if (fd < 0)
