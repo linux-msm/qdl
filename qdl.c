@@ -205,7 +205,8 @@ retry:
 static void print_usage(void)
 {
 	extern const char *__progname;
-	fprintf(stderr, "%s <prog.mbn> [<program> <patch> ...]\n", __progname);
+	fprintf(stderr, "%s [--debug] <prog.mbn> [<program> <patch> ...]\n",
+		__progname);
 }
 
 int main(int argc, char **argv)
