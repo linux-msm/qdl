@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2016-2017, Linaro Ltd.
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -48,6 +49,7 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include "qdl.h"
+#include "ufs.h"
 
 static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 {
@@ -264,7 +266,7 @@ static int firehose_configure_response_parser(xmlNode *node)
 	return max_size;
 }
 
-static int firehose_send_configure(int fd, size_t payload_size)
+static int firehose_send_configure(int fd, size_t payload_size, bool skip_storage_init)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -280,6 +282,7 @@ static int firehose_send_configure(int fd, size_t payload_size)
 	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%d", payload_size);
 	xml_setpropf(node, "verbose", "%d", 0);
 	xml_setpropf(node, "ZLPAwareHost", "%d", 0);
+	xml_setpropf(node, "SkipStorageInit", "%d", skip_storage_init);
 
 	ret = firehose_write(fd, doc);
 	xmlFreeDoc(doc);
@@ -289,17 +292,17 @@ static int firehose_send_configure(int fd, size_t payload_size)
 	return firehose_read(fd, -1, firehose_configure_response_parser);
 }
 
-static int firehose_configure(int fd)
+static int firehose_configure(int fd, bool skip_storage_init)
 {
 	int ret;
 
-	ret = firehose_send_configure(fd, max_payload_size);
+	ret = firehose_send_configure(fd, max_payload_size, skip_storage_init);
 	if (ret < 0)
 		return ret;
 
 	/* Retry if remote proposed different size */
 	if (ret != max_payload_size) {
-		ret = firehose_send_configure(fd, ret);
+		ret = firehose_send_configure(fd, ret, skip_storage_init);
 		if (ret < 0)
 			return ret;
 
@@ -454,6 +457,100 @@ out:
 	return ret;
 }
 
+static int firehose_send_single_tag(int usbfd, xmlNode *node){
+        xmlNode *root;
+        xmlDoc *doc;
+        int ret;
+
+        doc = xmlNewDoc((xmlChar*)"1.0");
+        root = xmlNewNode(NULL, (xmlChar*)"data");
+        xmlDocSetRootElement(doc, root);
+        xmlAddChild(root, node);
+
+        ret = firehose_write(usbfd, doc);
+        if (ret < 0)
+                goto out;
+
+        ret = firehose_read(usbfd, -1, firehose_nop_parser);
+        if (ret) {
+                fprintf(stderr, "[UFS] %s err %d\n", __func__, ret);
+                ret = -EINVAL;
+        }
+
+out:
+        xmlFreeDoc(doc);
+        return ret;
+}
+
+int firehose_apply_ufs_common(int fd, struct ufs_common *ufs)
+{
+	xmlNode *node_to_send;
+	int ret;
+
+	node_to_send = xmlNewNode (NULL, (xmlChar*)"ufs");
+
+	xml_setpropf(node_to_send, "bNumberLU", "%d", ufs->bNumberLU);
+	xml_setpropf(node_to_send, "bBootEnable", "%d", ufs->bBootEnable);
+	xml_setpropf(node_to_send, "bDescrAccessEn", "%d", ufs->bDescrAccessEn);
+	xml_setpropf(node_to_send, "bInitPowerMode", "%d", ufs->bInitPowerMode);
+	xml_setpropf(node_to_send, "bHighPriorityLUN", "%d", ufs->bHighPriorityLUN);
+	xml_setpropf(node_to_send, "bSecureRemovalType", "%d", ufs->bSecureRemovalType);
+	xml_setpropf(node_to_send, "bInitActiveICCLevel", "%d", ufs->bInitActiveICCLevel);
+	xml_setpropf(node_to_send, "wPeriodicRTCUpdate", "%d", ufs->wPeriodicRTCUpdate);
+	xml_setpropf(node_to_send, "bConfigDescrLock", "%d", 0/*ufs->bConfigDescrLock*/); //Safety, remove before fly
+
+	ret = firehose_send_single_tag(fd, node_to_send);
+	if (ret)
+		fprintf(stderr, "[APPLY UFS common] %d\n", ret);
+
+	return ret;
+}
+
+int firehose_apply_ufs_body(int fd, struct ufs_body *ufs)
+{
+	xmlNode *node_to_send;
+	int ret;
+
+	node_to_send = xmlNewNode (NULL, (xmlChar*)"ufs");
+
+	xml_setpropf(node_to_send, "LUNum", "%d", ufs->LUNum);
+	xml_setpropf(node_to_send, "bLUEnable", "%d", ufs->bLUEnable);
+	xml_setpropf(node_to_send, "bBootLunID", "%d", ufs->bBootLunID);
+	xml_setpropf(node_to_send, "size_in_kb", "%d", ufs->size_in_kb);
+	xml_setpropf(node_to_send, "bDataReliability", "%d", ufs->bDataReliability);
+	xml_setpropf(node_to_send, "bLUWriteProtect", "%d", ufs->bLUWriteProtect);
+	xml_setpropf(node_to_send, "bMemoryType", "%d", ufs->bMemoryType);
+	xml_setpropf(node_to_send, "bLogicalBlockSize", "%d", ufs->bLogicalBlockSize);
+	xml_setpropf(node_to_send, "bProvisioningType", "%d", ufs->bProvisioningType);
+	xml_setpropf(node_to_send, "wContextCapabilities", "%d", ufs->wContextCapabilities);
+	if(ufs->desc)
+		xml_setpropf(node_to_send, "desc", "%s", ufs->desc);
+
+	ret = firehose_send_single_tag(fd, node_to_send);
+	if (ret)
+		fprintf(stderr, "[APPLY UFS body] %d\n", ret);
+
+	return ret;
+}
+
+int firehose_apply_ufs_epilogue(int fd, struct ufs_epilogue *ufs,
+	bool commit)
+{
+	xmlNode *node_to_send;
+	int ret;
+
+	node_to_send = xmlNewNode (NULL, (xmlChar*)"ufs");
+
+	xml_setpropf(node_to_send, "LUNtoGrow", "%d", ufs->LUNtoGrow);
+	xml_setpropf(node_to_send, "commit", "%d", commit);
+
+	ret = firehose_send_single_tag(fd, node_to_send);
+	if (ret)
+		fprintf(stderr, "[APPLY UFS epilogue] %d\n", ret);
+
+	return ret;
+}
+
 static int firehose_set_bootable(int fd, int part)
 {
 	xmlNode *root;
@@ -521,7 +618,17 @@ int firehose_run(int fd)
 	if (ret)
 		return ret;
 
-	ret = firehose_configure(fd);
+	if(ufs_need_provisioning()) {
+		ret = firehose_configure(fd, true);
+		if (ret)
+			return ret;
+		ret = ufs_provisioning_execute(fd, firehose_apply_ufs_common,
+			firehose_apply_ufs_body, firehose_apply_ufs_epilogue);
+		if (ret)
+			return ret;
+	}
+
+	ret = firehose_configure(fd, false);
 	if (ret)
 		return ret;
 

@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2016-2017, Linaro Ltd.
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,11 +50,13 @@
 
 #include "qdl.h"
 #include "patch.h"
+#include "ufs.h"
 
 enum {
 	QDL_FILE_UNKNOWN,
 	QDL_FILE_PATCH,
 	QDL_FILE_PROGRAM,
+	QDL_FILE_UFS,
 	QDL_FILE_CONTENTS,
 };
 
@@ -63,6 +66,7 @@ static int detect_type(const char *xml_file)
 {
 	xmlNode *root;
 	xmlDoc *doc;
+	xmlNode *node;
 	int type;
 
 	doc = xmlReadFile(xml_file, NULL, 0);
@@ -74,8 +78,20 @@ static int detect_type(const char *xml_file)
 	root = xmlDocGetRootElement(doc);
 	if (!xmlStrcmp(root->name, (xmlChar*)"patches"))
 		type = QDL_FILE_PATCH;
-	else if (!xmlStrcmp(root->name, (xmlChar*)"data"))
-		type = QDL_FILE_PROGRAM;
+	else if (!xmlStrcmp(root->name, (xmlChar*)"data")) {
+		for (node = root->children; node ; node = node->next) {
+			if (node->type != XML_ELEMENT_NODE)
+				continue;
+			if (!xmlStrcmp(node->name, (xmlChar*)"program")) {
+				type = QDL_FILE_PROGRAM;
+				break;
+			}
+			if (!xmlStrcmp(node->name, (xmlChar*)"ufs")) {
+				type = QDL_FILE_UFS;
+				break;
+			}
+		}
+	}
 	else if (!xmlStrcmp(root->name, (xmlChar*)"contents"))
 		type = QDL_FILE_CONTENTS;
 	else
@@ -205,7 +221,8 @@ retry:
 static void print_usage(void)
 {
 	extern const char *__progname;
-	fprintf(stderr, "%s [--debug] <prog.mbn> [<program> <patch> ...]\n",
+	fprintf(stderr,
+		"%s [--debug] [--finalize-provisioning] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
 }
 
@@ -217,9 +234,12 @@ int main(int argc, char **argv)
 	int ret;
 	int fd;
 	int opt;
+	bool qdl_finalize_provisioning = false;
+
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
+		{"finalize-provisioning", no_argument, 0, 'l'},
 		{0, 0, 0, 0}
 	};
 
@@ -227,6 +247,9 @@ int main(int argc, char **argv)
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
+			break;
+		case 'l':
+			qdl_finalize_provisioning = true;
 			break;
 		default:
 			print_usage();
@@ -257,6 +280,11 @@ int main(int argc, char **argv)
 			ret = program_load(argv[optind]);
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[optind]);
+			break;
+		case QDL_FILE_UFS:
+			ret = ufs_load(argv[optind],qdl_finalize_provisioning);
+			if (ret < 0)
+				errx(1, "ufs_load %s failed", argv[optind]);
 			break;
 		default:
 			errx(1, "%s type not yet supported", argv[optind]);
