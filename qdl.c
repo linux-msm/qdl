@@ -67,7 +67,7 @@ static int detect_type(const char *xml_file)
 	xmlNode *root;
 	xmlDoc *doc;
 	xmlNode *node;
-	int type;
+	int type = QDL_FILE_UNKNOWN;
 
 	doc = xmlReadFile(xml_file, NULL, 0);
 	if (!doc) {
@@ -76,9 +76,9 @@ static int detect_type(const char *xml_file)
 	}
 
 	root = xmlDocGetRootElement(doc);
-	if (!xmlStrcmp(root->name, (xmlChar*)"patches"))
+	if (!xmlStrcmp(root->name, (xmlChar*)"patches")) {
 		type = QDL_FILE_PATCH;
-	else if (!xmlStrcmp(root->name, (xmlChar*)"data")) {
+	} else if (!xmlStrcmp(root->name, (xmlChar*)"data")) {
 		for (node = root->children; node ; node = node->next) {
 			if (node->type != XML_ELEMENT_NODE)
 				continue;
@@ -91,11 +91,9 @@ static int detect_type(const char *xml_file)
 				break;
 			}
 		}
-	}
-	else if (!xmlStrcmp(root->name, (xmlChar*)"contents"))
+	} else if (!xmlStrcmp(root->name, (xmlChar*)"contents")) {
 		type = QDL_FILE_CONTENTS;
-	else
-		type = QDL_FILE_UNKNOWN;
+	}
 
 	xmlFreeDoc(doc);
 
