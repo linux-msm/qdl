@@ -308,15 +308,15 @@ int ufs_provisioning_execute(int usbfd,
 
 	// Just ask a target to check the XML w/o real provisioning
 	ret = apply_ufs_common(usbfd, ufs_common_p);
-	if (!ret)
+	if (ret)
 		return ret;
 	for (body = ufs_body_p; body; body = body->next) {
 		ret = apply_ufs_body(usbfd, body);
-		if (!ret)
+		if (ret)
 			return ret;
 	}
 	ret = apply_ufs_epilogue(usbfd, ufs_epilogue_p, false);
-	if (!ret) {
+	if (ret) {
 		fprintf(stderr,
 			"UFS provisioning impossible, provisioning XML may be corrupted\n");
 		return ret;
@@ -324,11 +324,11 @@ int ufs_provisioning_execute(int usbfd,
 
 	// Real provisioning -- target didn't refuse a given XML
 	ret = apply_ufs_common(usbfd, ufs_common_p);
-	if (!ret)
+	if (ret)
 		return ret;
 	for (body = ufs_body_p; body; body = body->next) {
 		ret = apply_ufs_body(usbfd, body);
-		if (!ret)
+		if (ret)
 			return ret;
 	}
 	return apply_ufs_epilogue(usbfd, ufs_epilogue_p, true);

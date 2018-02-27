@@ -624,8 +624,11 @@ int firehose_run(int fd)
 			return ret;
 		ret = ufs_provisioning_execute(fd, firehose_apply_ufs_common,
 			firehose_apply_ufs_body, firehose_apply_ufs_epilogue);
-		if (ret)
-			return ret;
+		if (!ret)
+			printf("UFS provisioning succeeded\n");
+		else
+			printf("UFS provisioning failed\n");
+		return ret;
 	}
 
 	ret = firehose_configure(fd, false);
