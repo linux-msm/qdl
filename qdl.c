@@ -220,7 +220,7 @@ static void print_usage(void)
 {
 	extern const char *__progname;
 	fprintf(stderr,
-		"%s [--debug] [--finalize-provisioning] <prog.mbn> [<program> <patch> ...]\n",
+		"%s [--debug] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
 }
 
@@ -228,6 +228,7 @@ int main(int argc, char **argv)
 {
 	struct termios tios;
 	char *prog_mbn;
+	char *incdir = NULL;
 	int type;
 	int ret;
 	int fd;
@@ -237,14 +238,18 @@ int main(int argc, char **argv)
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
+		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "d", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "di:", options, NULL )) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
+			break;
+		case 'i':
+			incdir = optarg;
 			break;
 		case 'l':
 			qdl_finalize_provisioning = true;
@@ -298,7 +303,7 @@ int main(int argc, char **argv)
 	if (ret < 0)
 		goto out;
 
-	ret = firehose_run(fd);
+	ret = firehose_run(fd, incdir);
 
 out:
 	ret = tcsetattr(fd, TCSANOW, &tios);

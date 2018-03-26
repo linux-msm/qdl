@@ -135,9 +135,12 @@ int program_load(const char *program_file)
 	return 0;
 }
 	
-int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, int fd))
+int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, int fd),
+		    const char *incdir)
 {
 	struct program *program;
+	const char *filename;
+	char tmp[PATH_MAX];
 	int ret;
 	int fd;
 
@@ -145,7 +148,15 @@ int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, 
 		if (!program->filename)
 			continue;
 
-		fd = open(program->filename, O_RDONLY);
+		filename = program->filename;
+		if (incdir) {
+			snprintf(tmp, PATH_MAX, "%s/%s", incdir, filename);
+			if (access(tmp, F_OK) != -1)
+				filename = tmp;
+		}
+
+		fd = open(filename, O_RDONLY);
+
 		if (fd < 0) {
 			printf("Unable to open %s...ignoring\n", program->filename);
 			continue;

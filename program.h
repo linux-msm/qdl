@@ -19,7 +19,8 @@ struct program {
 };
 
 int program_load(const char *program_file);
-int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, int fd));
+int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, int fd),
+		    const char *incdir);
 int program_find_bootable_partition(void);
 
 #endif

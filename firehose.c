@@ -602,7 +602,7 @@ static int firehose_reset(int fd)
 	return firehose_read(fd, -1, firehose_nop_parser);
 }
 
-int firehose_run(int fd)
+int firehose_run(int fd, const char *incdir)
 {
 	int bootable;
 	int ret;
@@ -635,7 +635,7 @@ int firehose_run(int fd)
 	if (ret)
 		return ret;
 
-	ret = program_execute(fd, firehose_program);
+	ret = program_execute(fd, firehose_program, incdir);
 	if (ret)
 		return ret;
 
