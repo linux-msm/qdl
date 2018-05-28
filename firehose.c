@@ -310,7 +310,7 @@ static int firehose_configure(int fd, bool skip_storage_init)
 	}
 
 	if (qdl_debug) {
-		fprintf(stderr, "[CONFIGURE] max payload size: %ld\n",
+		fprintf(stderr, "[CONFIGURE] max payload size: %zu\n",
 			max_payload_size);
 	}
 
