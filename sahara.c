@@ -35,6 +35,7 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -156,7 +157,7 @@ static void sahara_read64(int fd, struct sahara_pkt *pkt, const char *mbn)
 
 	assert(pkt->length == 0x20);
 
-	printf("READ64 image: %d offset: 0x%lx length: 0x%lx\n",
+	printf("READ64 image: %d offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
 	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
 	ret = sahara_read_common(fd, mbn, pkt->read64_req.offset, pkt->read64_req.length);
