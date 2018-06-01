@@ -308,7 +308,7 @@ int main(int argc, char **argv)
 out:
 	ret = tcsetattr(fd, TCSANOW, &tios);
 	if (ret < 0)
-		warn("unable to restore tios of ttyUSB1");
+		warn("unable to restore tios");
 	close(fd);
 
 	return 0;
