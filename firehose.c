@@ -147,7 +147,6 @@ static int firehose_read(int fd, int timeout, int (*response_parser)(xmlNode *no
 		if (qdl_debug)
 			fprintf(stderr, "FIREHOSE READ: %s\n", buf);
 
-		msg = buf;
 		for (msg = buf; msg[0]; msg = end) {
 			end = strstr(msg, "</data>");
 			if (!end) {
