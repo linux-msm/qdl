@@ -78,7 +78,7 @@ struct sahara_pkt {
 			uint32_t status;
 		} done_resp;
 		struct {
-			uint32_t image;
+			uint64_t image;
 			uint64_t offset;
 			uint64_t length;
 		} read64_req;
@@ -157,7 +157,7 @@ static void sahara_read64(int fd, struct sahara_pkt *pkt, const char *mbn)
 
 	assert(pkt->length == 0x20);
 
-	printf("READ64 image: %d offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
+	printf("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
 	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
 	ret = sahara_read_common(fd, mbn, pkt->read64_req.offset, pkt->read64_req.length);
