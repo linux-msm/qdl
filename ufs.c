@@ -55,32 +55,7 @@ static const char notice_bconfigdescrlock[] = "\n"
 "	and don't use command line parameter --finalize-provisioning.\n\n"
 "In case of mismatch between CL and XML provisioning is not performed.\n\n";
 
-// ToDo: These 2 functions must be moved to a common module (refactoring required)
-static unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors)
-{
-	xmlChar *value;
 
-	value = xmlGetProp(node, (xmlChar*)attr);
-	if (!value) {
-		(*errors)++;
-                return 0;
-        }
-	return strtoul((char*)value, NULL, 0);
-}
-
-static const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
-{
-	xmlChar *value;
-
-	value = xmlGetProp(node, (xmlChar*)attr);
-	if (!value)
-		(*errors)++;
-
-	if (value && value[0] == '\0')
-		return NULL;
-
-	return strdup((char*)value);
-}
 
 bool ufs_need_provisioning(void)
 {

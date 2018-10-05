@@ -34,31 +34,10 @@
 #include <libxml/tree.h>
 
 #include "patch.h"
+#include "qdl.h"
 		
 static struct patch *patches;
 static struct patch *patches_last;
-
-static unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors)
-{
-	xmlChar *value;	
-
-	value = xmlGetProp(node, (xmlChar*)attr);
-	if (!value)
-		(*errors)++;
-
-	return strtoul((char*)value, NULL, 10);
-}
-
-static const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
-{
-	xmlChar *value;	
-
-	value = xmlGetProp(node, (xmlChar*)attr);
-	if (!value)
-		(*errors)++;
-
-	return strdup((char*)value);
-}
 
 int patch_load(const char *patch_file)
 {

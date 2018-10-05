@@ -36,45 +36,10 @@
 #include <libxml/tree.h>
 
 #include "program.h"
+#include "qdl.h"
 		
 static struct program *programes;
 static struct program *programes_last;
-
-static unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors)
-{
-	xmlChar *value;	
-
-	value = xmlGetProp(node, (xmlChar*)attr);
-	if (!value)
-		(*errors)++;
-
-	return strtoul((char*)value, NULL, 10);
-}
-
-static const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
-{
-	xmlChar *value;	
-
-	value = xmlGetProp(node, (xmlChar*)attr);
-	if (!value)
-		(*errors)++;
-
-	if (value && value[0] == '\0')
-		return NULL;
-
-	return strdup((char*)value);
-}
-
-static bool attr_as_bool(xmlNode *node, const char *attr, int *errors)
-{
-	xmlChar *value;	
-
-	value = xmlGetProp(node, (xmlChar*)attr);
-	if (!value)
-		(*errors)++;
-
-	return xmlStrcmp(value, (xmlChar*)"true") == 0;
-}
 
 int program_load(const char *program_file)
 {
