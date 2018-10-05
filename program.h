@@ -10,9 +10,6 @@ struct program {
 	const char *label;
 	unsigned num_sectors;
 	unsigned partition;
-	unsigned size;
-	bool sparse;
-	const char *start_bytes;
 	const char *start_sector;
 
 	struct program *next;
