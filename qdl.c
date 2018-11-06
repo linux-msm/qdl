@@ -220,14 +220,14 @@ static void print_usage(void)
 {
 	extern const char *__progname;
 	fprintf(stderr,
-		"%s [--debug] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
+		"%s [--debug] [--storage <emmc|ufs>] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
 }
 
 int main(int argc, char **argv)
 {
 	struct termios tios;
-	char *prog_mbn;
+	char *prog_mbn, *storage="ufs";
 	char *incdir = NULL;
 	int type;
 	int ret;
@@ -240,6 +240,7 @@ int main(int argc, char **argv)
 		{"debug", no_argument, 0, 'd'},
 		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
+		{"storage", required_argument, 0, 's'},
 		{0, 0, 0, 0}
 	};
 
@@ -253,6 +254,9 @@ int main(int argc, char **argv)
 			break;
 		case 'l':
 			qdl_finalize_provisioning = true;
+			break;
+		case 's':
+			storage = optarg;
 			break;
 		default:
 			print_usage();
@@ -303,7 +307,7 @@ int main(int argc, char **argv)
 	if (ret < 0)
 		goto out;
 
-	ret = firehose_run(fd, incdir);
+	ret = firehose_run(fd, incdir, storage);
 
 out:
 	ret = tcsetattr(fd, TCSANOW, &tios);

@@ -265,7 +265,7 @@ static int firehose_configure_response_parser(xmlNode *node)
 	return max_size;
 }
 
-static int firehose_send_configure(int fd, size_t payload_size, bool skip_storage_init)
+static int firehose_send_configure(int fd, size_t payload_size, bool skip_storage_init, const char *storage)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -277,7 +277,7 @@ static int firehose_send_configure(int fd, size_t payload_size, bool skip_storag
 	xmlDocSetRootElement(doc, root);
 
 	node = xmlNewChild(root, NULL, (xmlChar*)"configure", NULL);
-	xml_setpropf(node, "MemoryName", "ufs");
+	xml_setpropf(node, "MemoryName", storage);
 	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%d", payload_size);
 	xml_setpropf(node, "verbose", "%d", 0);
 	xml_setpropf(node, "ZLPAwareHost", "%d", 0);
@@ -291,17 +291,17 @@ static int firehose_send_configure(int fd, size_t payload_size, bool skip_storag
 	return firehose_read(fd, -1, firehose_configure_response_parser);
 }
 
-static int firehose_configure(int fd, bool skip_storage_init)
+static int firehose_configure(int fd, bool skip_storage_init, const char *storage)
 {
 	int ret;
 
-	ret = firehose_send_configure(fd, max_payload_size, skip_storage_init);
+	ret = firehose_send_configure(fd, max_payload_size, skip_storage_init, storage);
 	if (ret < 0)
 		return ret;
 
 	/* Retry if remote proposed different size */
 	if (ret != max_payload_size) {
-		ret = firehose_send_configure(fd, ret, skip_storage_init);
+		ret = firehose_send_configure(fd, ret, skip_storage_init, storage);
 		if (ret < 0)
 			return ret;
 
@@ -601,7 +601,7 @@ static int firehose_reset(int fd)
 	return firehose_read(fd, -1, firehose_nop_parser);
 }
 
-int firehose_run(int fd, const char *incdir)
+int firehose_run(int fd, const char *incdir, const char *storage)
 {
 	int bootable;
 	int ret;
@@ -618,7 +618,7 @@ int firehose_run(int fd, const char *incdir)
 		return ret;
 
 	if(ufs_need_provisioning()) {
-		ret = firehose_configure(fd, true);
+		ret = firehose_configure(fd, true, storage);
 		if (ret)
 			return ret;
 		ret = ufs_provisioning_execute(fd, firehose_apply_ufs_common,
@@ -630,7 +630,7 @@ int firehose_run(int fd, const char *incdir)
 		return ret;
 	}
 
-	ret = firehose_configure(fd, false);
+	ret = firehose_configure(fd, false, storage);
 	if (ret)
 		return ret;
 
