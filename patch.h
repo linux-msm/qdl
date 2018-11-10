@@ -1,6 +1,8 @@
 #ifndef __PATCH_H__
 #define __PATCH_H__
 
+struct qdl_device;
+
 struct patch {
 	unsigned sector_size;
 	unsigned byte_offset;
@@ -15,6 +17,6 @@ struct patch {
 };
 
 int patch_load(const char *patch_file);
-int patch_execute(int fd, int (*apply)(int fd, struct patch *patch));
+int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch));
 
 #endif

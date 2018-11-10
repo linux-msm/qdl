@@ -1,7 +1,7 @@
 OUT := qdl
 
 CFLAGS := -O2 -Wall -g `xml2-config --cflags`
-LDFLAGS := `xml2-config --libs`
+LDFLAGS := `xml2-config --libs` -ludev
 prefix := /usr/local
 
 SRCS := firehose.c qdl.c sahara.c util.c patch.c program.c ufs.c

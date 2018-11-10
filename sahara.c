@@ -85,7 +85,7 @@ struct sahara_pkt {
 	};
 };
 
-static void sahara_hello(int fd, struct sahara_pkt *pkt)
+static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
 	struct sahara_pkt resp;
 
@@ -101,10 +101,10 @@ static void sahara_hello(int fd, struct sahara_pkt *pkt)
 	resp.hello_resp.status = 0;
 	resp.hello_resp.mode = pkt->hello_req.mode;
 
-	write(fd, &resp, resp.length);
+	qdl_write(qdl, &resp, resp.length, true);
 }
 
-static int sahara_read_common(int fd, const char *mbn, off_t offset, size_t len)
+static int sahara_read_common(struct qdl_device *qdl, const char *mbn, off_t offset, size_t len)
 {
 	int progfd;
 	ssize_t n;
@@ -126,7 +126,7 @@ static int sahara_read_common(int fd, const char *mbn, off_t offset, size_t len)
 		goto out;
 	}
 
-	n = write(fd, buf, n);
+	n = qdl_write(qdl, buf, n, true);
 	if (n != len)
 		err(1, "failed to write %zu bytes to sahara", len);
 
@@ -137,7 +137,7 @@ out:
 	return ret;
 }
 
-static void sahara_read(int fd, struct sahara_pkt *pkt, const char *mbn)
+static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, const char *mbn)
 {
 	int ret;
 
@@ -146,12 +146,12 @@ static void sahara_read(int fd, struct sahara_pkt *pkt, const char *mbn)
 	printf("READ image: %d offset: 0x%x length: 0x%x\n",
 	       pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
-	ret = sahara_read_common(fd, mbn, pkt->read_req.offset, pkt->read_req.length);
+	ret = sahara_read_common(qdl, mbn, pkt->read_req.offset, pkt->read_req.length);
 	if (ret < 0)
 		errx(1, "failed to read image chunk to sahara");
 }
 
-static void sahara_read64(int fd, struct sahara_pkt *pkt, const char *mbn)
+static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, const char *mbn)
 {
 	int ret;
 
@@ -160,12 +160,12 @@ static void sahara_read64(int fd, struct sahara_pkt *pkt, const char *mbn)
 	printf("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
 	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
-	ret = sahara_read_common(fd, mbn, pkt->read64_req.offset, pkt->read64_req.length);
+	ret = sahara_read_common(qdl, mbn, pkt->read64_req.offset, pkt->read64_req.length);
 	if (ret < 0)
 		errx(1, "failed to read image chunk to sahara");
 }
 
-static void sahara_eoi(int fd, struct sahara_pkt *pkt)
+static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
 	struct sahara_pkt done;
 
@@ -180,10 +180,10 @@ static void sahara_eoi(int fd, struct sahara_pkt *pkt)
 
 	done.cmd = 5;
 	done.length = 0x8;
-	write(fd, &done, done.length);
+	qdl_write(qdl, &done, done.length, true);
 }
 
-static int sahara_done(int fd, struct sahara_pkt *pkt)
+static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
 	assert(pkt->length == 0xc);
 
@@ -192,31 +192,18 @@ static int sahara_done(int fd, struct sahara_pkt *pkt)
 	return pkt->done_resp.status;
 }
 
-int sahara_run(int fd, char *prog_mbn)
+int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 {
 	struct sahara_pkt *pkt;
-	struct pollfd pfd;
 	char buf[4096];
 	char tmp[32];
 	bool done = false;
 	int n;
 
 	while (!done) {
-		pfd.fd = fd;
-		pfd.events = POLLIN;
-		n = poll(&pfd, 1, -1);
-		if (n < 0) {
-			warn("failed to poll");
+		n = qdl_read(qdl, buf, sizeof(buf), 1000);
+		if (n < 0)
 			break;
-		}
-
-		n = read(fd, buf, sizeof(buf));
-		if (n == 0) {
-			continue;
-		} else if (n < 0) {
-			warn("failed to read");
-			break;
-		}
 
 		pkt = (struct sahara_pkt*)buf;
 		if (n != pkt->length) {
@@ -226,20 +213,20 @@ int sahara_run(int fd, char *prog_mbn)
 
 		switch (pkt->cmd) {
 		case 1:
-			sahara_hello(fd, pkt);
+			sahara_hello(qdl, pkt);
 			break;
 		case 3:
-			sahara_read(fd, pkt, prog_mbn);
+			sahara_read(qdl, pkt, prog_mbn);
 			break;
 		case 4:
-			sahara_eoi(fd, pkt);
+			sahara_eoi(qdl, pkt);
 			break;
 		case 6:
-			sahara_done(fd, pkt);
+			sahara_done(qdl, pkt);
 			done = true;
 			break;
 		case 0x12:
-			sahara_read64(fd, pkt, prog_mbn);
+			sahara_read64(qdl, pkt, prog_mbn);
 			break;
 		default:
 			sprintf(tmp, "CMD%x", pkt->cmd);

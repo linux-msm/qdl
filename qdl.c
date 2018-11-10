@@ -29,6 +29,9 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include <linux/usbdevice_fs.h>
+#include <linux/usb/ch9.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <assert.h>
 #include <ctype.h>
@@ -37,6 +40,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <libudev.h>
 #include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -52,12 +56,24 @@
 #include "patch.h"
 #include "ufs.h"
 
+#define MAX_USBFS_BULK_SIZE	(16*1024)
+
 enum {
 	QDL_FILE_UNKNOWN,
 	QDL_FILE_PATCH,
 	QDL_FILE_PROGRAM,
 	QDL_FILE_UFS,
 	QDL_FILE_CONTENTS,
+};
+
+struct qdl_device {
+	int fd;
+
+	int in_ep;
+	int out_ep;
+
+	size_t in_maxpktsize;
+	size_t out_maxpktsize;
 };
 
 bool qdl_debug;
@@ -100,120 +116,228 @@ static int detect_type(const char *xml_file)
 	return type;
 }
 
-static int readat(int dir, const char *name, char *buf, size_t len)
+static int parse_usb_desc(int fd, struct qdl_device *qdl, int *intf)
 {
+	const struct usb_interface_descriptor *ifc;
+	const struct usb_endpoint_descriptor *ept;
+	const struct usb_device_descriptor *dev;
+	const struct usb_config_descriptor *cfg;
+	const struct usb_descriptor_header *hdr;
+	unsigned type;
+	unsigned out;
+	unsigned in;
+	unsigned k;
+	unsigned l;
 	ssize_t n;
-	int fd;
-	int ret = 0;
+	size_t out_size;
+	size_t in_size;
+	void *ptr;
+	void *end;
+	char desc[1024];
 
-	fd = openat(dir, name, O_RDONLY);
-	if (fd < 0)
-		return fd;
+	n = read(fd, desc, sizeof(desc));
+	if (n < 0)
+		return n;
 
-	n = read(fd, buf, len - 1);
-	if (n < 0) {
-		warn("failed to read %s", name);
-		ret = -EINVAL;
-		goto close_fd;
-	}
-	buf[n] = '\0';
+	ptr = (void*)desc;
+	end = ptr + n;
 
-	buf[strcspn(buf, "\n")] = '\0';
+	dev = ptr;
 
-close_fd:
-	close(fd);
-	return ret;
-}
+	/* Consider only devices with vid 0x0506 and product id 0x9008 */
+	if (dev->idVendor != 0x05c6 || dev->idProduct != 0x9008)
+		return -EINVAL;
 
-static int find_qdl_tty(char *dev_name, size_t dev_name_len)
-{
-	struct dirent *de;
-	int found = -ENOENT;
-	char vid[5];
-	char pid[5];
-	DIR *dir;
-	int tty;
-	int fd;
-	int ret;
+	ptr += dev->bLength;
+	if (ptr >= end || dev->bDescriptorType != USB_DT_DEVICE)
+		return -EINVAL;
 
-	tty = open("/sys/class/tty", O_DIRECTORY);
-	if (tty < 0)
-		err(1, "failed to open /sys/class/tty");
+	cfg = ptr;
+	ptr += cfg->bLength;
+	if (ptr >= end || cfg->bDescriptorType != USB_DT_CONFIG)
+		return -EINVAL;
 
-	dir = fdopendir(tty);
-	if (!dir)
-		err(1, "failed to opendir /sys/class/tty");
+	for (k = 0; k < cfg->bNumInterfaces; k++) {
+		if (ptr >= end)
+			return -EINVAL;
 
-	while ((de = readdir(dir)) != NULL) {
-		if (strncmp(de->d_name, "ttyUSB", 6) != 0)
+		do {
+			ifc = ptr;
+			if (ifc->bLength < USB_DT_INTERFACE_SIZE)
+				return -EINVAL;
+
+			ptr += ifc->bLength;
+		} while (ptr < end && ifc->bDescriptorType != USB_DT_INTERFACE);
+
+		in = -1;
+		out = -1;
+		in_size = 0;
+		out_size = 0;
+
+		for (l = 0; l < ifc->bNumEndpoints; l++) {
+			if (ptr >= end)
+				return -EINVAL;
+
+			do {
+				ept = ptr;
+				if (ept->bLength < USB_DT_ENDPOINT_SIZE)
+					return -EINVAL;
+
+				ptr += ept->bLength;
+			} while (ptr < end && ept->bDescriptorType != USB_DT_ENDPOINT);
+
+			type = ept->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
+			if (type != USB_ENDPOINT_XFER_BULK)
+				continue;
+
+			if (ept->bEndpointAddress & USB_DIR_IN) {
+				in = ept->bEndpointAddress;
+				in_size = ept->wMaxPacketSize;
+			} else {
+				out = ept->bEndpointAddress;
+				out_size = ept->wMaxPacketSize;
+			}
+
+			if (ptr >= end)
+				break;
+
+			hdr = ptr;
+			if (hdr->bDescriptorType == USB_DT_SS_ENDPOINT_COMP)
+				ptr += USB_DT_SS_EP_COMP_SIZE;
+		}
+
+		if (ifc->bInterfaceClass != 0xff)
 			continue;
 
-		fd = openat(tty, de->d_name, O_DIRECTORY);
+		if (ifc->bInterfaceSubClass != 0xff)
+			continue;
+
+		/* bInterfaceProtocol of 0xff and 0x10 has been seen */
+		if (ifc->bInterfaceProtocol != 0xff &&
+				ifc->bInterfaceProtocol != 16)
+			continue;
+
+		qdl->fd = fd;
+		qdl->in_ep = in;
+		qdl->out_ep = out;
+		qdl->in_maxpktsize = in_size;
+		qdl->out_maxpktsize = out_size;
+
+		*intf = ifc->bInterfaceNumber;
+
+		return 0;
+	}
+
+	return -ENOENT;
+}
+
+static int usb_open(struct qdl_device *qdl)
+{
+	struct udev_enumerate *enumerate;
+	struct udev_list_entry *devices;
+	struct udev_list_entry *dev_list_entry;
+	struct udev_device *dev;
+	const char *dev_node;
+	struct udev *udev;
+	const char *path;
+	struct usbdevfs_ioctl cmd;
+	int intf = -1;
+	int ret;
+	int fd;
+
+	udev = udev_new();
+	if (!udev)
+		err(1, "failed to initialize udev");
+
+	enumerate = udev_enumerate_new(udev);
+	udev_enumerate_add_match_subsystem(enumerate, "usb");
+	udev_enumerate_scan_devices(enumerate);
+	devices = udev_enumerate_get_list_entry(enumerate);
+
+	udev_list_entry_foreach(dev_list_entry, devices) {
+		path = udev_list_entry_get_name(dev_list_entry);
+		dev = udev_device_new_from_syspath(udev, path);
+		dev_node = udev_device_get_devnode(dev);
+
+		if (!dev_node)
+			continue;
+
+		fd = open(dev_node, O_RDWR);
 		if (fd < 0)
 			continue;
 
-		ret = readat(fd, "../../../../idVendor", vid, sizeof(vid));
-		if (ret < 0)
-			goto close_fd;
+		ret = parse_usb_desc(fd, qdl, &intf);
+		if (!ret)
+			goto found;
 
-		ret = readat(fd, "../../../../idProduct", pid, sizeof(pid));
-		if (ret < 0)
-			goto close_fd;
-
-		if (strcmp(vid, "05c6") || strcmp(pid, "9008"))
-			goto close_fd;
-
-		snprintf(dev_name, dev_name_len, "/dev/%s", de->d_name);
-		found = 0;
-
-close_fd:
 		close(fd);
 	}
 
-	closedir(dir);
-	close(tty);
+	fprintf(stderr, "No EDL device found\n");
 
-	return found;
+	return -ENOENT;
 
+found:
+	cmd.ifno = intf;
+	cmd.ioctl_code = USBDEVFS_DISCONNECT;
+	cmd.data = NULL;
+
+	ret = ioctl(qdl->fd, USBDEVFS_IOCTL, &cmd);
+	if (ret && errno != ENODATA)
+		err(1, "failed to disconnect kernel driver");
+
+	ret = ioctl(qdl->fd, USBDEVFS_CLAIMINTERFACE, &intf);
+	printf("claim %d\n", ret);
+	if (ret < 0)
+		err(1, "failed to claim USB interface");
+
+	return 0;
 }
 
-static int tty_open(struct termios *old)
+int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
 {
-	struct termios tios;
-	char path[PATH_MAX];
+	struct usbdevfs_bulktransfer bulk = {};
+	int n;
+
+	bulk.ep = qdl->in_ep;
+	bulk.len = len;
+	bulk.data = buf;
+	bulk.timeout = timeout;
+
+	n = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
+	if (n < 0)
+		warn("receive usb bulk transfer failed");
+
+	return n;
+}
+
+int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
+{
+	struct usbdevfs_bulktransfer bulk = {};
 	int ret;
-	int fd;
+	int n;
 
-retry:
-	ret = find_qdl_tty(path, sizeof(path));
-	if (ret < 0) {
-		printf("Waiting for QDL tty...\r");
-		fflush(stdout);
-		sleep(1);
-		goto retry;
+	bulk.ep = qdl->out_ep;
+	bulk.len = len;
+	bulk.data = (void *)buf;
+	bulk.timeout = 1000;
+
+	ret = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
+	if (ret < 0)
+		warn("transmit usb bulk transfer failed");
+
+	if (eot && (len % qdl->out_maxpktsize) == 0) {
+		bulk.ep = qdl->out_ep;
+		bulk.len = 0;
+		bulk.data = NULL;
+		bulk.timeout = 1000;
+
+		n = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
+		if (n < 0)
+			warn("transmit zlp failed");
 	}
 
-	fd = open(path, O_RDWR | O_NOCTTY | O_EXCL);
-	if (fd < 0) {
-		err(1, "unable to open \"%s\"", path);
-	}
-
-	ret = tcgetattr(fd, old);
-	if (ret < 0)
-		err(1, "unable to retrieve \"%s\" tios", path);
-
-	memset(&tios, 0, sizeof(tios));
-	tios.c_cflag = B115200 | CRTSCTS | CS8 | CLOCAL | CREAD;
-	tios.c_iflag = IGNPAR;
-	tios.c_oflag = 0;
-
-	tcflush(fd, TCIFLUSH);
-
-	ret = tcsetattr(fd, TCSANOW, &tios);
-	if (ret < 0)
-		err(1, "unable to update \"%s\" tios", path);
-
-	return fd;
+	return ret;
 }
 
 static void print_usage(void)
@@ -226,14 +350,13 @@ static void print_usage(void)
 
 int main(int argc, char **argv)
 {
-	struct termios tios;
 	char *prog_mbn, *storage="ufs";
 	char *incdir = NULL;
 	int type;
 	int ret;
-	int fd;
 	int opt;
 	bool qdl_finalize_provisioning = false;
+	struct qdl_device qdl;
 
 
 	static struct option options[] = {
@@ -299,21 +422,17 @@ int main(int argc, char **argv)
 		}
 	} while (++optind < argc);
 
-	fd = tty_open(&tios);
-	if (fd < 0)
-		err(1, "failed to open QDL tty");
+	ret = usb_open(&qdl);
+	if (ret)
+		return 1;
 
-	ret = sahara_run(fd, prog_mbn);
+	ret = sahara_run(&qdl, prog_mbn);
 	if (ret < 0)
-		goto out;
+		return 1;
 
-	ret = firehose_run(fd, incdir, storage);
-
-out:
-	ret = tcsetattr(fd, TCSANOW, &tios);
+	ret = firehose_run(&qdl, incdir, storage);
 	if (ret < 0)
-		warn("unable to restore tios");
-	close(fd);
+		return 1;
 
 	return 0;
 }

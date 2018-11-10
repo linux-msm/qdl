@@ -30,6 +30,8 @@
 #define __UFS_H__
 #include <stdbool.h>
 
+struct qdl_device;
+
 struct ufs_common {
 	unsigned	bNumberLU;
 	bool		bBootEnable;
@@ -64,10 +66,10 @@ struct ufs_epilogue {
 };
 
 int ufs_load(const char *ufs_file, bool finalize_provisioning);
-int ufs_provisioning_execute(int usbfd,
-	int (*apply_ufs_common)(int fd, struct ufs_common *ufs),
-	int (*apply_ufs_body)(int fd, struct ufs_body *ufs),
-	int (*apply_ufs_epilogue)(int fd, struct ufs_epilogue *ufs, bool commit));
+int ufs_provisioning_execute(struct qdl_device *qdl,
+	int (*apply_ufs_common)(struct qdl_device *qdl, struct ufs_common *ufs),
+	int (*apply_ufs_body)(struct qdl_device *qdl, struct ufs_body *ufs),
+	int (*apply_ufs_epilogue)(struct qdl_device *qdl, struct ufs_epilogue *ufs, bool commit));
 bool ufs_need_provisioning(void);
 
 #endif

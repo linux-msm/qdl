@@ -97,7 +97,7 @@ int program_load(const char *program_file)
 	return 0;
 }
 	
-int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, int fd),
+int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
 		    const char *incdir)
 {
 	struct program *program;
@@ -124,7 +124,7 @@ int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, 
 			continue;
 		}
 
-		ret = apply(usbfd, program, fd);
+		ret = apply(qdl, program, fd);
 
 		close(fd);
 		if (ret)

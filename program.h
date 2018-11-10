@@ -2,6 +2,7 @@
 #define __PROGRAM_H__
 
 #include <stdbool.h>
+#include "qdl.h"
 
 struct program {
 	unsigned sector_size;
@@ -16,7 +17,7 @@ struct program {
 };
 
 int program_load(const char *program_file);
-int program_execute(int usbfd, int (*apply)(int usbfd, struct program *program, int fd),
+int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
 		    const char *incdir);
 int program_find_bootable_partition(void);
 

@@ -96,7 +96,7 @@ int patch_load(const char *patch_file)
 	return 0;
 }
 	
-int patch_execute(int fd, int (*apply)(int fd, struct patch *patch))
+int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch))
 {
 	struct patch *patch;
 	int ret;
@@ -105,7 +105,7 @@ int patch_execute(int fd, int (*apply)(int fd, struct patch *patch))
 		if (strcmp(patch->filename, "DISK"))
 			continue;
 
-		ret = apply(fd, patch);
+		ret = apply(qdl, patch);
 		if (ret)
 			return ret;
 	}
