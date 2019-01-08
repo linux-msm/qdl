@@ -320,7 +320,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
 	bulk.ep = qdl->out_ep;
 	bulk.len = len;
 	bulk.data = (void *)buf;
-	bulk.timeout = 1000;
+	bulk.timeout = 10000;
 
 	ret = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
 	if (ret < 0)
