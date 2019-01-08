@@ -378,7 +378,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		if (n < max_payload_size)
 			memset(buf + n, 0, max_payload_size - n);
 
-		n = qdl_write(qdl, buf, chunk_size * program->sector_size, left == chunk_size);
+		n = qdl_write(qdl, buf, chunk_size * program->sector_size, true);
 		if (n < 0)
 			err(1, "failed to write");
 
