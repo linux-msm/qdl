@@ -287,7 +287,6 @@ found:
 		err(1, "failed to disconnect kernel driver");
 
 	ret = ioctl(qdl->fd, USBDEVFS_CLAIMINTERFACE, &intf);
-	printf("claim %d\n", ret);
 	if (ret < 0)
 		err(1, "failed to claim USB interface");
 
