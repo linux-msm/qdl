@@ -236,11 +236,13 @@ static int usb_open(struct qdl_device *qdl)
 	struct udev_enumerate *enumerate;
 	struct udev_list_entry *devices;
 	struct udev_list_entry *dev_list_entry;
+	struct udev_monitor *mon;
 	struct udev_device *dev;
 	const char *dev_node;
 	struct udev *udev;
 	const char *path;
 	struct usbdevfs_ioctl cmd;
+	int mon_fd;
 	int intf = -1;
 	int ret;
 	int fd;
@@ -248,6 +250,11 @@ static int usb_open(struct qdl_device *qdl)
 	udev = udev_new();
 	if (!udev)
 		err(1, "failed to initialize udev");
+
+	mon = udev_monitor_new_from_netlink(udev, "udev");
+	udev_monitor_filter_add_match_subsystem_devtype(mon, "usb", NULL);
+	udev_monitor_enable_receiving(mon);
+	mon_fd = udev_monitor_get_fd(mon);
 
 	enumerate = udev_enumerate_new(udev);
 	udev_enumerate_add_match_subsystem(enumerate, "usb");
@@ -273,11 +280,51 @@ static int usb_open(struct qdl_device *qdl)
 		close(fd);
 	}
 
-	fprintf(stderr, "No EDL device found\n");
+	fprintf(stderr, "Waiting for EDL device\n");
+
+	for (;;) {
+		fd_set rfds;
+
+		FD_ZERO(&rfds);
+		FD_SET(mon_fd, &rfds);
+
+		ret = select(mon_fd + 1, &rfds, NULL, NULL, NULL);
+		if (ret < 0)
+			return -1;
+
+		if (!FD_ISSET(mon_fd, &rfds))
+			continue;
+
+		dev = udev_monitor_receive_device(mon);
+		dev_node = udev_device_get_devnode(dev);
+
+		if (!dev_node)
+			continue;
+
+		printf("%s\n", dev_node);
+
+		fd = open(dev_node, O_RDWR);
+		if (fd < 0)
+			continue;
+
+		ret = parse_usb_desc(fd, qdl, &intf);
+		if (!ret)
+			goto found;
+
+		close(fd);
+	}
+
+	udev_enumerate_unref(enumerate);
+	udev_monitor_unref(mon);
+	udev_unref(udev);
 
 	return -ENOENT;
 
 found:
+	udev_enumerate_unref(enumerate);
+	udev_monitor_unref(mon);
+	udev_unref(udev);
+
 	cmd.ifno = intf;
 	cmd.ioctl_code = USBDEVFS_DISCONNECT;
 	cmd.data = NULL;
