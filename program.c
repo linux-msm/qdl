@@ -139,9 +139,9 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
  *
  * Returns partition number, or negative errno on failure.
  *
- * Scan program tags for a partition with the label "sbl1" or that starts with
- * the string "xbl" and return the partition number for this. If more than one
- * line matches we're assuming our logic is flawed and return an error.
+ * Scan program tags for a partition with the label "sbl1", "xbl" or "xbl_a"
+ * and return the partition number for this. If more than one line matches
+ * we're assuming our logic is flawed and return an error.
  */
 int program_find_bootable_partition(void)
 {
@@ -152,7 +152,8 @@ int program_find_bootable_partition(void)
 	for (program = programes; program; program = program->next) {
 		label = program->label;
 
-		if (!strncmp(label, "xbl", 3) || !strcmp(label, "sbl1")) {
+		if (!strcmp(label, "xbl") || !strcmp(label, "xbl_a") ||
+		    !strcmp(label, "sbl1")) {
 			if (part != -ENOENT)
 				return -EINVAL;
 
