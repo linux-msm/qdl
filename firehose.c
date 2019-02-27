@@ -118,7 +118,7 @@ static int firehose_read(struct qdl_device *qdl, int wait, int (*response_parser
 	int timeout = 1000;
 
 	if (wait > 0)
-		timeout = 10000;
+		timeout = wait;
 
 	for (;;) {
 		n = qdl_read(qdl, buf, sizeof(buf), timeout);
@@ -575,7 +575,7 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	int bootable;
 	int ret;
 
-	firehose_read(qdl, 5000, NULL);
+	firehose_read(qdl, 1000, NULL);
 
 	if(ufs_need_provisioning()) {
 		ret = firehose_configure(qdl, true, storage);
