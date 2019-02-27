@@ -235,5 +235,5 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 		}
 	}
 
-	return 0;
+	return done ? 0 : -1;
 }
