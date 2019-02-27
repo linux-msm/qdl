@@ -343,18 +343,13 @@ found:
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
 {
 	struct usbdevfs_bulktransfer bulk = {};
-	int n;
 
 	bulk.ep = qdl->in_ep;
 	bulk.len = len;
 	bulk.data = buf;
 	bulk.timeout = timeout;
 
-	n = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
-	if (n < 0)
-		warn("receive usb bulk transfer failed");
-
-	return n;
+	return ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
 }
 
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
@@ -370,7 +365,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
 
 	ret = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
 	if (ret < 0)
-		warn("transmit usb bulk transfer failed");
+		return ret;
 
 	if (eot && (len % qdl->out_maxpktsize) == 0) {
 		bulk.ep = qdl->out_ep;
@@ -380,7 +375,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
 
 		n = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
 		if (n < 0)
-			warn("transmit zlp failed");
+			return n;
 	}
 
 	return ret;
