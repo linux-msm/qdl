@@ -120,9 +120,12 @@ static int firehose_read(struct qdl_device *qdl, int wait, int (*response_parser
 	if (wait > 0)
 		timeout = 10000;
 
-	while (!done) {
+	for (;;) {
 		n = qdl_read(qdl, buf, sizeof(buf), timeout);
 		if (n < 0) {
+			if (done)
+				break;
+
 			warn("failed to read");
 			return -ETIMEDOUT;
 		}
@@ -155,6 +158,7 @@ static int firehose_read(struct qdl_device *qdl, int wait, int (*response_parser
 					else
 						ret = response_parser(node);
 					done = true;
+					timeout = 1;
 				}
 			}
 
