@@ -198,28 +198,6 @@ static int firehose_nop_parser(xmlNode *node)
 	return !!xmlStrcmp(value, (xmlChar*)"ACK");
 }
 
-static int firehose_nop(struct qdl_device *qdl)
-{
-	xmlNode *root;
-	xmlNode *node;
-	xmlDoc *doc;
-	int ret;
-
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
-	xmlDocSetRootElement(doc, root);
-
-	node = xmlNewChild(root, NULL, (xmlChar*)"nop", NULL);
-	xml_setpropf(node, "value", "ping");
-
-	ret = firehose_write(qdl, doc);
-	xmlFreeDoc(doc);
-	if (ret < 0)
-		return ret;
-
-	return firehose_read(qdl, -1, firehose_nop_parser);
-}
-
 static size_t max_payload_size = 1048576;
 
 /**
