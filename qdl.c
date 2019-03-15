@@ -56,8 +56,6 @@
 #include "patch.h"
 #include "ufs.h"
 
-#define MAX_USBFS_BULK_SIZE	(16*1024)
-
 enum {
 	QDL_FILE_UNKNOWN,
 	QDL_FILE_PATCH,
@@ -314,6 +312,7 @@ static int usb_open(struct qdl_device *qdl)
 		close(fd);
 	}
 
+	//FIXME unreachable code
 	udev_enumerate_unref(enumerate);
 	udev_monitor_unref(mon);
 	udev_unref(udev);
