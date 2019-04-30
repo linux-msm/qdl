@@ -575,6 +575,9 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	int bootable;
 	int ret;
 
+	/* Wait for the firehose payload to boot */
+	sleep(3);
+
 	firehose_read(qdl, 1000, NULL);
 
 	if(ufs_need_provisioning()) {
