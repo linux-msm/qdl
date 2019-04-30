@@ -354,20 +354,49 @@ int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout
 
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
 {
+
+	unsigned char *data = (unsigned char*) buf;
 	struct usbdevfs_bulktransfer bulk = {};
-	int ret;
+	unsigned count = 0;
+	size_t len_orig = len;
 	int n;
 
-	bulk.ep = qdl->out_ep;
-	bulk.len = len;
-	bulk.data = (void *)buf;
-	bulk.timeout = 10000;
+	if(len == 0) {
+		bulk.ep = qdl->out_ep;
+		bulk.len = 0;
+		bulk.data = data;
+		bulk.timeout = 1000;
 
-	ret = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
-	if (ret < 0)
-		return ret;
+		n = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
+		if(n != 0) {
+			fprintf(stderr,"ERROR: n = %d, errno = %d (%s)\n",
+				n, errno, strerror(errno));
+			return -1;
+		}
+		return 0;
+	}
 
-	if (eot && (len % qdl->out_maxpktsize) == 0) {
+	while(len > 0) {
+		int xfer;
+		xfer = (len > qdl->out_maxpktsize) ? qdl->out_maxpktsize : len;
+
+		bulk.ep = qdl->out_ep;
+		bulk.len = xfer;
+		bulk.data = data;
+		bulk.timeout = 1000;
+
+		n = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
+		if(n != xfer) {
+			fprintf(stderr, "ERROR: n = %d, errno = %d (%s)\n",
+				n, errno, strerror(errno));
+			return -1;
+		}
+		count += xfer;
+		len -= xfer;
+		data += xfer;
+	}
+
+	if (eot && (len_orig % qdl->out_maxpktsize) == 0) {
 		bulk.ep = qdl->out_ep;
 		bulk.len = 0;
 		bulk.data = NULL;
@@ -378,7 +407,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
 			return n;
 	}
 
-	return ret;
+	return count;
 }
 
 static void print_usage(void)
