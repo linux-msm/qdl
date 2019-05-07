@@ -658,6 +658,86 @@ int firehose_getsize(struct qdl_device *qdl, int lun, size_t *sector_size,
         return 0;
 }
 
+ssize_t firehose_pread(struct qdl_device *qdl, int lun, size_t offset, void *buf,
+		       size_t sector_size, size_t num_sectors)
+{
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	size_t i;
+	int ret;
+
+	doc = xmlNewDoc((xmlChar*)"1.0");
+	root = xmlNewNode(NULL, (xmlChar*)"data");
+	xmlDocSetRootElement(doc, root);
+
+	node = xmlNewChild(root, NULL, (xmlChar*)"read", NULL);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%zd", sector_size);
+	xml_setpropf(node, "num_partition_sectors", "%zd", num_sectors);
+	xml_setpropf(node, "physical_partition_number", "%d", lun);
+	xml_setpropf(node, "start_sector", "%zd", offset);
+
+	ret = firehose_write(qdl, doc);
+	if (ret < 0)
+		return ret;
+
+	ret = firehose_read(qdl, true, firehose_generic_parser, NULL);
+	if (ret < 0) {
+		fprintf(stderr, "failed to issue read\n");
+		return ret;
+	}
+
+	for (i = 0; i < num_sectors; i++) {
+		ret = qdl_read(qdl, buf + i * sector_size, sector_size, 10000);
+		if (ret < 0) {
+			printf("qdl_read() failed\n");
+			return ret;
+		}
+	}
+
+	return firehose_read(qdl, true, firehose_generic_parser, NULL);
+}
+
+ssize_t firehose_pwrite(struct qdl_device *qdl, int lun, size_t offset,
+			const void *buf, size_t sector_size, size_t num_sectors)
+{
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	size_t i;
+	int ret;
+
+	doc = xmlNewDoc((xmlChar*)"1.0");
+	root = xmlNewNode(NULL, (xmlChar*)"data");
+	xmlDocSetRootElement(doc, root);
+
+	node = xmlNewChild(root, NULL, (xmlChar*)"program", NULL);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%zd", sector_size);
+	xml_setpropf(node, "num_partition_sectors", "%zd", num_sectors);
+	xml_setpropf(node, "physical_partition_number", "%d", lun);
+	xml_setpropf(node, "start_sector", "%zd", offset);
+
+	ret = firehose_write(qdl, doc);
+	if (ret < 0)
+		return ret;
+
+	ret = firehose_read(qdl, true, firehose_generic_parser, NULL);
+	if (ret < 0) {
+		fprintf(stderr, "failed to issue read\n");
+		return ret;
+	}
+
+	for (i = 0; i < num_sectors; i++) {
+		ret = qdl_write(qdl, buf + i * sector_size, sector_size, true);
+		if (ret < 0) {
+			printf("qdl_write() failed\n");
+			return ret;
+		}
+	}
+
+	return firehose_read(qdl, true, firehose_generic_parser, NULL);
+}
+
 int firehose_reset(struct qdl_device *qdl)
 {
 	xmlNode *root;
