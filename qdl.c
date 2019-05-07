@@ -422,6 +422,7 @@ int main(int argc, char **argv)
 {
 	char *prog_mbn, *storage="ufs";
 	char *incdir = NULL;
+	int bootable;
 	int type;
 	int ret;
 	int opt;
@@ -507,6 +508,12 @@ int main(int argc, char **argv)
 	ret = firehose_run(&qdl, incdir, storage);
 	if (ret < 0)
 		return 1;
+
+	bootable = program_find_bootable_partition();
+	if (bootable < 0)
+		fprintf(stderr, "no boot partition found\n");
+	else
+		firehose_set_bootable(&qdl, bootable);
 
 	firehose_reset(&qdl);
 

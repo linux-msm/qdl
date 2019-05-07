@@ -568,7 +568,7 @@ static int firehose_getstorageinfo(struct qdl_device *qdl, int lun, size_t *size
 	return firehose_read(qdl, true, firehose_getstorageinfo_parser, size);
 }
 
-static int firehose_set_bootable(struct qdl_device *qdl, int part)
+int firehose_set_bootable(struct qdl_device *qdl, int part)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -629,7 +629,6 @@ int firehose_open(struct qdl_device *qdl, bool ufs)
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage)
 {
-	int bootable;
 	int ret;
 
 	ret = program_execute(qdl, firehose_program, incdir);
@@ -639,12 +638,6 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	ret = patch_execute(qdl, firehose_apply_patch);
 	if (ret)
 		return ret;
-
-	bootable = program_find_bootable_partition();
-	if (bootable < 0)
-		fprintf(stderr, "no boot partition found\n");
-	else
-		firehose_set_bootable(qdl, bootable);
 
 	return 0;
 }
