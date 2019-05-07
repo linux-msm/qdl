@@ -193,7 +193,7 @@ static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	return pkt->done_resp.status;
 }
 
-int sahara_run(struct qdl_device *qdl, char *prog_mbn)
+int sahara_run(struct qdl_device *qdl, const char *prog_mbn)
 {
 	struct sahara_pkt *pkt;
 	char buf[4096];
