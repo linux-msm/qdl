@@ -504,5 +504,7 @@ int main(int argc, char **argv)
 	if (ret < 0)
 		return 1;
 
+	firehose_reset(&qdl);
+
 	return 0;
 }

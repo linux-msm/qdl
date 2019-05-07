@@ -597,28 +597,6 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	return 0;
 }
 
-static int firehose_reset(struct qdl_device *qdl)
-{
-	xmlNode *root;
-	xmlNode *node;
-	xmlDoc *doc;
-	int ret;
-
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
-	xmlDocSetRootElement(doc, root);
-
-	node = xmlNewChild(root, NULL, (xmlChar*)"power", NULL);
-	xml_setpropf(node, "value", "reset");
-
-	ret = firehose_write(qdl, doc);
-	xmlFreeDoc(doc);
-	if (ret < 0)
-		return ret;
-
-	return firehose_read(qdl, true, firehose_nop_parser, NULL);
-}
-
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage)
 {
 	int bootable;
@@ -660,8 +638,6 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	else
 		firehose_set_bootable(qdl, bootable);
 
-	firehose_reset(qdl);
-
 	return 0;
 }
 
@@ -679,4 +655,26 @@ int firehose_getsize(struct qdl_device *qdl, int lun, size_t *sector_size,
         *num_sectors = args.num_sectors;
 
         return 0;
+}
+
+int firehose_reset(struct qdl_device *qdl)
+{
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	int ret;
+
+	doc = xmlNewDoc((xmlChar*)"1.0");
+	root = xmlNewNode(NULL, (xmlChar*)"data");
+	xmlDocSetRootElement(doc, root);
+
+	node = xmlNewChild(root, NULL, (xmlChar*)"power", NULL);
+	xml_setpropf(node, "value", "reset_to_edl");
+
+	ret = firehose_write(qdl, doc);
+	xmlFreeDoc(doc);
+	if (ret < 0)
+		return ret;
+
+	return firehose_read(qdl, true, firehose_generic_parser, NULL);
 }

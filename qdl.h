@@ -20,6 +20,7 @@ const char *attr_as_string(xmlNode *node, const char *attr, int *errors);
 
 int firehose_getsize(struct qdl_device *qdl, int lun, size_t *sector_size,
                      size_t *num_sectors);
+int firehose_reset(struct qdl_device *qdl);
 
 extern bool qdl_debug;
 
