@@ -48,6 +48,7 @@
 #include <unistd.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
+#include "json.h"
 #include "qdl.h"
 #include "ufs.h"
 
@@ -505,6 +506,68 @@ int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs
 	return ret;
 }
 
+struct firehose_getsize_args {
+	size_t sector_size;
+	size_t num_sectors;
+};
+
+static int firehose_getstorageinfo_parser(xmlNode *node, void *data)
+{
+	struct firehose_getsize_args *args = data;
+	struct json_value *info;
+	struct json_value *json;
+	double total_blocks;
+	double block_size;
+	xmlChar *value;
+
+	value = xmlGetProp(node, (xmlChar*)"value");
+	if (!value)
+		return -EINVAL;
+
+	if (xmlStrcmp(node->name, (xmlChar*)"response")== 0)
+		return xmlStrcmp(value, (xmlChar*)"ACK") ? -1 : 1;
+
+	if (!strstr((char*)value, "\"total_blocks\":")) {
+		printf("LOG: %s\n", value);
+		return 0;
+	}
+
+	json = json_parse((char*)value + 6);
+	info = json_get_child(json, "storage_info");
+	json_get_number(info, "total_blocks", &total_blocks);
+	json_get_number(info, "block_size", &block_size);
+
+	printf("blocks: %d size: %d\n", (int)total_blocks, (int)block_size);
+
+	args->sector_size = block_size;
+	args->num_sectors = total_blocks;
+
+	json_free(json);
+
+	return 0;
+}
+
+static int firehose_getstorageinfo(struct qdl_device *qdl, int lun, size_t *size)
+{
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	int ret;
+
+	doc = xmlNewDoc((xmlChar*)"1.0");
+	root = xmlNewNode(NULL, (xmlChar*)"data");
+	xmlDocSetRootElement(doc, root);
+
+	node = xmlNewChild(root, NULL, (xmlChar*)"getstorageinfo", NULL);
+	xml_setpropf(node, "physical_partition_number", "%d", lun);
+
+	ret = firehose_write(qdl, doc);
+	if (ret < 0)
+		return ret;
+
+	return firehose_read(qdl, true, firehose_getstorageinfo_parser, size);
+}
+
 static int firehose_set_bootable(struct qdl_device *qdl, int part)
 {
 	xmlNode *root;
@@ -600,4 +663,20 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	firehose_reset(qdl);
 
 	return 0;
+}
+
+int firehose_getsize(struct qdl_device *qdl, int lun, size_t *sector_size,
+                     size_t *num_sectors)
+{
+        struct firehose_getsize_args args;
+        int ret;
+
+        ret = firehose_getstorageinfo(qdl, lun, (void*)&args);
+        if (ret < 0)
+                return ret;
+
+        *sector_size = args.sector_size;
+        *num_sectors = args.num_sectors;
+
+        return 0;
 }
