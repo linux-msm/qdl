@@ -7,6 +7,30 @@ loader and use this to flash images.
 Usage:
   qdl <prog.mbn> [<program> <patch> ...]
 
+nbdkit plugin
+=============
+In addition to the qdl programmer a nbdkit plugin can be built. This provides
+block layer access to the flash on the device, allowing partition tables to be
+modified and partitions mounted on the host PC.
+
+The nbdkit plugin has the following configuration parameters:
+  programmer: firehose programmer
+  lun: LUN number to be managed, defaults to 1
+  storage: "ufs" or "emmc" to select firehose configuration
+
+To launch a nbd server, launch nbdkit as follows:
+  modprobe nbd
+  nbdkit -fv ./nbdkit-qdl-plugin.so programmer=prog_firehose_ddr.elf lun=0
+
+Then connect nbd to this, using:
+  sudo nbd-client -b 4096 localhost /dev/nbd0
+
+After this /dev/nbd0 and /dev/nbd0p* can be used to access the full storage
+device, as well as the individual partitions on the device.
+
+To disconnect the nbd client, unmount any partitions and run:
+  sudo nbd-client -d /dev/nbd0
+
 Building
 ========
 In order to build the project you need libxml2 headers and libraries, found in
@@ -14,3 +38,6 @@ e.g. the libxml2-dev package.
 
 With this installed run:
   make
+
+or to build the nbdkit plugin run:
+  make lib
