@@ -45,6 +45,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include "qdl.h"
+#include "usb.h"
 
 struct sahara_pkt {
 	uint32_t cmd;

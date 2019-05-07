@@ -11,9 +11,6 @@ struct qdl_device;
 struct program;
 struct patch;
 
-int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
-int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot);
-
 int firehose_open(struct qdl_device *qdl, bool ufs);
 int sahara_run(struct qdl_device *qdl, char *prog_mbn);
 void print_hex_dump(const char *prefix, const void *buf, size_t len);

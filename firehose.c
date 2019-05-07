@@ -51,6 +51,7 @@
 #include "json.h"
 #include "qdl.h"
 #include "ufs.h"
+#include "usb.h"
 
 static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 {

@@ -4,7 +4,7 @@ CFLAGS := -O2 -Wall -g `xml2-config --cflags`
 LDFLAGS := `xml2-config --libs` -ludev
 prefix := /usr/local
 
-SRCS := firehose.c json.c qdl.c sahara.c util.c patch.c program.c ufs.c
+SRCS := firehose.c json.c qdl.c sahara.c util.c patch.c program.c ufs.c usb.c
 OBJS := $(SRCS:.c=.o)
 
 $(OUT): $(OBJS)
