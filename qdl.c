@@ -505,8 +505,12 @@ int main(int argc, char **argv)
 	if (ret < 0)
 		return 1;
 
-	ret = firehose_run(&qdl, incdir, storage);
-	if (ret < 0)
+	ret = program_execute(&qdl, firehose_program, incdir);
+	if (ret)
+		return 1;
+
+	ret = patch_execute(&qdl, firehose_apply_patch);
+	if (ret)
 		return 1;
 
 	bootable = program_find_bootable_partition();

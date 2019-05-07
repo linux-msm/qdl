@@ -275,7 +275,7 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, co
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
 
-static int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
+int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
 {
 	unsigned num_sectors;
 	struct stat sb;
@@ -377,7 +377,7 @@ out:
 	return ret;
 }
 
-static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
+int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -621,21 +621,6 @@ int firehose_open(struct qdl_device *qdl, bool ufs)
 	}
 
 	ret = firehose_configure(qdl, false, ufs ? "ufs" : "emmc");
-	if (ret)
-		return ret;
-
-	return 0;
-}
-
-int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage)
-{
-	int ret;
-
-	ret = program_execute(qdl, firehose_program, incdir);
-	if (ret)
-		return ret;
-
-	ret = patch_execute(qdl, firehose_apply_patch);
 	if (ret)
 		return ret;
 
