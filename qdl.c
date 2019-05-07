@@ -500,6 +500,10 @@ int main(int argc, char **argv)
 	if (ret < 0)
 		return 1;
 
+	ret = firehose_open(&qdl, !strcmp(storage, "ufs"));
+	if (ret < 0)
+		return 1;
+
 	ret = firehose_run(&qdl, incdir, storage);
 	if (ret < 0)
 		return 1;
