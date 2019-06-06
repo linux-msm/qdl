@@ -29,26 +29,14 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <linux/usbdevice_fs.h>
-#include <linux/usb/ch9.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <assert.h>
+#include <libusb.h>
 #include <ctype.h>
-#include <dirent.h>
 #include <err.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <getopt.h>
-#include <libudev.h>
-#include <poll.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <termios.h>
-#include <unistd.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
@@ -56,453 +44,311 @@
 #include "patch.h"
 #include "ufs.h"
 
-#define MAX_USBFS_BULK_SIZE	(16*1024)
+#define MAX_USBFS_BULK_SIZE    (16*1024)
 
 enum {
-	QDL_FILE_UNKNOWN,
-	QDL_FILE_PATCH,
-	QDL_FILE_PROGRAM,
-	QDL_FILE_UFS,
-	QDL_FILE_CONTENTS,
+    QDL_FILE_UNKNOWN,
+    QDL_FILE_PATCH,
+    QDL_FILE_PROGRAM,
+    QDL_FILE_UFS,
+    QDL_FILE_CONTENTS,
 };
 
 struct qdl_device {
-	int fd;
+    libusb_device_handle *handle;
 
-	int in_ep;
-	int out_ep;
+    int in_ep;
+    int out_ep;
 
-	size_t in_maxpktsize;
-	size_t out_maxpktsize;
+    size_t in_maxpktsize;
+    size_t out_maxpktsize;
 };
 
 bool qdl_debug;
 
-static int detect_type(const char *xml_file)
-{
-	xmlNode *root;
-	xmlDoc *doc;
-	xmlNode *node;
-	int type = QDL_FILE_UNKNOWN;
+static int detect_type(const char *xml_file) {
+    xmlNode *root;
+    xmlDoc *doc;
+    xmlNode *node;
+    int type = QDL_FILE_UNKNOWN;
 
-	doc = xmlReadFile(xml_file, NULL, 0);
-	if (!doc) {
-		fprintf(stderr, "[PATCH] failed to parse %s\n", xml_file);
-		return -EINVAL;
-	}
+    doc = xmlReadFile(xml_file, NULL, 0);
+    if (!doc) {
+        fprintf(stderr, "[PATCH] failed to parse %s\n", xml_file);
+        return -EINVAL;
+    }
 
-	root = xmlDocGetRootElement(doc);
-	if (!xmlStrcmp(root->name, (xmlChar*)"patches")) {
-		type = QDL_FILE_PATCH;
-	} else if (!xmlStrcmp(root->name, (xmlChar*)"data")) {
-		for (node = root->children; node ; node = node->next) {
-			if (node->type != XML_ELEMENT_NODE)
-				continue;
-			if (!xmlStrcmp(node->name, (xmlChar*)"program")) {
-				type = QDL_FILE_PROGRAM;
-				break;
-			}
-			if (!xmlStrcmp(node->name, (xmlChar*)"ufs")) {
-				type = QDL_FILE_UFS;
-				break;
-			}
-		}
-	} else if (!xmlStrcmp(root->name, (xmlChar*)"contents")) {
-		type = QDL_FILE_CONTENTS;
-	}
+    root = xmlDocGetRootElement(doc);
+    if (!xmlStrcmp(root->name, (xmlChar *) "patches")) {
+        type = QDL_FILE_PATCH;
+    } else if (!xmlStrcmp(root->name, (xmlChar *) "data")) {
+        for (node = root->children; node; node = node->next) {
+            if (node->type != XML_ELEMENT_NODE)
+                continue;
+            if (!xmlStrcmp(node->name, (xmlChar *) "program")) {
+                type = QDL_FILE_PROGRAM;
+                break;
+            }
+            if (!xmlStrcmp(node->name, (xmlChar *) "ufs")) {
+                type = QDL_FILE_UFS;
+                break;
+            }
+        }
+    } else if (!xmlStrcmp(root->name, (xmlChar *) "contents")) {
+        type = QDL_FILE_CONTENTS;
+    }
 
-	xmlFreeDoc(doc);
+    xmlFreeDoc(doc);
 
-	return type;
+    return type;
 }
 
-static int parse_usb_desc(int fd, struct qdl_device *qdl, int *intf)
-{
-	const struct usb_interface_descriptor *ifc;
-	const struct usb_endpoint_descriptor *ept;
-	const struct usb_device_descriptor *dev;
-	const struct usb_config_descriptor *cfg;
-	const struct usb_descriptor_header *hdr;
-	unsigned type;
-	unsigned out;
-	unsigned in;
-	unsigned k;
-	unsigned l;
-	ssize_t n;
-	size_t out_size;
-	size_t in_size;
-	void *ptr;
-	void *end;
-	char desc[1024];
+static int parse_usb_desc(libusb_device *device, struct qdl_device *qdl, int *intf) {
+    unsigned out = 0;
+    unsigned in = 0;
+    size_t out_size = 0;
+    size_t in_size = 0;
 
-	n = read(fd, desc, sizeof(desc));
-	if (n < 0)
-		return n;
+    struct libusb_device_descriptor desc = {0};
+    int ret = libusb_get_device_descriptor(device, &desc);
+    if (ret) {
+        err(1, "libusb_get_device_descriptor error %d", ret);
+    }
 
-	ptr = (void*)desc;
-	end = ptr + n;
+    if (desc.idVendor != 0x05c6 || desc.idProduct != 0x9008) {
+        return -EINVAL;
+    }
 
-	dev = ptr;
+    if (desc.bDescriptorType != LIBUSB_DT_DEVICE) {
+        return -EINVAL;
+    }
 
-	/* Consider only devices with vid 0x0506 and product id 0x9008 */
-	if (dev->idVendor != 0x05c6 || dev->idProduct != 0x9008)
-		return -EINVAL;
+    for (int i = 0; i < desc.bNumConfigurations; i++) {
+        struct libusb_config_descriptor *config;
+        ret = libusb_get_config_descriptor(device, i, &config);
 
-	ptr += dev->bLength;
-	if (ptr >= end || dev->bDescriptorType != USB_DT_DEVICE)
-		return -EINVAL;
+        if (ret) {
+            err(1, "libusb_get_config_descriptor error");
+        }
 
-	cfg = ptr;
-	ptr += cfg->bLength;
-	if (ptr >= end || cfg->bDescriptorType != USB_DT_CONFIG)
-		return -EINVAL;
+        if (config->bDescriptorType != LIBUSB_DT_CONFIG) {
+            return -EINVAL;
+        }
 
-	for (k = 0; k < cfg->bNumInterfaces; k++) {
-		if (ptr >= end)
-			return -EINVAL;
+        for (int j = 0; j < config->bNumInterfaces; j++) {
+            struct libusb_interface interface = config->interface[j];
+            if (interface.altsetting->bDescriptorType != LIBUSB_DT_INTERFACE) {
+                return -EINVAL;
+            }
+            if (interface.altsetting->bLength < LIBUSB_DT_INTERFACE_SIZE) {
+                return -EINVAL;
+            }
+            for (int k = 0; k < interface.altsetting->bNumEndpoints; k++) {
+                struct libusb_endpoint_descriptor endpoint = interface.altsetting->endpoint[k];
+                if (endpoint.bDescriptorType != LIBUSB_DT_ENDPOINT) {
+                    return -EINVAL;
+                }
 
-		do {
-			ifc = ptr;
-			if (ifc->bLength < USB_DT_INTERFACE_SIZE)
-				return -EINVAL;
+                if ((endpoint.bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) != LIBUSB_TRANSFER_TYPE_BULK) {
+                    continue;
+                }
 
-			ptr += ifc->bLength;
-		} while (ptr < end && ifc->bDescriptorType != USB_DT_INTERFACE);
+                if (endpoint.bEndpointAddress & LIBUSB_ENDPOINT_IN) {
+                    in = endpoint.bEndpointAddress;
+                    in_size = endpoint.wMaxPacketSize;
+                } else {
+                    out = endpoint.bEndpointAddress;
+                    out_size = endpoint.wMaxPacketSize;
+                }
+            }
+            if (interface.altsetting->bInterfaceClass != 0xff) {
+                continue;
+            }
 
-		in = -1;
-		out = -1;
-		in_size = 0;
-		out_size = 0;
+            if (interface.altsetting->bInterfaceSubClass != 0xff) {
+                continue;
+            }
 
-		for (l = 0; l < ifc->bNumEndpoints; l++) {
-			if (ptr >= end)
-				return -EINVAL;
+            if (interface.altsetting->bInterfaceProtocol != 0xff &&
+                interface.altsetting->bInterfaceProtocol != 16) {
+                continue;
+            }
 
-			do {
-				ept = ptr;
-				if (ept->bLength < USB_DT_ENDPOINT_SIZE)
-					return -EINVAL;
+            libusb_device_handle *handle;
+            ret = libusb_open(device, &handle);
+            if (ret) {
+                err(1, "failed to open, errcode: %d", ret);
+            }
+            qdl->handle = handle;
+            qdl->in_ep = in;
+            qdl->in_maxpktsize = in_size;
+            qdl->out_ep = out;
+            qdl->out_maxpktsize = out_size;
 
-				ptr += ept->bLength;
-			} while (ptr < end && ept->bDescriptorType != USB_DT_ENDPOINT);
-
-			type = ept->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
-			if (type != USB_ENDPOINT_XFER_BULK)
-				continue;
-
-			if (ept->bEndpointAddress & USB_DIR_IN) {
-				in = ept->bEndpointAddress;
-				in_size = ept->wMaxPacketSize;
-			} else {
-				out = ept->bEndpointAddress;
-				out_size = ept->wMaxPacketSize;
-			}
-
-			if (ptr >= end)
-				break;
-
-			hdr = ptr;
-			if (hdr->bDescriptorType == USB_DT_SS_ENDPOINT_COMP)
-				ptr += USB_DT_SS_EP_COMP_SIZE;
-		}
-
-		if (ifc->bInterfaceClass != 0xff)
-			continue;
-
-		if (ifc->bInterfaceSubClass != 0xff)
-			continue;
-
-		/* bInterfaceProtocol of 0xff and 0x10 has been seen */
-		if (ifc->bInterfaceProtocol != 0xff &&
-				ifc->bInterfaceProtocol != 16)
-			continue;
-
-		qdl->fd = fd;
-		qdl->in_ep = in;
-		qdl->out_ep = out;
-		qdl->in_maxpktsize = in_size;
-		qdl->out_maxpktsize = out_size;
-
-		*intf = ifc->bInterfaceNumber;
-
-		return 0;
-	}
-
-	return -ENOENT;
+            *intf = interface.altsetting->bInterfaceNumber;
+            return 0;
+        }
+    }
+    return -EINVAL;
 }
 
-static int usb_open(struct qdl_device *qdl)
-{
-	struct udev_enumerate *enumerate;
-	struct udev_list_entry *devices;
-	struct udev_list_entry *dev_list_entry;
-	struct udev_monitor *mon;
-	struct udev_device *dev;
-	const char *dev_node;
-	struct udev *udev;
-	const char *path;
-	struct usbdevfs_ioctl cmd;
-	int mon_fd;
-	int intf = -1;
-	int ret;
-	int fd;
+static int usb_open(struct qdl_device *qdl) {
 
-	udev = udev_new();
-	if (!udev)
-		err(1, "failed to initialize udev");
+    int intf = -1;
 
-	mon = udev_monitor_new_from_netlink(udev, "udev");
-	udev_monitor_filter_add_match_subsystem_devtype(mon, "usb", NULL);
-	udev_monitor_enable_receiving(mon);
-	mon_fd = udev_monitor_get_fd(mon);
+    int ret = libusb_init(NULL);
+    if (ret) {
+        err(1, "failed to initialize libusb %d", ret);
+    }
+    libusb_device **usb;
+    ssize_t usb_size = libusb_get_device_list(NULL, &usb);
+    if (usb_size < 0) {
+        err(1, "can't get usb devices.\n");
+    }
+    if (usb_size > 0) {
+        for (int i = 0; i < usb_size; i++) {
+            ret = parse_usb_desc(usb[i], qdl, &intf);
+            if (!ret) {
+                goto found;
+            }
+        }
+    }
 
-	enumerate = udev_enumerate_new(udev);
-	udev_enumerate_add_match_subsystem(enumerate, "usb");
-	udev_enumerate_scan_devices(enumerate);
-	devices = udev_enumerate_get_list_entry(enumerate);
+    return -ENOENT;
 
-	udev_list_entry_foreach(dev_list_entry, devices) {
-		path = udev_list_entry_get_name(dev_list_entry);
-		dev = udev_device_new_from_syspath(udev, path);
-		dev_node = udev_device_get_devnode(dev);
+    found:
+    libusb_free_device_list(usb, usb_size);
 
-		if (!dev_node)
-			continue;
-
-		fd = open(dev_node, O_RDWR);
-		if (fd < 0)
-			continue;
-
-		ret = parse_usb_desc(fd, qdl, &intf);
-		if (!ret)
-			goto found;
-
-		close(fd);
-	}
-
-	fprintf(stderr, "Waiting for EDL device\n");
-
-	for (;;) {
-		fd_set rfds;
-
-		FD_ZERO(&rfds);
-		FD_SET(mon_fd, &rfds);
-
-		ret = select(mon_fd + 1, &rfds, NULL, NULL, NULL);
-		if (ret < 0)
-			return -1;
-
-		if (!FD_ISSET(mon_fd, &rfds))
-			continue;
-
-		dev = udev_monitor_receive_device(mon);
-		dev_node = udev_device_get_devnode(dev);
-
-		if (!dev_node)
-			continue;
-
-		printf("%s\n", dev_node);
-
-		fd = open(dev_node, O_RDWR);
-		if (fd < 0)
-			continue;
-
-		ret = parse_usb_desc(fd, qdl, &intf);
-		if (!ret)
-			goto found;
-
-		close(fd);
-	}
-
-	udev_enumerate_unref(enumerate);
-	udev_monitor_unref(mon);
-	udev_unref(udev);
-
-	return -ENOENT;
-
-found:
-	udev_enumerate_unref(enumerate);
-	udev_monitor_unref(mon);
-	udev_unref(udev);
-
-	cmd.ifno = intf;
-	cmd.ioctl_code = USBDEVFS_DISCONNECT;
-	cmd.data = NULL;
-
-	ret = ioctl(qdl->fd, USBDEVFS_IOCTL, &cmd);
-	if (ret && errno != ENODATA)
-		err(1, "failed to disconnect kernel driver");
-
-	ret = ioctl(qdl->fd, USBDEVFS_CLAIMINTERFACE, &intf);
-	if (ret < 0)
-		err(1, "failed to claim USB interface");
-
-	return 0;
+    ret = libusb_claim_interface(qdl->handle, intf);
+    if (ret) {
+        err(1, "libusb_claim_interface");
+    }
+    return 0;
 }
 
-int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
-{
-	struct usbdevfs_bulktransfer bulk = {};
+int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout) {
 
-	bulk.ep = qdl->in_ep;
-	bulk.len = len;
-	bulk.data = buf;
-	bulk.timeout = timeout;
-
-	return ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
+    int transferred,
+            ret = libusb_bulk_transfer(qdl->handle, qdl->in_ep, buf, len, &transferred, timeout);
+    return ret ? ret : transferred;
 }
 
-int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
-{
+int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot) {
 
-	unsigned char *data = (unsigned char*) buf;
-	struct usbdevfs_bulktransfer bulk = {};
-	unsigned count = 0;
-	size_t len_orig = len;
-	int n;
+    int transferred = 0, writed = 0, ret = -1, size = len;
+    unsigned char *data = (unsigned char *) buf;
+    while (size > 0) {
+        int xfer = (size > qdl->out_maxpktsize) ? qdl->out_maxpktsize : size;
+        ret = libusb_bulk_transfer(qdl->handle, qdl->out_ep, data, xfer, &transferred, 0);
+        if (ret) {
+            err(1, "libusb_bulk_transfer error");
+        }
+        writed += xfer;
+        size -= xfer;
+        data += xfer;
+    }
 
-	if(len == 0) {
-		bulk.ep = qdl->out_ep;
-		bulk.len = 0;
-		bulk.data = data;
-		bulk.timeout = 1000;
+    if (eot && len % qdl->out_maxpktsize == 0) {
+        ret = libusb_bulk_transfer(qdl->handle, qdl->out_ep, NULL, 0, &transferred, 0);
+        if (ret) {
+            err(1, "libusb_bulk_transfer error");
+        }
+    }
 
-		n = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
-		if(n != 0) {
-			fprintf(stderr,"ERROR: n = %d, errno = %d (%s)\n",
-				n, errno, strerror(errno));
-			return -1;
-		}
-		return 0;
-	}
-
-	while(len > 0) {
-		int xfer;
-		xfer = (len > qdl->out_maxpktsize) ? qdl->out_maxpktsize : len;
-
-		bulk.ep = qdl->out_ep;
-		bulk.len = xfer;
-		bulk.data = data;
-		bulk.timeout = 1000;
-
-		n = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
-		if(n != xfer) {
-			fprintf(stderr, "ERROR: n = %d, errno = %d (%s)\n",
-				n, errno, strerror(errno));
-			return -1;
-		}
-		count += xfer;
-		len -= xfer;
-		data += xfer;
-	}
-
-	if (eot && (len_orig % qdl->out_maxpktsize) == 0) {
-		bulk.ep = qdl->out_ep;
-		bulk.len = 0;
-		bulk.data = NULL;
-		bulk.timeout = 1000;
-
-		n = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
-		if (n < 0)
-			return n;
-	}
-
-	return count;
+    return writed;
 }
 
-static void print_usage(void)
-{
-	extern const char *__progname;
-	fprintf(stderr,
-		"%s [--debug] [--storage <emmc|ufs>] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
-		__progname);
+static void print_usage(void) {
+    extern const char *__progname;
+    fprintf(stderr,
+            "%s [--debug] [--storage <emmc|ufs>] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
+            __progname);
 }
 
-int main(int argc, char **argv)
-{
-	char *prog_mbn, *storage="ufs";
-	char *incdir = NULL;
-	int type;
-	int ret;
-	int opt;
-	bool qdl_finalize_provisioning = false;
-	struct qdl_device qdl;
+int main(int argc, char **argv) {
+    char *prog_mbn, *storage = "ufs";
+    char *incdir = NULL;
+    int type;
+    int ret;
+    int opt;
+    bool qdl_finalize_provisioning = false;
+    struct qdl_device qdl;
 
 
-	static struct option options[] = {
-		{"debug", no_argument, 0, 'd'},
-		{"include", required_argument, 0, 'i'},
-		{"finalize-provisioning", no_argument, 0, 'l'},
-		{"storage", required_argument, 0, 's'},
-		{0, 0, 0, 0}
-	};
+    static struct option options[] = {
+            {"debug",                 no_argument,       0, 'd'},
+            {"include",               required_argument, 0, 'i'},
+            {"finalize-provisioning", no_argument,       0, 'l'},
+            {"storage",               required_argument, 0, 's'},
+            {0, 0,                                       0, 0}
+    };
 
-	while ((opt = getopt_long(argc, argv, "di:", options, NULL )) != -1) {
-		switch (opt) {
-		case 'd':
-			qdl_debug = true;
-			break;
-		case 'i':
-			incdir = optarg;
-			break;
-		case 'l':
-			qdl_finalize_provisioning = true;
-			break;
-		case 's':
-			storage = optarg;
-			break;
-		default:
-			print_usage();
-			return 1;
-		}
-	}
+    while ((opt = getopt_long(argc, argv, "di:", options, NULL)) != -1) {
+        switch (opt) {
+            case 'd':
+                qdl_debug = true;
+                break;
+            case 'i':
+                incdir = optarg;
+                break;
+            case 'l':
+                qdl_finalize_provisioning = true;
+                break;
+            case 's':
+                storage = optarg;
+                break;
+            default:
+                print_usage();
+                return 1;
+        }
+    }
 
-	/* at least 2 non optional args required */
-	if ((optind + 2) > argc) {
-		print_usage();
-		return 1;
-	}
+    /* at least 2 non optional args required */
+    if ((optind + 2) > argc) {
+        print_usage();
+        return 1;
+    }
 
-	prog_mbn = argv[optind++];
+    prog_mbn = argv[optind++];
 
-	do {
-		type = detect_type(argv[optind]);
-		if (type < 0 || type == QDL_FILE_UNKNOWN)
-			errx(1, "failed to detect file type of %s\n", argv[optind]);
+    do {
+        type = detect_type(argv[optind]);
+        if (type < 0 || type == QDL_FILE_UNKNOWN)
+            errx(1, "failed to detect file type of %s\n", argv[optind]);
 
-		switch (type) {
-		case QDL_FILE_PATCH:
-			ret = patch_load(argv[optind]);
-			if (ret < 0)
-				errx(1, "patch_load %s failed", argv[optind]);
-			break;
-		case QDL_FILE_PROGRAM:
-			ret = program_load(argv[optind]);
-			if (ret < 0)
-				errx(1, "program_load %s failed", argv[optind]);
-			break;
-		case QDL_FILE_UFS:
-			ret = ufs_load(argv[optind],qdl_finalize_provisioning);
-			if (ret < 0)
-				errx(1, "ufs_load %s failed", argv[optind]);
-			break;
-		default:
-			errx(1, "%s type not yet supported", argv[optind]);
-			break;
-		}
-	} while (++optind < argc);
+        switch (type) {
+            case QDL_FILE_PATCH:
+                ret = patch_load(argv[optind]);
+                if (ret < 0)
+                    errx(1, "patch_load %s failed", argv[optind]);
+                break;
+            case QDL_FILE_PROGRAM:
+                ret = program_load(argv[optind]);
+                if (ret < 0)
+                    errx(1, "program_load %s failed", argv[optind]);
+                break;
+            case QDL_FILE_UFS:
+                ret = ufs_load(argv[optind], qdl_finalize_provisioning);
+                if (ret < 0)
+                    errx(1, "ufs_load %s failed", argv[optind]);
+                break;
+            default:
+                errx(1, "%s type not yet supported", argv[optind]);
+                break;
+        }
+    } while (++optind < argc);
 
-	ret = usb_open(&qdl);
-	if (ret)
-		return 1;
+    ret = usb_open(&qdl);
+    if (ret)
+        return 1;
 
-	ret = sahara_run(&qdl, prog_mbn);
-	if (ret < 0)
-		return 1;
+    ret = sahara_run(&qdl, prog_mbn);
+    if (ret < 0)
+        return 1;
 
-	ret = firehose_run(&qdl, incdir, storage);
-	if (ret < 0)
-		return 1;
+    ret = firehose_run(&qdl, incdir, storage);
+    if (ret < 0)
+        return 1;
 
-	return 0;
+    return 0;
 }
