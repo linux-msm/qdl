@@ -9,8 +9,20 @@ Usage:
 
 Building
 ========
-In order to build the project you need libxml2 headers and libraries, found in
-e.g. the libxml2-dev package.
+In order to build the project you need libxml2 and libusb headers and libraries, found in
+e.g. the libxml2-dev and libusb package.
 
 With this installed run:
   make
+
+for macos user:
+
+  brew install libusb pkg-config
+  make
+or use cmake:
+  cmake .
+  make
+
+INSTALL:
+  make install
+
