@@ -37,6 +37,8 @@ static int config_lun = 1;
 
 static size_t sector_size;
 
+bool qdl_debug;
+
 static int qdl_config(const char *key, const char *value)
 {
         if (!strcmp(key, "programmer")) {
@@ -52,6 +54,8 @@ static int qdl_config(const char *key, const char *value)
                 }
         } else if (!strcmp(key, "lun")) {
                 config_lun = atoi(value);
+	} else if (!strcmp(key, "debug")) {
+		qdl_debug = true;
         } else {
                 return -1;
         }
