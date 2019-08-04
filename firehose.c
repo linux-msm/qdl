@@ -219,10 +219,12 @@ static int firehose_configure_response_parser(xmlNode *node, void *data)
 		max_size = strtoul((char*)payload, NULL, 10);
 	}
 
-	return max_size;
+	*(size_t*)data = max_size;
+
+	return 1;
 }
 
-static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, bool skip_storage_init, const char *storage)
+static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, bool skip_storage_init, const char *storage, size_t *max_payload_size)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -245,24 +247,25 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, 
 	if (ret < 0)
 		return ret;
 
-	return firehose_read(qdl, true, firehose_configure_response_parser, NULL);
+	return firehose_read(qdl, true, firehose_configure_response_parser, max_payload_size);
 }
 
 static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, const char *storage)
 {
+	size_t size = 0;
 	int ret;
 
-	ret = firehose_send_configure(qdl, max_payload_size, skip_storage_init, storage);
+	ret = firehose_send_configure(qdl, max_payload_size, skip_storage_init, storage, &size);
 	if (ret < 0)
 		return ret;
 
 	/* Retry if remote proposed different size */
-	if (ret != max_payload_size) {
-		ret = firehose_send_configure(qdl, ret, skip_storage_init, storage);
+	if (size != max_payload_size) {
+		ret = firehose_send_configure(qdl, size, skip_storage_init, storage, &size);
 		if (ret < 0)
 			return ret;
 
-		max_payload_size = ret;
+		max_payload_size = size;
 	}
 
 	if (qdl_debug) {
