@@ -101,7 +101,12 @@ static int load_program_tag(xmlNode *node, bool is_nand)
 	} else {
 		program->file_offset = attr_as_unsigned(node, "file_sector_offset", &errors);
 	}
-
+	int ignore_errors = 0;
+	const char *sparse = attr_as_string(node, "sparse", &ignore_errors);
+	if (sparse) {
+		program->sparse = strcmp(sparse, "true") == 0;
+	}
+	
 	if (errors) {
 		fprintf(stderr, "[PROGRAM] errors while parsing program\n");
 		free(program);
@@ -154,7 +159,7 @@ int program_load(const char *program_file, bool is_nand)
 
 	return 0;
 }
-	
+
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd, unsigned int read_timeout, unsigned int write_timeout),
 		    const char *incdir, unsigned int read_timeout, unsigned int write_timeout)
 {
