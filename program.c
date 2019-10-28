@@ -37,7 +37,7 @@
 
 #include "program.h"
 #include "qdl.h"
-		
+
 static struct program *programes;
 static struct program *programes_last;
 
@@ -76,6 +76,11 @@ int program_load(const char *program_file)
 		program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
 		program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
 		program->start_sector = attr_as_string(node, "start_sector", &errors);
+		int ignore_errors = 0;
+		const char *sparse = attr_as_string(node, "sparse", &ignore_errors);
+		if (sparse) {
+			program->sparse = strcmp(sparse, "true") == 0;
+		}
 
 		if (errors) {
 			fprintf(stderr, "[PROGRAM] errors while parsing program\n");
@@ -96,7 +101,7 @@ int program_load(const char *program_file)
 
 	return 0;
 }
-	
+
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
 		    const char *incdir)
 {

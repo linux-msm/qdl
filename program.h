@@ -12,6 +12,7 @@ struct program {
 	unsigned num_sectors;
 	unsigned partition;
 	const char *start_sector;
+	bool sparse;
 
 	struct program *next;
 };

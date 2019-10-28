@@ -48,8 +48,11 @@
 #include <unistd.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
+#include <sparse/sparse.h>
 #include "qdl.h"
 #include "ufs.h"
+
+#define SPARSE_BUFFER_SIZE 8
 
 static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 {
@@ -288,14 +291,47 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, co
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
 
+static int firehose_program_init(struct qdl_device *qdl, unsigned int sector_size,
+				 unsigned int num_sectors, unsigned int partition_number,
+				 const char *start_sector, const char *filename) {
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	int ret;
+
+	doc = xmlNewDoc((xmlChar*)"1.0");
+	root = xmlNewNode(NULL, (xmlChar*)"data");
+	xmlDocSetRootElement(doc, root);
+
+	node = xmlNewChild(root, NULL, (xmlChar*)"program", NULL);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", sector_size);
+	xml_setpropf(node, "num_partition_sectors", "%d", num_sectors);
+	xml_setpropf(node, "physical_partition_number", "%d", partition_number);
+	xml_setpropf(node, "start_sector", "%s", start_sector);
+	if (filename)
+		xml_setpropf(node, "filename", "%s", filename);
+
+	ret = firehose_write(qdl, doc);
+	if (ret < 0) {
+		fprintf(stderr, "[PROGRAM] failed to write program command\n");
+		goto out;
+	}
+
+	ret = firehose_read(qdl, -1, firehose_nop_parser);
+	if (ret) {
+		fprintf(stderr, "[PROGRAM] failed to setup programming\n");
+		goto out;
+	}
+out:
+	xmlFreeDoc(doc);
+	return ret;
+}
+
 static int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
 {
 	unsigned num_sectors;
 	struct stat sb;
 	size_t chunk_size;
-	xmlNode *root;
-	xmlNode *node;
-	xmlDoc *doc;
 	void *buf;
 	time_t t0;
 	time_t t;
@@ -322,27 +358,10 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	if (!buf)
 		err(1, "failed to allocate sector buffer");
 
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
-	xmlDocSetRootElement(doc, root);
+	ret = firehose_program_init(qdl, program->sector_size, num_sectors, program->partition,
+					program->start_sector, program->filename);
 
-	node = xmlNewChild(root, NULL, (xmlChar*)"program", NULL);
-	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", program->sector_size);
-	xml_setpropf(node, "num_partition_sectors", "%d", num_sectors);
-	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
-	xml_setpropf(node, "start_sector", "%s", program->start_sector);
-	if (program->filename)
-		xml_setpropf(node, "filename", "%s", program->filename);
-
-	ret = firehose_write(qdl, doc);
-	if (ret < 0) {
-		fprintf(stderr, "[PROGRAM] failed to write program command\n");
-		goto out;
-	}
-
-	ret = firehose_read(qdl, -1, firehose_nop_parser);
 	if (ret) {
-		fprintf(stderr, "[PROGRAM] failed to setup programming\n");
 		goto out;
 	}
 
@@ -386,8 +405,179 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	}
 
 out:
-	xmlFreeDoc(doc);
+	free(buf);
 	return ret;
+}
+
+struct Data {
+	struct program* program;
+	long unsigned int offset;
+	struct qdl_device *qdl;
+	void *data_blob;
+	int data_blob_size;
+	int data_blob_count;
+};
+
+int firehose_program_sparse_do_flash(struct qdl_device *qdl, struct program* program, const void *data, long unsigned int num_sectors, long unsigned int start_sector_offset) {
+	int ret;
+	int chunk_size;
+	int n;
+	int left;
+	int offset;
+	long long start_sector;
+	// 2^64 requires 20 chars at max (+ an additional one for '\0')
+	char start_sector_str[21];
+
+	// Calculate new start sector
+	start_sector = atoll(program->start_sector);
+	start_sector += start_sector_offset;
+	snprintf(start_sector_str, sizeof(start_sector_str), "%lld", start_sector);
+
+	ret = firehose_program_init(qdl, program->sector_size, num_sectors, program->partition,
+					start_sector_str, program->filename);
+	if (ret) {
+		return ret;
+	}
+
+	// Send given data to the target
+	left = num_sectors;
+	offset = 0;
+	while (left > 0) {
+		chunk_size = MIN(max_payload_size / program->sector_size, left);
+
+		n = qdl_write(qdl, data + offset, chunk_size * program->sector_size, true);
+		if (n < 0)
+			err(1, "failed to write");
+
+		if (n != chunk_size * program->sector_size)
+			err(1, "failed to write full sector");
+
+		left -= chunk_size;
+		offset += n;
+	}
+
+	ret = firehose_read(qdl, 2000, firehose_nop_parser);
+	if (ret) {
+		fprintf(stderr, "[PROGRAM] failed\n");
+	}
+	return ret;
+}
+
+int firehose_program_sparse_callback(void *priv, const void *data, long unsigned int len) {
+	int ret = 0;
+	long unsigned int already_flashed = 0;
+	struct Data *d = priv;
+	unsigned num_sectors = 0;
+
+	if (data == NULL) {
+		// Reached "Don't care" part --> Flash what is currently buffered
+		if (d->data_blob && d->data_blob_count > 0) {
+			num_sectors = (d->data_blob_count + d->program->sector_size - 1) / d->program->sector_size;
+
+			memset(d->data_blob + d->data_blob_count, 0, d->data_blob_size - d->data_blob_count);
+
+			ret = firehose_program_sparse_do_flash(d->qdl, d->program, d->data_blob, num_sectors, d->offset);
+			if (ret) {
+				goto out;
+			}
+
+			d->data_blob_count = 0;
+		}
+
+		d->offset += num_sectors;
+		d->offset += (len + d->program->sector_size - 1) / d->program->sector_size;
+		goto out;
+	}
+	else if ((d->data_blob_size - d->data_blob_count) < len) {
+		// Reach part that contains data --> fill up buffer and flash if neccessary
+		// Fill up current buffer and flash it
+		already_flashed = d->data_blob_size - d->data_blob_count;
+		memcpy(d->data_blob + d->data_blob_count, data, already_flashed);
+		d->data_blob_count += already_flashed;
+		ret = firehose_program_sparse_callback(priv, NULL, 0);
+
+		// Flash the rest of the given data
+		if ((len - already_flashed) > d->data_blob_size) {
+			num_sectors = ((len - already_flashed) / d->program->sector_size);
+
+			ret = firehose_program_sparse_do_flash(d->qdl, d->program, data + already_flashed, num_sectors, d->offset);
+			if (ret) {
+				goto out;
+			}
+			already_flashed += num_sectors * d->program->sector_size;
+			d->data_blob_count = 0;
+			d->offset += num_sectors;
+		}
+	}
+
+	memcpy(d->data_blob + d->data_blob_count, data + already_flashed, len - already_flashed);
+	d->data_blob_count += len - already_flashed;
+
+out:
+	return ret;
+}
+
+static int firehose_program_sparse(struct qdl_device *qdl, struct program *program, struct sparse_file *sparse)
+{
+	unsigned num_sectors;
+	time_t t0;
+	time_t t;
+	int ret;
+	struct Data d;
+
+	num_sectors = program->num_sectors;
+	t0 = time(NULL);
+
+	memset(&d, 0, sizeof(struct Data));
+	d.qdl = qdl;
+	d.program = program;
+	d.data_blob_size = SPARSE_BUFFER_SIZE * max_payload_size;
+	d.data_blob = malloc(d.data_blob_size);
+	if (!d.data_blob) {
+		return -1;
+	}
+
+	// Process the sparse file
+	ret = sparse_file_callback(sparse, false, false, firehose_program_sparse_callback, &d);
+	if (!ret) {
+		// Call once more (pretending a "Don't care" block) to flash current buffer
+		ret = firehose_program_sparse_callback(&d, NULL, 0);
+	}
+	free(d.data_blob);
+
+	t = time(NULL) - t0;
+	if (t) {
+		fprintf(stderr,
+			"[PROGRAM] flashed \"%s\" successfully at %ldkB/s\n",
+			program->label,
+			program->sector_size * num_sectors / t / 1024);
+	} else {
+		fprintf(stderr, "[PROGRAM] flashed \"%s\" successfully\n",
+			program->label);
+	}
+
+	return ret;
+}
+
+static int firehose_program_maybe_sparse(struct qdl_device *qdl, struct program *program, int fd)
+{
+	int ret;
+	struct sparse_file *sparse;
+
+	if (!program->sparse) {
+		return firehose_program(qdl, program, fd);
+	} else {
+		sparse = sparse_file_import(fd, false, false);
+		if (!sparse) {
+                        fprintf(stderr,
+                                "[PROGRAM] \"%s\" seems not to be a valid sparse image\n",
+                                program->label);
+			return -1;
+		}
+		ret = firehose_program_sparse(qdl, program, sparse);
+		sparse_file_destroy(sparse);
+		return ret;
+	}
 }
 
 static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
@@ -597,7 +787,7 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	if (ret)
 		return ret;
 
-	ret = program_execute(qdl, firehose_program, incdir);
+	ret = program_execute(qdl, firehose_program_maybe_sparse, incdir);
 	if (ret)
 		return ret;
 
