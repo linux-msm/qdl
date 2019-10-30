@@ -50,6 +50,7 @@
 #include <libxml/tree.h>
 #include "qdl.h"
 #include "ufs.h"
+#include "sparse.h"
 
 static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 {
@@ -288,6 +289,65 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, co
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
 
+struct sparse_cb_info_t {
+	struct qdl_device *qdl;
+	struct program *program;
+	void *payload;
+	size_t payload_len;
+	size_t write_count;
+	size_t total_write_count;
+};
+
+static int firehose_program_sparse(void *priv, const void *data, size_t len)
+{
+	int left;
+	struct sparse_cb_info_t *priv_info = (struct sparse_cb_info_t *)priv;
+	size_t chunk_size;
+	size_t data_write_count = 0;
+	int n;
+	char *p_data = (char *)data;
+	int ret = 0;
+
+	left = (priv_info->payload_len + len) / priv_info->program->sector_size;
+	while (left > 0) {
+		chunk_size = MIN(max_payload_size / priv_info->program->sector_size, left);
+
+		n = chunk_size * priv_info->program->sector_size - priv_info->payload_len;
+		memcpy(priv_info->payload + priv_info->payload_len, p_data + data_write_count, n);
+		data_write_count += n;
+
+		priv_info->payload_len += n;
+		if (priv_info->payload_len < max_payload_size && (priv_info->write_count + priv_info->payload_len) < priv_info->total_write_count) {
+			if (chunk_size < left)
+				continue;
+			else
+				break;
+		}
+
+		if (priv_info->payload_len < max_payload_size)
+			memset(priv_info->payload + n, 0, max_payload_size - n);
+
+		n = qdl_write(priv_info->qdl, priv_info->payload, chunk_size * priv_info->program->sector_size, true);
+		if (n < 0) {
+			err(1, "failed to write");
+			ret = -1;
+		}
+
+		if (n != chunk_size * priv_info->program->sector_size) {
+			err(1, "failed to write full sector");
+			ret = -1;
+		}
+
+		priv_info->write_count += n;
+
+		priv_info->payload_len = 0U;
+
+		left -= chunk_size;
+	}
+
+	return ret;
+}
+
 static int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
 {
 	unsigned num_sectors;
@@ -302,6 +362,8 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	int left;
 	int ret;
 	int n;
+	struct sparse_file *s_file = NULL;
+	struct sparse_cb_info_t sparse_cb_info;
 
 	num_sectors = program->num_sectors;
 
@@ -309,7 +371,17 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	if (ret < 0)
 		err(1, "failed to stat \"%s\"\n", program->filename);
 
-	num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
+	lseek(fd, program->file_offset * program->sector_size, SEEK_SET);
+
+	if (program->is_sparse) {
+		s_file = sparse_file_import(fd, true);
+
+		sparse_cb_info.total_write_count = sparse_file_len(s_file);
+
+		num_sectors = (sparse_cb_info.total_write_count + program->sector_size - 1) / program->sector_size;
+	} else {
+		num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
+	}
 
 	if (program->num_sectors && num_sectors > program->num_sectors) {
 		fprintf(stderr, "[PROGRAM] %s truncated to %d\n",
@@ -348,26 +420,37 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t0 = time(NULL);
 
-	lseek(fd, program->file_offset * program->sector_size, SEEK_SET);
-	left = num_sectors;
-	while (left > 0) {
-		chunk_size = MIN(max_payload_size / program->sector_size, left);
+	if (program->is_sparse) {
+		sparse_cb_info.payload = buf;
+		sparse_cb_info.payload_len = 0U;
+		sparse_cb_info.write_count = 0U;
+		sparse_cb_info.program = program;
+		sparse_cb_info.qdl = qdl;
 
-		n = read(fd, buf, chunk_size * program->sector_size);
-		if (n < 0)
-			err(1, "failed to read");
+		ret = sparse_stream_callback(s_file, firehose_program_sparse, &sparse_cb_info);
 
-		if (n < max_payload_size)
-			memset(buf + n, 0, max_payload_size - n);
+		sparse_file_destroy(s_file);
+	} else {
+		left = num_sectors;
+		while (left > 0) {
+			chunk_size = MIN(max_payload_size / program->sector_size, left);
 
-		n = qdl_write(qdl, buf, chunk_size * program->sector_size, true);
-		if (n < 0)
-			err(1, "failed to write");
+			n = read(fd, buf, chunk_size * program->sector_size);
+			if (n < 0)
+				err(1, "failed to read");
 
-		if (n != chunk_size * program->sector_size)
-			err(1, "failed to write full sector");
+			if (n < max_payload_size)
+				memset(buf + n, 0, max_payload_size - n);
+			
+			n = qdl_write(qdl, buf, chunk_size * program->sector_size, true);
+			if (n < 0)
+				err(1, "failed to write");
 
-		left -= chunk_size;
+			if (n != chunk_size * program->sector_size)
+				err(1, "failed to write full sector");
+
+			left -= chunk_size;
+		}
 	}
 
 	t = time(NULL) - t0;
