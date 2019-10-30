@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef _LIBSPARSE_SPARSE_FILE_H_
-#define _LIBSPARSE_SPARSE_FILE_H_
+#ifndef __SPARSE_FILE_H__
+#define __SPARSE_FILE_H__
 
 #include "sparse.h"
 
@@ -25,7 +25,7 @@ struct sparse_file {
 	bool verbose;
 
 	struct backed_block_list *backed_block_list;
-	struct output_file *out;
+	struct output_stream *out;
 };
 
-#endif /* _LIBSPARSE_SPARSE_FILE_H_ */
+#endif

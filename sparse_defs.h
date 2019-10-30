@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef _LIBSPARSE_SPARSE_DEFS_
-#define _LIBSPARSE_SPARSE_DEFS_
+#ifndef __SPARSE_DEFS__
+#define __SPARSE_DEFS__
 
 #include <errno.h>
 #include <stdio.h>

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef _LIBSPARSE_SPARSE_FORMAT_H_
-#define _LIBSPARSE_SPARSE_FORMAT_H_
+#ifndef __SPARSE_FORMAT_H__
+#define __SPARSE_FORMAT_H__
 #include "sparse_defs.h"
 
 typedef struct sparse_header {

@@ -29,13 +29,6 @@ struct backed_block {
 	enum backed_block_type type;
 	union {
 		struct {
-			void *data;
-		} data;
-		struct {
-			char *filename;
-			int64_t offset;
-		} file;
-		struct {
 			int fd;
 			int64_t offset;
 		} fd;
@@ -72,18 +65,6 @@ unsigned int backed_block_block(struct backed_block *bb)
 	return bb->block;
 }
 
-void *backed_block_data(struct backed_block *bb)
-{
-	assert(bb->type == BACKED_BLOCK_DATA);
-	return bb->data.data;
-}
-
-const char *backed_block_filename(struct backed_block *bb)
-{
-	assert(bb->type == BACKED_BLOCK_FILE);
-	return bb->file.filename;
-}
-
 int backed_block_fd(struct backed_block *bb)
 {
 	assert(bb->type == BACKED_BLOCK_FD);
@@ -92,11 +73,8 @@ int backed_block_fd(struct backed_block *bb)
 
 int64_t backed_block_file_offset(struct backed_block *bb)
 {
-	assert(bb->type == BACKED_BLOCK_FILE || bb->type == BACKED_BLOCK_FD);
-	if (bb->type == BACKED_BLOCK_FILE)
-		return bb->file.offset;
-	else /* bb->type == BACKED_BLOCK_FD */
-		return bb->fd.offset;
+	assert(bb->type == BACKED_BLOCK_FD);
+	return bb->fd.offset;
 }
 
 uint32_t backed_block_fill_val(struct backed_block *bb)
@@ -112,9 +90,6 @@ enum backed_block_type backed_block_type(struct backed_block *bb)
 
 void backed_block_destroy(struct backed_block *bb)
 {
-	if (bb->type == BACKED_BLOCK_FILE)
-		free(bb->file.filename);
-
 	free(bb);
 }
 
@@ -140,50 +115,6 @@ void backed_block_list_destroy(struct backed_block_list *bbl)
 	free(bbl);
 }
 
-void backed_block_list_move(struct backed_block_list *from,
-			    struct backed_block_list *to,
-			    struct backed_block *start,
-			    struct backed_block *end)
-{
-	struct backed_block *bb;
-
-	if (start == NULL)
-		start = from->data_blocks;
-
-	if (!end)
-		for (end = start; end && end->next; end = end->next)
-			;
-
-	if (start == NULL || end == NULL)
-		return;
-
-	from->last_used = NULL;
-	to->last_used = NULL;
-	if (from->data_blocks == start) {
-		from->data_blocks = end->next;
-	} else {
-		for (bb = from->data_blocks; bb; bb = bb->next) {
-			if (bb->next == start) {
-				bb->next = end->next;
-				break;
-			}
-		}
-	}
-
-	if (!to->data_blocks) {
-		to->data_blocks = start;
-		end->next = NULL;
-	} else {
-		for (bb = to->data_blocks; bb; bb = bb->next) {
-			if (!bb->next || bb->next->block > start->block) {
-				end->next = bb->next;
-				bb->next = start;
-				break;
-			}
-		}
-	}
-}
-
 /* may free b */
 static int merge_bb(struct backed_block_list *bbl, struct backed_block *a,
 		    struct backed_block *b)
@@ -206,23 +137,16 @@ static int merge_bb(struct backed_block_list *bbl, struct backed_block *a,
 		return -EINVAL;
 
 	switch (a->type) {
-		case BACKED_BLOCK_DATA:
-			/* Don't support merging data for now */
-			return -EINVAL;
 		case BACKED_BLOCK_FILL:
 			if (a->fill.val != b->fill.val)
 				return -EINVAL;
-			break;
-		case BACKED_BLOCK_FILE:
-			/* Already make sure b->type is BACKED_BLOCK_FILE */
-			if (strcmp(a->file.filename, b->file.filename) ||
-			    a->file.offset + a->len != b->file.offset)
-				return -EINVAL;
+
 			break;
 		case BACKED_BLOCK_FD:
 			if (a->fd.fd != b->fd.fd ||
 			    a->fd.offset + a->len != b->fd.offset)
 				return -EINVAL;
+
 			break;
 	}
 
@@ -295,42 +219,6 @@ int backed_block_add_fill(struct backed_block_list *bbl, unsigned int fill_val,
 	return queue_bb(bbl, bb);
 }
 
-/* Queues a block of memory to be written to the specified data blocks */
-int backed_block_add_data(struct backed_block_list *bbl, void *data,
-			  unsigned int len, unsigned int block)
-{
-	struct backed_block *bb = calloc(1, sizeof(struct backed_block));
-	if (bb == NULL)
-		return -ENOMEM;
-
-	bb->block = block;
-	bb->len = len;
-	bb->type = BACKED_BLOCK_DATA;
-	bb->data.data = data;
-	bb->next = NULL;
-
-	return queue_bb(bbl, bb);
-}
-
-/* Queues a chunk of a file on disk to be written to the specified data blocks
- */
-int backed_block_add_file(struct backed_block_list *bbl, const char *filename,
-			  int64_t offset, unsigned int len, unsigned int block)
-{
-	struct backed_block *bb = calloc(1, sizeof(struct backed_block));
-	if (bb == NULL)
-		return -ENOMEM;
-
-	bb->block = block;
-	bb->len = len;
-	bb->type = BACKED_BLOCK_FILE;
-	bb->file.filename = strdup(filename);
-	bb->file.offset = offset;
-	bb->next = NULL;
-
-	return queue_bb(bbl, bb);
-}
-
 /* Queues a chunk of a fd to be written to the specified data blocks */
 int backed_block_add_fd(struct backed_block_list *bbl, int fd, int64_t offset,
 			unsigned int len, unsigned int block)
@@ -347,43 +235,4 @@ int backed_block_add_fd(struct backed_block_list *bbl, int fd, int64_t offset,
 	bb->next = NULL;
 
 	return queue_bb(bbl, bb);
-}
-
-int backed_block_split(struct backed_block_list *bbl, struct backed_block *bb,
-		       unsigned int max_len)
-{
-	struct backed_block *new_bb;
-
-	max_len = ALIGN_DOWN(max_len, bbl->block_size);
-
-	if (bb->len <= max_len)
-		return 0;
-
-	new_bb = malloc(sizeof(struct backed_block));
-	if (new_bb == NULL)
-		return -ENOMEM;
-
-	*new_bb = *bb;
-
-	new_bb->len = bb->len - max_len;
-	new_bb->block = bb->block + max_len / bbl->block_size;
-	new_bb->next = bb->next;
-	bb->next = new_bb;
-	bb->len = max_len;
-
-	switch (bb->type) {
-		case BACKED_BLOCK_DATA:
-			new_bb->data.data = (char *)bb->data.data + max_len;
-			break;
-		case BACKED_BLOCK_FILE:
-			new_bb->file.offset += max_len;
-			break;
-		case BACKED_BLOCK_FD:
-			new_bb->fd.offset += max_len;
-			break;
-		case BACKED_BLOCK_FILL:
-			break;
-	}
-
-	return 0;
 }

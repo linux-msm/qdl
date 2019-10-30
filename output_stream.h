@@ -14,29 +14,23 @@
  * limitations under the License.
  */
 
-#ifndef _OUTPUT_FILE_H_
-#define _OUTPUT_FILE_H_
+#ifndef __OUTPUT_STREAM_H__
+#define __OUTPUT_STREAM_H__
 
 #include "sparse.h"
 
-struct output_file;
+struct output_stream;
 
-struct output_file *output_file_open_fd(int fd, unsigned int block_size,
-					int64_t len, int gz, int sparse,
-					int chunks, int crc);
-struct output_file *
-output_file_open_callback(int (*write)(void *, const void *, size_t),
-			  void *priv, unsigned int block_size, int64_t len,
-			  int gz, int sparse, int chunks, int crc);
-int write_data_chunk(struct output_file *out, unsigned int len, void *data);
-int write_fill_chunk(struct output_file *out, unsigned int len,
+struct output_stream *
+output_stream_open_callback(int (*write)(void *, const void *, size_t),
+			    void *priv, unsigned int block_size, int64_t len);
+
+int write_fill_chunk(struct output_stream *out, unsigned int len,
 		     uint32_t fill_val);
-int write_file_chunk(struct output_file *out, unsigned int len,
-		     const char *file, int64_t offset);
-int write_fd_chunk(struct output_file *out, unsigned int len, int fd,
+int write_fd_chunk(struct output_stream *out, unsigned int len, int fd,
 		   int64_t offset);
-int write_skip_chunk(struct output_file *out, int64_t len);
-void output_file_close(struct output_file *out);
+int write_skip_chunk(struct output_stream *out, int64_t len);
+void output_stream_close(struct output_stream *out);
 
 int read_all(int fd, void *buf, size_t len);
 

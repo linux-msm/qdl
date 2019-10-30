@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-#ifndef _LIBSPARSE_DEFS_H_
+#ifndef __DEFS_H__
+#define __DEFS_H__
 
 #ifndef __unused
 #define __unused __attribute__((__unused__))
 #endif
 
-#endif /* _LIBSPARSE_DEFS_H_ */
+#endif
