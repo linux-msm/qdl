@@ -172,3 +172,18 @@ int program_find_bootable_partition(void)
 
 	return part;
 }
+
+void program_unload(void)
+{
+	struct program *program;
+	struct program *next;
+
+	for (program = programes; program; program = next) {
+		next = program->next;
+
+		xmlFree(program->filename);
+		xmlFree(program->start_sector);
+		xmlFree(program->label);
+		free(program);
+	}
+}

@@ -22,5 +22,6 @@ int program_load(const char *program_file);
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
 		    const char *incdir);
 int program_find_bootable_partition(void);
+void program_unload(void);
 
 #endif
