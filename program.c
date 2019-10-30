@@ -47,7 +47,7 @@ int program_load(const char *program_file)
 	xmlNode *root;
 	xmlDoc *doc;
 	int errors;
-	char *sparse_val;
+	xmlChar *sparse_val;
 
 	doc = xmlReadFile(program_file, NULL, 0);
 	if (!doc) {
@@ -85,11 +85,11 @@ int program_load(const char *program_file)
 
 		sparse_val = attr_as_string(node, "sparse", &errors);
 		if (!errors) {
-			if (!strcmp(sparse_val, "true"))
+			if (!xmlStrcmp(sparse_val, (const xmlChar *)"true"))
 				program->is_sparse = true;
 			else
 				program->is_sparse = false;
-			free(sparse_val);
+			xmlFree(sparse_val);
 		}
 
 		if (programes) {
@@ -110,7 +110,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 		    const char *incdir)
 {
 	struct program *program;
-	const char *filename;
+	char *filename;
 	char tmp[PATH_MAX];
 	int ret;
 	int fd;
@@ -119,7 +119,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 		if (!program->filename)
 			continue;
 
-		filename = program->filename;
+		filename = (char *)program->filename;
 		if (incdir) {
 			snprintf(tmp, PATH_MAX, "%s/%s", incdir, filename);
 			if (access(tmp, F_OK) != -1)
@@ -155,11 +155,11 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 int program_find_bootable_partition(void)
 {
 	struct program *program;
-	const char *label;
+	char *label;
 	int part = -ENOENT;
 
 	for (program = programes; program; program = program->next) {
-		label = program->label;
+		label = (char *)program->label;
 
 		if (!strcmp(label, "xbl") || !strcmp(label, "xbl_a") ||
 		    !strcmp(label, "sbl1")) {

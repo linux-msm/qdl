@@ -1,18 +1,19 @@
 #ifndef __PROGRAM_H__
 #define __PROGRAM_H__
 
+#include <libxml/tree.h>
 #include <stdbool.h>
 #include "qdl.h"
 
 struct program {
 	unsigned sector_size;
 	unsigned file_offset;
-	const char *filename;
-	const char *label;
+	xmlChar *filename;
+	xmlChar *label;
 	unsigned num_sectors;
 	unsigned partition;
 	bool is_sparse;
-	const char *start_sector;
+	xmlChar *start_sector;
 
 	struct program *next;
 };
