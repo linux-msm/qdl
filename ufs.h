@@ -28,6 +28,8 @@
  */
 #ifndef __UFS_H__
 #define __UFS_H__
+
+#include <libxml/tree.h>
 #include <stdbool.h>
 
 struct qdl_device;
@@ -55,7 +57,7 @@ struct ufs_body {
 	unsigned	bLogicalBlockSize;
 	unsigned	bProvisioningType;
 	unsigned	wContextCapabilities;
-	const char	*desc;
+	xmlChar		*desc;
 
 	struct		ufs_body *next;
 };
