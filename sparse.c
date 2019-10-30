@@ -28,15 +28,15 @@
 #include "sparse_format.h"
 
 struct sparse_file* sparse_file_new(unsigned int block_size, int64_t len) {
-  struct sparse_file* s = reinterpret_cast<sparse_file*>(calloc(sizeof(struct sparse_file), 1));
+  struct sparse_file* s = calloc(sizeof(struct sparse_file), 1);
   if (!s) {
-    return nullptr;
+    return NULL;
   }
 
   s->backed_block_list = backed_block_list_new(block_size);
   if (!s->backed_block_list) {
     free(s);
-    return nullptr;
+    return NULL;
   }
 
   s->block_size = block_size;
@@ -179,7 +179,7 @@ struct chunk_data {
 };
 
 static int foreach_chunk_write(void* priv, const void* data, size_t len) {
-  struct chunk_data* chk = reinterpret_cast<chunk_data*>(priv);
+  struct chunk_data* chk = priv;
 
   return chk->write(chk->priv, data, len, chk->block, chk->nr_blocks);
 }
@@ -216,7 +216,7 @@ int sparse_file_foreach_chunk(struct sparse_file* s, bool sparse, bool crc,
 }
 
 static int out_counter_write(void* priv, const void* data __unused, size_t len) {
-  int64_t* count = reinterpret_cast<int64_t*>(priv);
+  int64_t* count = priv;
   *count += len;
   return 0;
 }
@@ -252,7 +252,7 @@ static struct backed_block* move_chunks_up_to_len(struct sparse_file* from, stru
                                                   unsigned int len) {
   int64_t count = 0;
   struct output_file* out_counter;
-  struct backed_block* last_bb = nullptr;
+  struct backed_block* last_bb = NULL;
   struct backed_block* bb;
   struct backed_block* start;
   unsigned int last_block = 0;
@@ -270,7 +270,7 @@ static struct backed_block* move_chunks_up_to_len(struct sparse_file* from, stru
   out_counter = output_file_open_callback(out_counter_write, &count, to->block_size, to->len, false,
                                           true, 0, false);
   if (!out_counter) {
-    return nullptr;
+    return NULL;
   }
 
   for (bb = start; bb; bb = backed_block_iter_next(bb)) {
@@ -281,7 +281,7 @@ static struct backed_block* move_chunks_up_to_len(struct sparse_file* from, stru
     /* will call out_counter_write to update count */
     ret = sparse_file_write_block(out_counter, bb);
     if (ret) {
-      bb = nullptr;
+      bb = NULL;
       goto out;
     }
     if (file_len + count > len) {
@@ -330,13 +330,13 @@ int sparse_file_resparse(struct sparse_file* in_s, unsigned int max_len, struct 
     if (c < out_s_count) {
       out_s[c] = s;
     } else {
-      backed_block_list_move(s->backed_block_list, tmp->backed_block_list, nullptr, nullptr);
+      backed_block_list_move(s->backed_block_list, tmp->backed_block_list, NULL, NULL);
       sparse_file_destroy(s);
     }
     c++;
   } while (bb);
 
-  backed_block_list_move(tmp->backed_block_list, in_s->backed_block_list, nullptr, nullptr);
+  backed_block_list_move(tmp->backed_block_list, in_s->backed_block_list, NULL, NULL);
 
   sparse_file_destroy(tmp);
 

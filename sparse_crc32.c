@@ -88,7 +88,7 @@ static uint32_t crc32_tab[] = {
  */
 
 uint32_t sparse_crc32(uint32_t crc_in, const void* buf, size_t size) {
-  const uint8_t* p = reinterpret_cast<const uint8_t*>(buf);
+  const uint8_t* p = buf;
   uint32_t crc;
 
   crc = crc_in ^ ~0U;

@@ -16,6 +16,7 @@
 
 #define _FILE_OFFSET_BITS 64
 #define _LARGEFILE64_SOURCE 1
+#define _GNU_SOURCE
 
 #include <fcntl.h>
 #include <stdbool.h>
@@ -66,7 +67,7 @@ int main(int argc, char* argv[]) {
     exit(-1);
   }
 
-  files = sparse_file_resparse(s, max_size, nullptr, 0);
+  files = sparse_file_resparse(s, max_size, NULL, 0);
   if (files < 0) {
     fprintf(stderr, "Failed to resparse\n");
     exit(-1);

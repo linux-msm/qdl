@@ -17,10 +17,6 @@
 #ifndef _OUTPUT_FILE_H_
 #define _OUTPUT_FILE_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <sparse/sparse.h>
 
 struct output_file;
@@ -38,9 +34,5 @@ int write_skip_chunk(struct output_file* out, int64_t len);
 void output_file_close(struct output_file* out);
 
 int read_all(int fd, void* buf, size_t len);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

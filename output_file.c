@@ -17,7 +17,6 @@
 #define _FILE_OFFSET_BITS 64
 #define _LARGEFILE64_SOURCE 1
 
-#include <algorithm>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -35,7 +34,7 @@
 #include "sparse_crc32.h"
 #include "sparse_format.h"
 
-#ifndef _WIN32
+#ifndef USE_MINGW
 #include <sys/mman.h>
 #define O_BINARY 0
 #else
@@ -48,6 +47,9 @@
 #define mmap64 mmap
 #define off64_t off_t
 #endif
+
+#define min(a, b) \
+	({ typeof(a) _a = (a); typeof(b) _b = (b); (_a < _b) ? _a : _b; })
 
 #define SPARSE_HEADER_MAJOR_VER 1
 #define SPARSE_HEADER_MINOR_VER 0
@@ -225,9 +227,9 @@ static int gz_file_write(struct output_file* out, void* data, size_t len) {
   struct output_file_gz* outgz = to_output_file_gz(out);
 
   while (len > 0) {
-    ret = gzwrite(outgz->gz_fd, data, std::min<unsigned int>(len, (unsigned int)INT_MAX));
+    ret = gzwrite(outgz->gz_fd, data, min(len, (unsigned int)INT_MAX));
     if (ret == 0) {
-      error("gzwrite %s", gzerror(outgz->gz_fd, nullptr));
+      error("gzwrite %s", gzerror(outgz->gz_fd, NULL));
       return -1;
     }
     len -= ret;
@@ -262,8 +264,8 @@ static int callback_file_skip(struct output_file* out, int64_t off) {
   int ret;
 
   while (off > 0) {
-    to_write = std::min(off, (int64_t)INT_MAX);
-    ret = outc->write(outc->priv, nullptr, to_write);
+    to_write = min(off, (int64_t)INT_MAX);
+    ret = outc->write(outc->priv, NULL, to_write);
     if (ret < 0) {
       return ret;
     }
@@ -300,7 +302,7 @@ static struct output_file_ops callback_file_ops = {
 int read_all(int fd, void* buf, size_t len) {
   size_t total = 0;
   int ret;
-  char* ptr = reinterpret_cast<char*>(buf);
+  char* ptr = buf;
 
   while (total < len) {
     ret = read(fd, ptr, len - total);
@@ -464,7 +466,7 @@ static int write_normal_fill_chunk(struct output_file* out, unsigned int len, ui
   }
 
   while (len) {
-    write_len = std::min(len, out->block_size);
+    write_len = min(len, out->block_size);
     ret = out->ops->write(out, out->fill_buf, write_len);
     if (ret < 0) {
       return ret;
@@ -507,13 +509,13 @@ static int output_file_init(struct output_file* out, int block_size, int64_t len
   out->crc32 = 0;
   out->use_crc = crc;
 
-  out->zero_buf = reinterpret_cast<char*>(calloc(block_size, 1));
+  out->zero_buf = calloc(block_size, 1);
   if (!out->zero_buf) {
     error_errno("malloc zero_buf");
     return -ENOMEM;
   }
 
-  out->fill_buf = reinterpret_cast<uint32_t*>(calloc(block_size, 1));
+  out->fill_buf = calloc(block_size, 1);
   if (!out->fill_buf) {
     error_errno("malloc fill_buf");
     ret = -ENOMEM;
@@ -534,8 +536,8 @@ static int output_file_init(struct output_file* out, int block_size, int64_t len
         .file_hdr_sz = SPARSE_HEADER_LEN,
         .chunk_hdr_sz = CHUNK_HEADER_LEN,
         .blk_sz = out->block_size,
-        .total_blks = static_cast<unsigned>(DIV_ROUND_UP(out->len, out->block_size)),
-        .total_chunks = static_cast<unsigned>(chunks),
+        .total_blks = DIV_ROUND_UP(out->len, out->block_size),
+        .total_chunks = chunks,
         .image_checksum = 0};
 
     if (out->use_crc) {
@@ -558,11 +560,10 @@ err_fill_buf:
 }
 
 static struct output_file* output_file_new_gz(void) {
-  struct output_file_gz* outgz =
-      reinterpret_cast<struct output_file_gz*>(calloc(1, sizeof(struct output_file_gz)));
+  struct output_file_gz* outgz = calloc(1, sizeof(struct output_file_gz));
   if (!outgz) {
     error_errno("malloc struct outgz");
-    return nullptr;
+    return NULL;
   }
 
   outgz->out.ops = &gz_file_ops;
@@ -571,11 +572,10 @@ static struct output_file* output_file_new_gz(void) {
 }
 
 static struct output_file* output_file_new_normal(void) {
-  struct output_file_normal* outn =
-      reinterpret_cast<struct output_file_normal*>(calloc(1, sizeof(struct output_file_normal)));
+  struct output_file_normal* outn = calloc(1, sizeof(struct output_file_normal));
   if (!outn) {
     error_errno("malloc struct outn");
-    return nullptr;
+    return NULL;
   }
 
   outn->out.ops = &file_ops;
@@ -589,11 +589,10 @@ struct output_file* output_file_open_callback(int (*write)(void*, const void*, s
   int ret;
   struct output_file_callback* outc;
 
-  outc =
-      reinterpret_cast<struct output_file_callback*>(calloc(1, sizeof(struct output_file_callback)));
+  outc = calloc(1, sizeof(struct output_file_callback));
   if (!outc) {
     error_errno("malloc struct outc");
-    return nullptr;
+    return NULL;
   }
 
   outc->out.ops = &callback_file_ops;
@@ -603,7 +602,7 @@ struct output_file* output_file_open_callback(int (*write)(void*, const void*, s
   ret = output_file_init(&outc->out, block_size, len, sparse, chunks, crc);
   if (ret < 0) {
     free(outc);
-    return nullptr;
+    return NULL;
   }
 
   return &outc->out;
@@ -620,7 +619,7 @@ struct output_file* output_file_open_fd(int fd, unsigned int block_size, int64_t
     out = output_file_new_normal();
   }
   if (!out) {
-    return nullptr;
+    return NULL;
   }
 
   out->ops->open(out, fd);
@@ -628,7 +627,7 @@ struct output_file* output_file_open_fd(int fd, unsigned int block_size, int64_t
   ret = output_file_init(out, block_size, len, sparse, chunks, crc);
   if (ret < 0) {
     free(out);
-    return nullptr;
+    return NULL;
   }
 
   return out;
@@ -651,21 +650,24 @@ int write_fd_chunk(struct output_file* out, unsigned int len, int fd, int64_t of
   uint64_t buffer_size;
   char* ptr;
 
-  aligned_offset = offset & ~(4096 - 1);
-  aligned_diff = offset - aligned_offset;
-  buffer_size = (uint64_t)len + (uint64_t)aligned_diff;
+#ifdef _SC_PAGESIZE
+    aligned_offset = offset & ~(sysconf(_SC_PAGESIZE) - 1);
+#else
+    aligned_offset = offset & ~(4096 - 1);
+#endif
+    aligned_diff = offset - aligned_offset;
+    buffer_size = (uint64_t)len + (uint64_t)aligned_diff;
 
-#ifndef _WIN32
+#ifndef USE_MINGW
   if (buffer_size > SIZE_MAX) return -E2BIG;
-  char* data =
-      reinterpret_cast<char*>(mmap64(nullptr, buffer_size, PROT_READ, MAP_SHARED, fd, aligned_offset));
+  char* data = mmap64(NULL, buffer_size, PROT_READ, MAP_SHARED, fd, aligned_offset);
   if (data == MAP_FAILED) {
     return -errno;
   }
   ptr = data + aligned_diff;
 #else
   off64_t pos;
-  char* data = reinterpret_cast<char*>(malloc(len));
+  char* data = malloc(len);
   if (!data) {
     return -errno;
   }
@@ -684,7 +686,7 @@ int write_fd_chunk(struct output_file* out, unsigned int len, int fd, int64_t of
 
   ret = out->sparse_ops->write_data_chunk(out, len, ptr);
 
-#ifndef _WIN32
+#ifndef USE_MINGW
   munmap(data, buffer_size);
 #else
   free(data);

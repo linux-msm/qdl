@@ -17,10 +17,6 @@
 #ifndef _LIBSPARSE_SPARSE_FILE_H_
 #define _LIBSPARSE_SPARSE_FILE_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <sparse/sparse.h>
 
 struct sparse_file {
@@ -31,9 +27,5 @@ struct sparse_file {
   struct backed_block_list* backed_block_list;
   struct output_file* out;
 };
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* _LIBSPARSE_SPARSE_FILE_H_ */
