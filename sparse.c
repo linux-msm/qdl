@@ -17,7 +17,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#include <sparse/sparse.h>
+#include "sparse.h"
 
 #include "defs.h"
 #include "sparse_file.h"

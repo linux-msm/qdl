@@ -17,7 +17,7 @@
 #ifndef _LIBSPARSE_SPARSE_FILE_H_
 #define _LIBSPARSE_SPARSE_FILE_H_
 
-#include <sparse/sparse.h>
+#include "sparse.h"
 
 struct sparse_file {
 	unsigned int block_size;

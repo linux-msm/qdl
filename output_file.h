@@ -17,7 +17,7 @@
 #ifndef _OUTPUT_FILE_H_
 #define _OUTPUT_FILE_H_
 
-#include <sparse/sparse.h>
+#include "sparse.h"
 
 struct output_file;
 

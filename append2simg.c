@@ -25,7 +25,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <sparse/sparse.h>
+#include "sparse.h"
 #include "backed_block.h"
 #include "sparse_file.h"
 

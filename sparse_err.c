@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <sparse/sparse.h>
+#include "sparse.h"
 
 #include <stdarg.h>
 #include <stdio.h>

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <sparse/sparse.h>
+#include "sparse.h"
 
 #include <fcntl.h>
 #include <stdbool.h>

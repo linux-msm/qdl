@@ -28,7 +28,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <sparse/sparse.h>
+#include "sparse.h"
 
 #include "defs.h"
 #include "output_file.h"
