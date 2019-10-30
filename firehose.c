@@ -103,6 +103,7 @@ static void firehose_response_log(xmlNode *node)
 
 	value = xmlGetProp(node, (xmlChar*)"value");
 	printf("LOG: %s\n", value);
+	xmlFree(value);
 }
 
 static int firehose_read(struct qdl_device *qdl, int wait, int (*response_parser)(xmlNode *node))
@@ -194,9 +195,12 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 static int firehose_nop_parser(xmlNode *node)
 {
 	xmlChar *value;
+	int ret;
 
 	value = xmlGetProp(node, (xmlChar*)"value");
-	return !!xmlStrcmp(value, (xmlChar*)"ACK");
+	ret = !!xmlStrcmp(value, (xmlChar*)"ACK");
+	xmlFree(value);
+	return ret;
 }
 
 static size_t max_payload_size = 1048576;
@@ -214,9 +218,14 @@ static int firehose_configure_response_parser(xmlNode *node)
 	size_t max_size;
 
 	value = xmlGetProp(node, (xmlChar*)"value");
-	payload = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytes");
-	if (!value || !payload)
+	if (!value)
 		return -EINVAL;
+
+	payload = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytes");
+	if (!payload) {
+		xmlFree(value);
+		return -EINVAL;
+	}
 
 	max_size = strtoul((char*)payload, NULL, 10);
 
@@ -225,12 +234,16 @@ static int firehose_configure_response_parser(xmlNode *node)
 	 * a larger payload size
 	 */
 	if (!xmlStrcmp(value, (xmlChar*)"ACK")) {
+		xmlFree(payload);
 		payload = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytesSupported");
 		if (!payload)
 			return -EINVAL;
 
 		max_size = strtoul((char*)payload, NULL, 10);
 	}
+
+	xmlFree(payload);
+	xmlFree(value);
 
 	return max_size;
 }
@@ -470,6 +483,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 out:
 	xmlFreeDoc(doc);
+	free(buf);
 	return ret;
 }
 
