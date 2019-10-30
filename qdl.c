@@ -265,16 +265,22 @@ static int usb_open(struct qdl_device *qdl)
 		dev = udev_device_new_from_syspath(udev, path);
 		dev_node = udev_device_get_devnode(dev);
 
-		if (!dev_node)
+		if (!dev_node) {
+			udev_device_unref(dev);
 			continue;
+		}
 
 		fd = open(dev_node, O_RDWR);
-		if (fd < 0)
+		if (fd < 0) {
+			udev_device_unref(dev);
 			continue;
+		}
 
 		ret = parse_usb_desc(fd, qdl, &intf);
 		if (!ret)
 			goto found;
+
+		udev_device_unref(dev);
 
 		close(fd);
 	}
@@ -297,18 +303,24 @@ static int usb_open(struct qdl_device *qdl)
 		dev = udev_monitor_receive_device(mon);
 		dev_node = udev_device_get_devnode(dev);
 
-		if (!dev_node)
+		if (!dev_node) {
+			udev_device_unref(dev);
 			continue;
+		}
 
 		printf("%s\n", dev_node);
 
 		fd = open(dev_node, O_RDWR);
-		if (fd < 0)
+		if (fd < 0) {
+			udev_device_unref(dev);
 			continue;
+		}
 
 		ret = parse_usb_desc(fd, qdl, &intf);
 		if (!ret)
 			goto found;
+
+		udev_device_unref(dev);
 
 		close(fd);
 	}
@@ -323,6 +335,7 @@ found:
 	udev_enumerate_unref(enumerate);
 	udev_monitor_unref(mon);
 	udev_unref(udev);
+	udev_device_unref(dev);
 
 	cmd.ifno = intf;
 	cmd.ioctl_code = USBDEVFS_DISCONNECT;
@@ -504,6 +517,11 @@ int main(int argc, char **argv)
 	ret = firehose_run(&qdl, incdir, storage);
 	if (ret < 0)
 		return 1;
+
+	ufs_unload();
+	program_unload();
+	patch_unload();
+	xmlCleanupParser();
 
 	return 0;
 }
