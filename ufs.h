@@ -73,5 +73,6 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 	int (*apply_ufs_body)(struct qdl_device *qdl, struct ufs_body *ufs),
 	int (*apply_ufs_epilogue)(struct qdl_device *qdl, struct ufs_epilogue *ufs, bool commit));
 bool ufs_need_provisioning(void);
+void ufs_unload(void);
 
 #endif

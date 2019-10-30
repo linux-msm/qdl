@@ -305,3 +305,16 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 	}
 	return apply_ufs_epilogue(qdl, ufs_epilogue_p, true);
 }
+
+void ufs_unload(void)
+{
+	struct ufs_body *body;
+	struct ufs_body *next;
+
+	for (body = ufs_body_p; body; body = next) {
+		next = body->next;
+
+		xmlFree(body->desc);
+		free(body);
+	}
+}
