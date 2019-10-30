@@ -111,3 +111,19 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 
 	return 0;
 }
+
+void patch_unload(void)
+{
+	struct patch *patch;
+	struct patch *next;
+
+	for (patch = patches; patch; patch = next) {
+		next = patch->next;
+
+		xmlFree(patch->filename);
+		xmlFree(patch->start_sector);
+		xmlFree(patch->value);
+		xmlFree(patch->what);
+		free(patch);
+	}
+}

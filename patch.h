@@ -20,5 +20,6 @@ struct patch {
 
 int patch_load(const char *patch_file);
 int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch));
+void patch_unload(void);
 
 #endif
