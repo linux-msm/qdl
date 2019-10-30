@@ -49,12 +49,11 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
-#include <libxml/parser.h>
-#include <libxml/tree.h>
 
 #include "qdl.h"
 #include "patch.h"
 #include "ufs.h"
+#include "util.h"
 
 #define MAX_USBFS_BULK_SIZE	(16*1024)
 

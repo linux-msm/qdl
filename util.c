@@ -32,8 +32,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <libxml/parser.h>
-#include <libxml/tree.h>
+
+#include "util.h"
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 
@@ -94,7 +94,7 @@ unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors)
 	return (unsigned int) strtoul((char*)value, NULL, 10);
 }
 
-const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
+xmlChar *attr_as_string(xmlNode *node, const char *attr, int *errors)
 {
 	xmlChar *value;
 

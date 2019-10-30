@@ -32,12 +32,11 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
-#include <libxml/parser.h>
-#include <libxml/tree.h>
 
 #include "program.h"
 #include "qdl.h"
-		
+#include "util.h"
+
 static struct program *programes;
 static struct program *programes_last;
 

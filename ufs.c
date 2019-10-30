@@ -33,13 +33,10 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <libxml/parser.h>
-#include <libxml/tree.h>
-#include <libxml/xpath.h>
-
 #include "ufs.h"
 #include "qdl.h"
 #include "patch.h"
+#include "util.h"
 
 struct ufs_common *ufs_common_p;
 struct ufs_epilogue *ufs_epilogue_p;

@@ -30,12 +30,11 @@
  */
 #include <errno.h>
 #include <string.h>
-#include <libxml/parser.h>
-#include <libxml/tree.h>
 
 #include "patch.h"
 #include "qdl.h"
-		
+#include "util.h"
+
 static struct patch *patches;
 static struct patch *patches_last;
 

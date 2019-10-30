@@ -46,11 +46,11 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
-#include <libxml/parser.h>
-#include <libxml/tree.h>
+
 #include "qdl.h"
 #include "ufs.h"
 #include "sparse.h"
+#include "util.h"
 
 static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 {

@@ -46,6 +46,8 @@
 #include <unistd.h>
 #include "qdl.h"
 
+#include "util.h"
+
 struct sahara_pkt {
 	uint32_t cmd;
 	uint32_t length;
