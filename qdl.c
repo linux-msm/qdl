@@ -464,6 +464,8 @@ int main(int argc, char **argv)
 
 	prog_mbn = argv[optind++];
 
+	xmlInitParser();
+
 	do {
 		type = detect_type(argv[optind]);
 		if (type < 0 || type == QDL_FILE_UNKNOWN)
