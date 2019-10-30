@@ -48,6 +48,7 @@ int program_load(const char *program_file)
 	xmlNode *root;
 	xmlDoc *doc;
 	int errors;
+	char *sparse_val;
 
 	doc = xmlReadFile(program_file, NULL, 0);
 	if (!doc) {
@@ -81,6 +82,15 @@ int program_load(const char *program_file)
 			fprintf(stderr, "[PROGRAM] errors while parsing program\n");
 			free(program);
 			continue;
+		}
+
+		sparse_val = attr_as_string(node, "sparse", &errors);
+		if (!errors) {
+			if (!strcmp(sparse_val, "true"))
+				program->is_sparse = true;
+			else
+				program->is_sparse = false;
+			free(sparse_val);
 		}
 
 		if (programes) {
