@@ -101,7 +101,7 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 	int ret;
 
 	for (patch = patches; patch; patch = patch->next) {
-		if (strcmp(patch->filename, "DISK"))
+		if (xmlStrcmp(patch->filename, (const xmlChar *)"DISK"))
 			continue;
 
 		ret = apply(qdl, patch);
