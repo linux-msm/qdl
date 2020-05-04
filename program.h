@@ -22,8 +22,7 @@ struct program {
 };
 
 int program_load(const char *program_file, bool is_nand);
-int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
-		    const char *incdir);
+int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd, unsigned int read_timeout, unsigned int write_timeout), const char *incdir);
 int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program));
 int program_find_bootable_partition(void);
 

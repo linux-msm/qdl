@@ -238,7 +238,7 @@ int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout
     return ret ? ret : transferred;
 }
 
-int qdl_write(struct qdl_device *qdl, const void *buf, size_t len) {
+int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int timeout) {
 
     int transferred = 0, writed = 0, ret = -1, size = len;
     unsigned char *data = (unsigned char *) buf;
@@ -274,12 +274,14 @@ static void print_usage(void)
 int main(int argc, char **argv)
 {
 	char *prog_mbn, *storage="ufs";
-    char *incdir = NULL;
-    int type;
-    int ret;
-    int opt;
-    bool qdl_finalize_provisioning = false;
-    struct qdl_device qdl;
+	char *incdir = NULL;
+	int type;
+	int ret;
+	int opt;
+	bool qdl_finalize_provisioning = false;
+	struct qdl_device qdl;
+	unsigned int read_timeout_ms = 100000; // make it large enough not to fail on large files
+	unsigned int write_timeout_ms = 100000; // make it large enough not to fail on large files
 
 
 	static struct option options[] = {
@@ -287,6 +289,8 @@ int main(int argc, char **argv)
 		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
 		{"storage", required_argument, 0, 's'},
+		{"read-timeout", required_argument, 0, 'r'},
+		{"write-timeout", required_argument, 0, 'w'},
 		{0, 0, 0, 0}
 	};
 
@@ -303,6 +307,12 @@ int main(int argc, char **argv)
                 break;
             case 's':
                 storage = optarg;
+                break;
+            case 'r':
+                read_timeout_ms = strtoul(optarg, 0, 10);
+                break;
+            case 'w':
+                write_timeout_ms = strtoul(optarg, 0, 10);
                 break;
             default:
                 print_usage();
@@ -353,7 +363,7 @@ int main(int argc, char **argv)
     if (ret < 0)
         return 1;
 
-    ret = firehose_run(&qdl, incdir, storage);
+    ret = firehose_run(&qdl, incdir, storage, read_timeout_ms, write_timeout_ms);
     if (ret < 0)
         return 1;
 

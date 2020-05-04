@@ -160,7 +160,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 	return ret < 0 ? ret : 0;
 }
 
-static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
+static int firehose_write(struct qdl_device *qdl, xmlDoc *doc, unsigned timeout)
 {
 	int saved_errno;
 	xmlChar *s;
@@ -173,7 +173,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 		if (qdl_debug)
 			fprintf(stderr, "FIREHOSE WRITE: %s\n", s);
 
-		ret = qdl_write(qdl, s, len);
+		ret = qdl_write(qdl, s, len, timeout);
 		saved_errno = errno;
 
 		/*
@@ -235,7 +235,7 @@ static int firehose_configure_response_parser(xmlNode *node, void *data)
 	return 1;
 }
 
-static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, bool skip_storage_init, const char *storage, size_t *max_payload_size)
+static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, bool skip_storage_init, const char *storage, size_t *max_payload_size, unsigned int read_timeout, unsigned int write_timeout)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -253,26 +253,26 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, 
 	xml_setpropf(node, "ZLPAwareHost", "%d", 1);
 	xml_setpropf(node, "SkipStorageInit", "%d", skip_storage_init);
 
-	ret = firehose_write(qdl, doc);
+	ret = firehose_write(qdl, doc, write_timeout);
 	xmlFreeDoc(doc);
 	if (ret < 0)
 		return ret;
 
-	return firehose_read(qdl, 5000, firehose_configure_response_parser, max_payload_size);
+	return firehose_read(qdl, read_timeout, firehose_configure_response_parser, max_payload_size);
 }
 
-static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, const char *storage)
+static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, const char *storage, unsigned int read_timeout, unsigned int write_timeout)
 {
 	size_t size = 0;
 	int ret;
 
-	ret = firehose_send_configure(qdl, max_payload_size, skip_storage_init, storage, &size);
+	ret = firehose_send_configure(qdl, max_payload_size, skip_storage_init, storage, &size, read_timeout, write_timeout);
 	if (ret < 0)
 		return ret;
 
 	/* Retry if remote proposed different size */
 	if (size != max_payload_size) {
-		ret = firehose_send_configure(qdl, size, skip_storage_init, storage, &size);
+		ret = firehose_send_configure(qdl, size, skip_storage_init, storage, &size, read_timeout, write_timeout);
 		if (ret < 0)
 			return ret;
 
@@ -323,7 +323,7 @@ out:
 	return ret;
 }
 
-static int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
+static int firehose_program(struct qdl_device *qdl, struct program *program, int fd, unsigned int read_timeout, unsigned int write_timeout)
 {
 	unsigned num_sectors;
 	struct stat sb;
@@ -374,13 +374,13 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		xml_setpropf(node, "last_sector", "%d", program->last_sector);
 	}
 
-	ret = firehose_write(qdl, doc);
+	ret = firehose_write(qdl, doc, write_timeout);
 	if (ret < 0) {
 		fprintf(stderr, "[PROGRAM] failed to write program command\n");
 		goto out;
 	}
 
-	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
 	if (ret) {
 		fprintf(stderr, "[PROGRAM] failed to setup programming\n");
 		goto out;
@@ -400,7 +400,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		if (n < max_payload_size)
 			memset(buf + n, 0, max_payload_size - n);
 
-		n = qdl_write(qdl, buf, chunk_size * program->sector_size);
+		n = qdl_write(qdl, buf, chunk_size * program->sector_size, true, write_timeout);
 		if (n < 0)
 			err(1, "failed to write");
 
@@ -412,7 +412,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t = time(NULL) - t0;
 
-	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
 	if (ret) {
 		fprintf(stderr, "[PROGRAM] failed\n");
 	} else if (t) {
@@ -430,7 +430,7 @@ out:
 	return ret;
 }
 
-static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
+static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch, unsigned int timeout)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -452,11 +452,11 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 	xml_setpropf(node, "start_sector", "%s", patch->start_sector);
 	xml_setpropf(node, "value", "%s", patch->value);
 
-	ret = firehose_write(qdl, doc);
+	ret = firehose_write(qdl, doc, timeout);
 	if (ret < 0)
 		goto out;
 
-	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, timeout, firehose_generic_parser, NULL);
 	if (ret)
 		fprintf(stderr, "[APPLY PATCH] %d\n", ret);
 
@@ -465,7 +465,7 @@ out:
 	return ret;
 }
 
-static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node){
+static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node, unsigned int read_timeout, unsigned int write_timeout){
         xmlNode *root;
         xmlDoc *doc;
         int ret;
@@ -475,11 +475,11 @@ static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node){
         xmlDocSetRootElement(doc, root);
         xmlAddChild(root, node);
 
-        ret = firehose_write(qdl, doc);
+        ret = firehose_write(qdl, doc, write_timeout);
         if (ret < 0)
                 goto out;
 
-        ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+        ret = firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
         if (ret) {
                 fprintf(stderr, "[UFS] %s err %d\n", __func__, ret);
                 ret = -EINVAL;
@@ -490,7 +490,7 @@ out:
         return ret;
 }
 
-int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs)
+int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs, unsigned int read_timeout, unsigned int write_timeout)
 {
 	xmlNode *node_to_send;
 	int ret;
@@ -507,14 +507,14 @@ int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs)
 	xml_setpropf(node_to_send, "wPeriodicRTCUpdate", "%d", ufs->wPeriodicRTCUpdate);
 	xml_setpropf(node_to_send, "bConfigDescrLock", "%d", 0/*ufs->bConfigDescrLock*/); //Safety, remove before fly
 
-	ret = firehose_send_single_tag(qdl, node_to_send);
+	ret = firehose_send_single_tag(qdl, node_to_send, read_timeout, write_timeout);
 	if (ret)
 		fprintf(stderr, "[APPLY UFS common] %d\n", ret);
 
 	return ret;
 }
 
-int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
+int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs, unsigned int read_timeout, unsigned int write_timeout)
 {
 	xmlNode *node_to_send;
 	int ret;
@@ -534,7 +534,7 @@ int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
 	if(ufs->desc)
 		xml_setpropf(node_to_send, "desc", "%s", ufs->desc);
 
-	ret = firehose_send_single_tag(qdl, node_to_send);
+	ret = firehose_send_single_tag(qdl, node_to_send, read_timeout, write_timeout);
 	if (ret)
 		fprintf(stderr, "[APPLY UFS body] %d\n", ret);
 
@@ -542,7 +542,7 @@ int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
 }
 
 int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs,
-	bool commit)
+	bool commit, unsigned int read_timeout, unsigned int write_timeout)
 {
 	xmlNode *node_to_send;
 	int ret;
@@ -552,14 +552,14 @@ int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs
 	xml_setpropf(node_to_send, "LUNtoGrow", "%d", ufs->LUNtoGrow);
 	xml_setpropf(node_to_send, "commit", "%d", commit);
 
-	ret = firehose_send_single_tag(qdl, node_to_send);
+	ret = firehose_send_single_tag(qdl, node_to_send, read_timeout, write_timeout);
 	if (ret)
 		fprintf(stderr, "[APPLY UFS epilogue] %d\n", ret);
 
 	return ret;
 }
 
-static int firehose_set_bootable(struct qdl_device *qdl, int part)
+static int firehose_set_bootable(struct qdl_device *qdl, int part, unsigned int read_timeout, unsigned int write_timeout)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -573,12 +573,12 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	node = xmlNewChild(root, NULL, (xmlChar*)"setbootablestoragedrive", NULL);
 	xml_setpropf(node, "value", "%d", part);
 
-	ret = firehose_write(qdl, doc);
+	ret = firehose_write(qdl, doc, write_timeout);
 	xmlFreeDoc(doc);
 	if (ret < 0)
 		return ret;
 
-	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
 	if (ret) {
 		fprintf(stderr, "failed to mark partition %d as bootable\n", part);
 		return -1;
@@ -588,7 +588,7 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	return 0;
 }
 
-static int firehose_reset(struct qdl_device *qdl)
+static int firehose_reset(struct qdl_device *qdl, unsigned int read_timeout, unsigned int write_timeout)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -602,27 +602,28 @@ static int firehose_reset(struct qdl_device *qdl)
 	node = xmlNewChild(root, NULL, (xmlChar*)"power", NULL);
 	xml_setpropf(node, "value", "reset");
 
-	ret = firehose_write(qdl, doc);
+	ret = firehose_write(qdl, doc, write_timeout);
 	xmlFreeDoc(doc);
 	if (ret < 0)
 		return ret;
 
-	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
 	/* drain any remaining log messages for reset */
 	if (!ret)
-		firehose_read(qdl, 1000, firehose_generic_parser, NULL);
+		firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
 	return ret;
 }
 
-int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage)
+int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage, unsigned int read_timeout, unsigned int write_timeout)
 {
 	int bootable;
 	int ret;
-
-	firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+	/* Wait for the firehose payload to boot */
+	sleep(3);
+	firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
 
 	if(ufs_need_provisioning()) {
-		ret = firehose_configure(qdl, true, storage);
+		ret = firehose_configure(qdl, true, storage, read_timeout, write_timeout);
 		if (ret)
 			return ret;
 		ret = ufs_provisioning_execute(qdl, firehose_apply_ufs_common,
@@ -637,7 +638,7 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 		return ret;
 	}
 
-	ret = firehose_configure(qdl, false, storage);
+	ret = firehose_configure(qdl, false, storage, read_timeout, write_timeout);
 	if (ret)
 		return ret;
 
@@ -657,9 +658,9 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	if (bootable < 0)
 		fprintf(stderr, "no boot partition found\n");
 	else
-		firehose_set_bootable(qdl, bootable);
+		firehose_set_bootable(qdl, bootable, read_timeout, write_timeout);
 
-	firehose_reset(qdl);
+	firehose_reset(qdl, read_timeout, write_timeout);
 
 	return 0;
 }
