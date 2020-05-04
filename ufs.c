@@ -264,9 +264,9 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 }
 
 int ufs_provisioning_execute(struct qdl_device *qdl,
-	int (*apply_ufs_common)(struct qdl_device *, struct ufs_common*),
-	int (*apply_ufs_body)(struct qdl_device *, struct ufs_body*),
-	int (*apply_ufs_epilogue)(struct qdl_device *, struct ufs_epilogue*, bool))
+	int (*apply_ufs_common)(struct qdl_device *, struct ufs_common*, unsigned int, unsigned int),
+	int (*apply_ufs_body)(struct qdl_device *, struct ufs_body*, unsigned int, unsigned int),
+	int (*apply_ufs_epilogue)(struct qdl_device *, struct ufs_epilogue*, bool, unsigned int, unsigned int))
 {
 	int ret;
 	struct ufs_body *body;

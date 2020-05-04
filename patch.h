@@ -17,6 +17,6 @@ struct patch {
 };
 
 int patch_load(const char *patch_file);
-int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch));
+int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch, unsigned int timeout));
 
 #endif
