@@ -91,7 +91,7 @@ unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors)
 		return 0;
 	}
 
-	return (unsigned int) strtoul((char*)value, NULL, 10);
+	return (unsigned int) strtoul((char*)value, NULL, 0);
 }
 
 const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
