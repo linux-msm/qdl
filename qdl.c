@@ -212,9 +212,10 @@ static int parse_usb_desc(int fd, struct qdl_device *qdl, int *intf)
 		if (ifc->bInterfaceSubClass != 0xff)
 			continue;
 
-		/* bInterfaceProtocol of 0xff and 0x10 has been seen */
+		/* bInterfaceProtocol of 0xff, 0x10 and 0x11 has been seen */
 		if (ifc->bInterfaceProtocol != 0xff &&
-				ifc->bInterfaceProtocol != 16)
+		    ifc->bInterfaceProtocol != 16 &&
+		    ifc->bInterfaceProtocol != 17)
 			continue;
 
 		qdl->fd = fd;
