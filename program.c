@@ -75,7 +75,7 @@ int program_load(const char *program_file)
 		program->label = attr_as_string(node, "label", &errors);
 		program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
 		program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
-		program->start_sector = attr_as_string(node, "start_sector", &errors);
+		program->start_sector = attr_as_unsigned(node, "start_sector", &errors);
 
 		if (errors) {
 			fprintf(stderr, "[PROGRAM] errors while parsing program\n");

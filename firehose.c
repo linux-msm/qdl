@@ -336,7 +336,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", program->sector_size);
 	xml_setpropf(node, "num_partition_sectors", "%d", num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
-	xml_setpropf(node, "start_sector", "%s", program->start_sector);
+	xml_setpropf(node, "start_sector", "%d", program->start_sector);
 	if (program->filename)
 		xml_setpropf(node, "filename", "%s", program->filename);
 
@@ -415,7 +415,7 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 	xml_setpropf(node, "filename", "%s", patch->filename);
 	xml_setpropf(node, "physical_partition_number", "%d", patch->partition);
 	xml_setpropf(node, "size_in_bytes", "%d", patch->size_in_bytes);
-	xml_setpropf(node, "start_sector", "%s", patch->start_sector);
+	xml_setpropf(node, "start_sector", "%d", patch->start_sector);
 	xml_setpropf(node, "value", "%s", patch->value);
 
 	ret = firehose_write(qdl, doc);

@@ -11,7 +11,7 @@ struct program {
 	const char *label;
 	unsigned num_sectors;
 	unsigned partition;
-	const char *start_sector;
+	unsigned start_sector;
 
 	struct program *next;
 };
