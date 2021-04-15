@@ -294,6 +294,39 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, co
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
 
+static int firehose_erase(struct qdl_device *qdl, struct program *program)
+{
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	int ret;
+
+	doc = xmlNewDoc((xmlChar*)"1.0");
+	root = xmlNewNode(NULL, (xmlChar*)"data");
+	xmlDocSetRootElement(doc, root);
+
+	node = xmlNewChild(root, NULL, (xmlChar*)"erase", NULL);
+	xml_setpropf(node, "PAGES_PER_BLOCK", "%d", program->pages_per_block);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", program->sector_size);
+	xml_setpropf(node, "num_partition_sectors", "%d", program->num_sectors);
+	xml_setpropf(node, "start_sector", "%d", program->start_sector);
+
+	ret = firehose_write(qdl, doc);
+	if (ret < 0) {
+		fprintf(stderr, "[PROGRAM] failed to write program command\n");
+		goto out;
+	}
+
+	ret = firehose_read(qdl, 30, firehose_nop_parser);
+	fprintf(stderr, "[ERASE] erase 0x%x+0x%x %s\n",
+		program->start_sector, program->num_sectors,
+		ret ? "failed" : "succeeded");
+
+out:
+	xmlFreeDoc(doc);
+	return ret;
+}
+
 static int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
 {
 	unsigned num_sectors;
@@ -339,6 +372,11 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	xml_setpropf(node, "start_sector", "%d", program->start_sector);
 	if (program->filename)
 		xml_setpropf(node, "filename", "%s", program->filename);
+
+	if (program->is_nand) {
+		xml_setpropf(node, "PAGES_PER_BLOCK", "%d", program->pages_per_block);
+		xml_setpropf(node, "last_sector", "%d", program->last_sector);
+	}
 
 	ret = firehose_write(qdl, doc);
 	if (ret < 0) {
@@ -597,6 +635,10 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	}
 
 	ret = firehose_configure(qdl, false, storage);
+	if (ret)
+		return ret;
+
+	ret = erase_execute(qdl, firehose_erase);
 	if (ret)
 		return ret;
 

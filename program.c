@@ -37,13 +37,90 @@
 
 #include "program.h"
 #include "qdl.h"
-		
+
 static struct program *programes;
 static struct program *programes_last;
 
-int program_load(const char *program_file)
+static int load_erase_tag(xmlNode *node, bool is_nand)
 {
 	struct program *program;
+	int errors = 0;
+
+	if (!is_nand) {
+		fprintf(stderr, "got \"erase\" tag for non-NAND storage\n");
+		return -EINVAL;
+	}
+
+	program = calloc(1, sizeof(struct program));
+
+
+	program->is_nand = true;
+	program->is_erase = true;
+
+	program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
+	program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
+	program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
+	program->start_sector = attr_as_unsigned(node, "start_sector", &errors);
+
+	if (errors) {
+		fprintf(stderr, "[PROGRAM] errors while parsing erase tag\n");
+		free(program);
+		return -EINVAL;
+	}
+
+	if (programes) {
+		programes_last->next = program;
+		programes_last = program;
+	} else {
+		programes = program;
+		programes_last = program;
+	}
+
+	return 0;
+}
+
+static int load_program_tag(xmlNode *node, bool is_nand)
+{
+	struct program *program;
+	int errors = 0;
+
+	program = calloc(1, sizeof(struct program));
+
+	program->is_nand = is_nand;
+
+	program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
+	program->filename = attr_as_string(node, "filename", &errors);
+	program->label = attr_as_string(node, "label", &errors);
+	program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
+	program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
+	program->start_sector = attr_as_unsigned(node, "start_sector", &errors);
+
+	if (is_nand) {
+		program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
+		program->last_sector = attr_as_unsigned(node, "last_sector", &errors);
+	} else {
+		program->file_offset = attr_as_unsigned(node, "file_sector_offset", &errors);
+	}
+
+	if (errors) {
+		fprintf(stderr, "[PROGRAM] errors while parsing program\n");
+		free(program);
+		return -EINVAL;
+	}
+
+	if (programes) {
+		programes_last->next = program;
+		programes_last = program;
+	} else {
+		programes = program;
+		programes_last = program;
+	}
+
+	return 0;
+}
+
+int program_load(const char *program_file, bool is_nand)
+{
 	xmlNode *node;
 	xmlNode *root;
 	xmlDoc *doc;
@@ -60,43 +137,24 @@ int program_load(const char *program_file)
 		if (node->type != XML_ELEMENT_NODE)
 			continue;
 
-		if (xmlStrcmp(node->name, (xmlChar*)"program")) {
+		errors = -EINVAL;
+
+		if (!xmlStrcmp(node->name, (xmlChar *)"erase"))
+			errors = load_erase_tag(node, is_nand);
+		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
+			errors = load_program_tag(node, is_nand);
+		else
 			fprintf(stderr, "[PROGRAM] unrecognized tag \"%s\", ignoring\n", node->name);
-			continue;
-		}
 
-		errors = 0;
-
-		program = calloc(1, sizeof(struct program));
-
-		program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
-		program->file_offset = attr_as_unsigned(node, "file_sector_offset", &errors);
-		program->filename = attr_as_string(node, "filename", &errors);
-		program->label = attr_as_string(node, "label", &errors);
-		program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
-		program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
-		program->start_sector = attr_as_unsigned(node, "start_sector", &errors);
-
-		if (errors) {
-			fprintf(stderr, "[PROGRAM] errors while parsing program\n");
-			free(program);
-			continue;
-		}
-
-		if (programes) {
-			programes_last->next = program;
-			programes_last = program;
-		} else {
-			programes = program;
-			programes_last = program;
-		}
+		if (errors)
+			return errors;
 	}
 
 	xmlFreeDoc(doc);
 
 	return 0;
 }
-	
+
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
 		    const char *incdir)
 {
@@ -107,7 +165,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 	int fd;
 
 	for (program = programes; program; program = program->next) {
-		if (!program->filename)
+		if (program->is_erase || !program->filename)
 			continue;
 
 		filename = program->filename;
@@ -134,6 +192,24 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 	return 0;
 }
 
+int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program))
+{
+	struct program *program;
+	int ret;
+
+
+	for (program = programes; program; program = program->next) {
+		if (!program->is_erase)
+			continue;
+
+		ret = apply(qdl, program);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 /**
  * program_find_bootable_partition() - find one bootable partition
  *
@@ -151,6 +227,8 @@ int program_find_bootable_partition(void)
 
 	for (program = programes; program; program = program->next) {
 		label = program->label;
+		if (!label)
+			continue;
 
 		if (!strcmp(label, "xbl") || !strcmp(label, "xbl_a") ||
 		    !strcmp(label, "sbl1")) {
