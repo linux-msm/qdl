@@ -104,16 +104,12 @@ static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	qdl_write(qdl, &resp, resp.length);
 }
 
-static int sahara_read_common(struct qdl_device *qdl, const char *mbn, off_t offset, size_t len)
+static int sahara_read_common(struct qdl_device *qdl, int progfd, off_t offset, size_t len)
 {
-	int progfd;
 	ssize_t n;
 	void *buf;
 	int ret = 0;
 
-	progfd = open(mbn, O_RDONLY);
-	if (progfd < 0)
-		return -errno;
 
 	buf = malloc(len);
 	if (!buf)
@@ -131,13 +127,12 @@ static int sahara_read_common(struct qdl_device *qdl, const char *mbn, off_t off
 		err(1, "failed to write %zu bytes to sahara", len);
 
 	free(buf);
-	close(progfd);
 
 out:
 	return ret;
 }
 
-static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, const char *mbn)
+static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, int prog_fd)
 {
 	int ret;
 
@@ -146,12 +141,12 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, const ch
 	printf("READ image: %d offset: 0x%x length: 0x%x\n",
 	       pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
-	ret = sahara_read_common(qdl, mbn, pkt->read_req.offset, pkt->read_req.length);
+	ret = sahara_read_common(qdl, prog_fd, pkt->read_req.offset, pkt->read_req.length);
 	if (ret < 0)
 		errx(1, "failed to read image chunk to sahara");
 }
 
-static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, const char *mbn)
+static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, int prog_fd)
 {
 	int ret;
 
@@ -160,7 +155,7 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, const 
 	printf("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
 	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
-	ret = sahara_read_common(qdl, mbn, pkt->read64_req.offset, pkt->read64_req.length);
+	ret = sahara_read_common(qdl, prog_fd, pkt->read64_req.offset, pkt->read64_req.length);
 	if (ret < 0)
 		errx(1, "failed to read image chunk to sahara");
 }
@@ -199,6 +194,13 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 	char tmp[32];
 	bool done = false;
 	int n;
+	int prog_fd;
+
+	prog_fd = open(prog_mbn, O_RDONLY);
+	if (prog_fd < 0) {
+		fprintf(stderr, "Can not open %s: %s\n", prog_mbn, strerror(errno));
+		return -1;
+	}
 
 	while (!done) {
 		n = qdl_read(qdl, buf, sizeof(buf), 1000);
@@ -216,7 +218,7 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 			sahara_hello(qdl, pkt);
 			break;
 		case 3:
-			sahara_read(qdl, pkt, prog_mbn);
+			sahara_read(qdl, pkt, prog_fd);
 			break;
 		case 4:
 			sahara_eoi(qdl, pkt);
@@ -226,7 +228,7 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 			done = true;
 			break;
 		case 0x12:
-			sahara_read64(qdl, pkt, prog_mbn);
+			sahara_read64(qdl, pkt, prog_fd);
 			break;
 		default:
 			sprintf(tmp, "CMD%x", pkt->cmd);
@@ -234,6 +236,8 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 			break;
 		}
 	}
+
+	close(prog_fd);
 
 	return done ? 0 : -1;
 }
