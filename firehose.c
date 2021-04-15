@@ -190,7 +190,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 	if (qdl_debug)
 		fprintf(stderr, "FIREHOSE WRITE: %s\n", s);
 
-	ret = qdl_write(qdl, s, len, true);
+	ret = qdl_write(qdl, s, len);
 	saved_errno = errno;
 	xmlFree(s);
 	return ret < 0 ? -saved_errno : 0;
@@ -404,7 +404,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		if (n < max_payload_size)
 			memset(buf + n, 0, max_payload_size - n);
 
-		n = qdl_write(qdl, buf, chunk_size * program->sector_size, true);
+		n = qdl_write(qdl, buf, chunk_size * program->sector_size);
 		if (n < 0)
 			err(1, "failed to write");
 

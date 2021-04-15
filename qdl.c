@@ -351,7 +351,7 @@ int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout
 	return ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
 }
 
-int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
+int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
 {
 
 	unsigned char *data = (unsigned char*) buf;
@@ -359,21 +359,6 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
 	unsigned count = 0;
 	size_t len_orig = len;
 	int n;
-
-	if(len == 0) {
-		bulk.ep = qdl->out_ep;
-		bulk.len = 0;
-		bulk.data = data;
-		bulk.timeout = 1000;
-
-		n = ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
-		if(n != 0) {
-			fprintf(stderr,"ERROR: n = %d, errno = %d (%s)\n",
-				n, errno, strerror(errno));
-			return -1;
-		}
-		return 0;
-	}
 
 	while(len > 0) {
 		int xfer;
@@ -395,7 +380,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, bool eot)
 		data += xfer;
 	}
 
-	if (eot && (len_orig % qdl->out_maxpktsize) == 0) {
+	if (len_orig % qdl->out_maxpktsize == 0) {
 		bulk.ep = qdl->out_ep;
 		bulk.len = 0;
 		bulk.data = NULL;

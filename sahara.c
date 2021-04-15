@@ -101,7 +101,7 @@ static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	resp.hello_resp.status = 0;
 	resp.hello_resp.mode = pkt->hello_req.mode;
 
-	qdl_write(qdl, &resp, resp.length, true);
+	qdl_write(qdl, &resp, resp.length);
 }
 
 static int sahara_read_common(struct qdl_device *qdl, const char *mbn, off_t offset, size_t len)
@@ -126,7 +126,7 @@ static int sahara_read_common(struct qdl_device *qdl, const char *mbn, off_t off
 		goto out;
 	}
 
-	n = qdl_write(qdl, buf, n, true);
+	n = qdl_write(qdl, buf, n);
 	if (n != len)
 		err(1, "failed to write %zu bytes to sahara", len);
 
@@ -180,7 +180,7 @@ static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 
 	done.cmd = 5;
 	done.length = 0x8;
-	qdl_write(qdl, &done, done.length, true);
+	qdl_write(qdl, &done, done.length);
 }
 
 static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
