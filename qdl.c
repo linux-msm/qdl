@@ -302,8 +302,6 @@ static int usb_open(struct qdl_device *qdl)
 		if (!dev_node)
 			continue;
 
-		printf("%s\n", dev_node);
-
 		fd = open(dev_node, O_RDWR);
 		if (fd < 0)
 			continue;
