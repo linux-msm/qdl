@@ -30,6 +30,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <assert.h>
 #include <ctype.h>
@@ -115,18 +116,27 @@ static int firehose_read(struct qdl_device *qdl, int wait, int (*response_parser
 	bool done = false;
 	int ret = -ENXIO;
 	int n;
-	int timeout = 1000;
+	struct timeval timeout;
+	struct timeval now;
+	struct timeval delta = { .tv_sec = 1 };
 
 	if (wait > 0)
-		timeout = wait;
+		delta.tv_sec = wait;
+
+	gettimeofday(&now, NULL);
+	timeradd(&now, &delta, &timeout);
 
 	for (;;) {
-		n = qdl_read(qdl, buf, sizeof(buf), timeout);
+		n = qdl_read(qdl, buf, sizeof(buf), 100);
 		if (n < 0) {
 			if (done)
 				break;
 
-			warn("failed to read");
+			gettimeofday(&now, NULL);
+			if (timercmp(&now, &timeout, <))
+				continue;
+
+			warnx("firehose operation timed out");
 			return -ETIMEDOUT;
 		}
 		buf[n] = '\0';
@@ -158,15 +168,11 @@ static int firehose_read(struct qdl_device *qdl, int wait, int (*response_parser
 					else
 						ret = response_parser(node);
 					done = true;
-					timeout = 1;
 				}
 			}
 
 			xmlFreeDoc(nodes->doc);
 		}
-
-		if (wait > 0)
-			timeout = 100;
 	}
 
 	return ret;
@@ -340,7 +346,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		goto out;
 	}
 
-	ret = firehose_read(qdl, -1, firehose_nop_parser);
+	ret = firehose_read(qdl, 10, firehose_nop_parser);
 	if (ret) {
 		fprintf(stderr, "[PROGRAM] failed to setup programming\n");
 		goto out;
@@ -372,7 +378,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t = time(NULL) - t0;
 
-	ret = firehose_read(qdl, -1, firehose_nop_parser);
+	ret = firehose_read(qdl, 30, firehose_nop_parser);
 	if (ret) {
 		fprintf(stderr, "[PROGRAM] failed\n");
 	} else if (t) {
@@ -575,10 +581,7 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	int bootable;
 	int ret;
 
-	/* Wait for the firehose payload to boot */
-	sleep(3);
-
-	firehose_read(qdl, 1000, NULL);
+	firehose_read(qdl, 5, NULL);
 
 	if(ufs_need_provisioning()) {
 		ret = firehose_configure(qdl, true, storage);
