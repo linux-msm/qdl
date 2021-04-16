@@ -97,31 +97,33 @@ static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 	return node;
 }
 
-static void firehose_response_log(xmlNode *node)
+static int firehose_generic_parser(xmlNode *node, void *data)
 {
 	xmlChar *value;
 
 	value = xmlGetProp(node, (xmlChar*)"value");
-	printf("LOG: %s\n", value);
+
+	if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
+		printf("LOG: %s\n", value);
+		return 0;
+	}
+
+	return xmlStrcmp(value, (xmlChar*)"ACK") == 0 ? 1 : -1;
 }
 
-static int firehose_read(struct qdl_device *qdl, int wait, int (*response_parser)(xmlNode *node))
+static int firehose_read(struct qdl_device *qdl, int timeout_ms,
+			 int (*response_parser)(xmlNode *node, void *data),
+			 void *data)
 {
 	char buf[4096];
-	xmlNode *nodes;
 	xmlNode *node;
 	int error;
-	char *msg;
-	char *end;
-	bool done = false;
 	int ret = -ENXIO;
 	int n;
 	struct timeval timeout;
 	struct timeval now;
-	struct timeval delta = { .tv_sec = 1 };
-
-	if (wait > 0)
-		delta.tv_sec = wait;
+	struct timeval delta = { .tv_sec = timeout_ms / 1000,
+				 .tv_usec = (timeout_ms % 1000) * 1000 };
 
 	gettimeofday(&now, NULL);
 	timeradd(&now, &delta, &timeout);
@@ -129,9 +131,6 @@ static int firehose_read(struct qdl_device *qdl, int wait, int (*response_parser
 	for (;;) {
 		n = qdl_read(qdl, buf, sizeof(buf), 100);
 		if (n < 0) {
-			if (done)
-				break;
-
 			gettimeofday(&now, NULL);
 			if (timercmp(&now, &timeout, <))
 				continue;
@@ -144,38 +143,20 @@ static int firehose_read(struct qdl_device *qdl, int wait, int (*response_parser
 		if (qdl_debug)
 			fprintf(stderr, "FIREHOSE READ: %s\n", buf);
 
-		for (msg = buf; msg[0]; msg = end) {
-			end = strstr(msg, "</data>");
-			if (!end) {
-				fprintf(stderr, "firehose response truncated\n");
-				exit(1);
-			}
-
-			end += strlen("</data>");
-
-			nodes = firehose_response_parse(msg, end - msg, &error);
-			if (!nodes) {
-				fprintf(stderr, "unable to parse response\n");
-				return error;
-			}
-
-			for (node = nodes; node; node = node->next) {
-				if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
-					firehose_response_log(node);
-				} else if (xmlStrcmp(node->name, (xmlChar*)"response") == 0) {
-					if (!response_parser)
-						fprintf(stderr, "received response with no parser\n");
-					else
-						ret = response_parser(node);
-					done = true;
-				}
-			}
-
-			xmlFreeDoc(nodes->doc);
+		node = firehose_response_parse(buf, n, &error);
+		if (!node) {
+			fprintf(stderr, "unable to parse response\n");
+			return error;
 		}
+
+		ret = response_parser(node, data);
+		if (ret != 0)
+			break;
+
+		xmlFreeDoc(node->doc);
 	}
 
-	return ret;
+	return ret < 0 ? ret : 0;
 }
 
 static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
@@ -196,14 +177,6 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 	return ret < 0 ? -saved_errno : 0;
 }
 
-static int firehose_nop_parser(xmlNode *node)
-{
-	xmlChar *value;
-
-	value = xmlGetProp(node, (xmlChar*)"value");
-	return !!xmlStrcmp(value, (xmlChar*)"ACK");
-}
-
 static size_t max_payload_size = 1048576;
 
 /**
@@ -212,13 +185,18 @@ static size_t max_payload_size = 1048576;
  *
  * Return: max size supported by the remote, or negative errno on failure
  */
-static int firehose_configure_response_parser(xmlNode *node)
+static int firehose_configure_response_parser(xmlNode *node, void *data)
 {
 	xmlChar *payload;
 	xmlChar *value;
 	size_t max_size;
 
 	value = xmlGetProp(node, (xmlChar*)"value");
+	if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
+		printf("LOG: %s\n", value);
+		return 0;
+	}
+
 	payload = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytes");
 	if (!value || !payload)
 		return -EINVAL;
@@ -237,10 +215,12 @@ static int firehose_configure_response_parser(xmlNode *node)
 		max_size = strtoul((char*)payload, NULL, 10);
 	}
 
-	return max_size;
+	*(size_t*)data = max_size;
+
+	return 1;
 }
 
-static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, bool skip_storage_init, const char *storage)
+static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, bool skip_storage_init, const char *storage, size_t *max_payload_size)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -263,24 +243,25 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, 
 	if (ret < 0)
 		return ret;
 
-	return firehose_read(qdl, -1, firehose_configure_response_parser);
+	return firehose_read(qdl, 5000, firehose_configure_response_parser, max_payload_size);
 }
 
 static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, const char *storage)
 {
+	size_t size = 0;
 	int ret;
 
-	ret = firehose_send_configure(qdl, max_payload_size, skip_storage_init, storage);
+	ret = firehose_send_configure(qdl, max_payload_size, skip_storage_init, storage, &size);
 	if (ret < 0)
 		return ret;
 
 	/* Retry if remote proposed different size */
-	if (ret != max_payload_size) {
-		ret = firehose_send_configure(qdl, ret, skip_storage_init, storage);
+	if (size != max_payload_size) {
+		ret = firehose_send_configure(qdl, size, skip_storage_init, storage, &size);
 		if (ret < 0)
 			return ret;
 
-		max_payload_size = ret;
+		max_payload_size = size;
 	}
 
 	if (qdl_debug) {
@@ -317,7 +298,7 @@ static int firehose_erase(struct qdl_device *qdl, struct program *program)
 		goto out;
 	}
 
-	ret = firehose_read(qdl, 30, firehose_nop_parser);
+	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
 	fprintf(stderr, "[ERASE] erase 0x%x+0x%x %s\n",
 		program->start_sector, program->num_sectors,
 		ret ? "failed" : "succeeded");
@@ -384,7 +365,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		goto out;
 	}
 
-	ret = firehose_read(qdl, 10, firehose_nop_parser);
+	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
 	if (ret) {
 		fprintf(stderr, "[PROGRAM] failed to setup programming\n");
 		goto out;
@@ -416,7 +397,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t = time(NULL) - t0;
 
-	ret = firehose_read(qdl, 30, firehose_nop_parser);
+	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
 	if (ret) {
 		fprintf(stderr, "[PROGRAM] failed\n");
 	} else if (t) {
@@ -460,7 +441,7 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 	if (ret < 0)
 		goto out;
 
-	ret = firehose_read(qdl, -1, firehose_nop_parser);
+	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 	if (ret)
 		fprintf(stderr, "[APPLY PATCH] %d\n", ret);
 
@@ -483,7 +464,7 @@ static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node){
         if (ret < 0)
                 goto out;
 
-        ret = firehose_read(qdl, -1, firehose_nop_parser);
+        ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
         if (ret) {
                 fprintf(stderr, "[UFS] %s err %d\n", __func__, ret);
                 ret = -EINVAL;
@@ -582,7 +563,7 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	if (ret < 0)
 		return ret;
 
-	ret = firehose_read(qdl, -1, firehose_nop_parser);
+	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 	if (ret) {
 		fprintf(stderr, "failed to mark partition %d as bootable\n", part);
 		return -1;
@@ -611,7 +592,7 @@ static int firehose_reset(struct qdl_device *qdl)
 	if (ret < 0)
 		return ret;
 
-	return firehose_read(qdl, -1, firehose_nop_parser);
+	return firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 }
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage)
@@ -619,7 +600,7 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	int bootable;
 	int ret;
 
-	firehose_read(qdl, 5, NULL);
+	firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 
 	if(ufs_need_provisioning()) {
 		ret = firehose_configure(qdl, true, storage);
