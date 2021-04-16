@@ -9,7 +9,7 @@ struct patch {
 	const char *filename;
 	unsigned partition;
 	unsigned size_in_bytes;
-	const char *start_sector;
+	unsigned start_sector;
 	const char *value;
 	const char *what;
 
