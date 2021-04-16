@@ -168,11 +168,25 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 
 	xmlDocDumpMemory(doc, &s, &len);
 
-	if (qdl_debug)
-		fprintf(stderr, "FIREHOSE WRITE: %s\n", s);
+	for (;;) {
+		if (qdl_debug)
+			fprintf(stderr, "FIREHOSE WRITE: %s\n", s);
 
-	ret = qdl_write(qdl, s, len);
-	saved_errno = errno;
+		ret = qdl_write(qdl, s, len);
+		saved_errno = errno;
+
+		/*
+		 * db410c sometimes sense a <response> followed by <log>
+		 * entries and won't accept write commands until these are
+		 * drained, so attempt to read any pending data and then retry
+		 * the write.
+		 */
+		if (ret < 0 && errno == ETIMEDOUT) {
+			firehose_read(qdl, 100, firehose_generic_parser, NULL);
+		} else {
+			break;
+		}
+	}
 	xmlFree(s);
 	return ret < 0 ? -saved_errno : 0;
 }
