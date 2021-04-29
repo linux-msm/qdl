@@ -12,7 +12,7 @@ struct program {
 	const char *label;
 	unsigned num_sectors;
 	unsigned partition;
-	unsigned start_sector;
+	const char *start_sector;
 	unsigned last_sector;
 
 	bool is_nand;

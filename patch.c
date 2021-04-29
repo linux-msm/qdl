@@ -72,7 +72,7 @@ int patch_load(const char *patch_file)
 		patch->filename = attr_as_string(node, "filename", &errors);
 		patch->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
 		patch->size_in_bytes = attr_as_unsigned(node, "size_in_bytes", &errors);
-		patch->start_sector = attr_as_unsigned(node, "start_sector", &errors);
+		patch->start_sector = attr_as_string(node, "start_sector", &errors);
 		patch->value = attr_as_string(node, "value", &errors);
 		patch->what = attr_as_string(node, "what", &errors);
 
