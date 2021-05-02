@@ -222,6 +222,8 @@ static int usb_open(struct qdl_device *qdl) {
 found:
     libusb_free_device_list(usb, usb_size);
 
+    libusb_set_auto_detach_kernel_driver(qdl->handle, 1);
+
     ret = libusb_claim_interface(qdl->handle, intf);
     if (ret) {
         err(1, "libusb_claim_interface");

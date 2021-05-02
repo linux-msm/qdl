@@ -3,6 +3,8 @@ project(qdl C)
 
 set(CMAKE_C_STANDARD 11)
 
+
+find_package(LibXml2 REQUIRED libxml-2.0)
 find_package(LibXml2 REQUIRED)
 find_path(LIBUSB_INCLUDE_DIR
         NAMES libusb.h
