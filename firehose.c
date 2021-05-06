@@ -29,6 +29,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#define _FILE_OFFSET_BITS 64
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -387,7 +388,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t0 = time(NULL);
 
-	lseek(fd, program->file_offset * program->sector_size, SEEK_SET);
+	lseek(fd, (off_t) program->file_offset * program->sector_size, SEEK_SET);
 	left = num_sectors;
 	while (left > 0) {
 		chunk_size = MIN(max_payload_size / program->sector_size, left);
