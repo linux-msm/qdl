@@ -606,7 +606,11 @@ static int firehose_reset(struct qdl_device *qdl)
 	if (ret < 0)
 		return ret;
 
-	return firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+	/* drain any remaining log messages for reset */
+	if (!ret)
+		firehose_read(qdl, 1000, firehose_generic_parser, NULL);
+	return ret;
 }
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage)
