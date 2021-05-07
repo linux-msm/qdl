@@ -630,6 +630,9 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 			printf("UFS provisioning succeeded\n");
 		else
 			printf("UFS provisioning failed\n");
+
+		firehose_reset(qdl);
+
 		return ret;
 	}
 
