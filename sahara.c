@@ -204,8 +204,10 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 
 	while (!done) {
 		n = qdl_read(qdl, buf, sizeof(buf), 1000);
-		if (n < 0)
+		if (n < 0){
+			fprintf(stderr,"Cannot read qdl device\n");
 			break;
+		}
 
 		pkt = (struct sahara_pkt*)buf;
 		if (n != pkt->length) {
