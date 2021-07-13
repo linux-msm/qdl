@@ -195,7 +195,7 @@ static int parse_usb_desc(libusb_device *device, struct qdl_device *qdl, int *in
     return -EINVAL;
 }
 
-static int usb_open(struct qdl_device *qdl) {
+static void usb_open(struct qdl_device *qdl) {
 
     int intf = -1;
 
@@ -203,21 +203,29 @@ static int usb_open(struct qdl_device *qdl) {
     if (ret) {
         err(1, "failed to initialize libusb %d", ret);
     }
-    libusb_device **usb;
-    ssize_t usb_size = libusb_get_device_list(NULL, &usb);
-    if (usb_size < 0) {
-        err(1, "can't get usb devices.\n");
-    }
-    if (usb_size > 0) {
-        for (int i = 0; i < usb_size; i++) {
-            ret = parse_usb_desc(usb[i], qdl, &intf);
-            if (!ret) {
-                goto found;
+
+    bool notify = false;
+    for(;;) {
+        libusb_device **usb;
+        ssize_t usb_size = libusb_get_device_list(NULL, &usb);
+        if (usb_size < 0) {
+            err(1, "can't get usb devices.\n");
+        }
+        if (usb_size > 0) {
+            for (int i = 0; i < usb_size; i++) {
+                ret = parse_usb_desc(usb[i], qdl, &intf);
+                if (!ret) {
+                    goto found;
+                }
             }
         }
-    }
 
-    return -ENOENT;
+        if (notify) {
+            notify = false;
+            fprintf(stderr, "Waiting for EDL device\n");
+        }
+        sleep(1);
+    }
 
 found:
     libusb_free_device_list(usb, usb_size);
@@ -228,7 +236,6 @@ found:
     if (ret) {
         err(1, "libusb_claim_interface");
     }
-    return 0;
 }
 
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout) {
@@ -267,7 +274,7 @@ static void print_usage(void)
 {
 	extern const char *__progname;
 	fprintf(stderr,
-		"%s [--debug] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
+		"%s [--debug] [--write-timeout <ns>] [--read-timeout <ns>] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
 }
 
@@ -355,17 +362,17 @@ int main(int argc, char **argv)
         }
     } while (++optind < argc);
 
-    ret = usb_open(&qdl);
-    if (ret)
-        return 1;
+    usb_open(&qdl);
 
     ret = sahara_run(&qdl, prog_mbn, read_timeout_ms);
-    if (ret < 0)
-        return 1;
+	if (ret < 0){
+		errx(1, "sahara_run error %d", ret);
+	}
 
     ret = firehose_run(&qdl, incdir, storage, read_timeout_ms, write_timeout_ms);
-    if (ret < 0)
-        return 1;
+	if (ret < 0){
+		errx(1, "firehose_run error %d", ret);
+	}
 
     return 0;
 }
