@@ -69,7 +69,8 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning);
 int ufs_provisioning_execute(struct qdl_device *qdl,
 	int (*apply_ufs_common)(struct qdl_device *qdl, struct ufs_common *ufs, unsigned int read_timeout, unsigned int write_timeout),
 	int (*apply_ufs_body)(struct qdl_device *qdl, struct ufs_body *ufs, unsigned int read_timeout, unsigned int write_timeout),
-	int (*apply_ufs_epilogue)(struct qdl_device *qdl, struct ufs_epilogue *ufs, bool commit, unsigned intread_timeout, unsigned int write_timeout));
+	int (*apply_ufs_epilogue)(struct qdl_device *qdl, struct ufs_epilogue *ufs, bool commit, unsigned intread_timeout, unsigned int write_timeout),
+	unsigned int read_timeout, unsigned int write_timeout);
 bool ufs_need_provisioning(void);
 
 #endif

@@ -290,7 +290,7 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, co
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
 
-static int firehose_erase(struct qdl_device *qdl, struct program *program)
+static int firehose_erase(struct qdl_device *qdl, struct program *program, unsigned int read_timeout, unsigned int write_timeout)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -307,13 +307,13 @@ static int firehose_erase(struct qdl_device *qdl, struct program *program)
 	xml_setpropf(node, "num_partition_sectors", "%d", program->num_sectors);
 	xml_setpropf(node, "start_sector", "%s", program->start_sector);
 
-	ret = firehose_write(qdl, doc);
+	ret = firehose_write(qdl, doc, write_timeout);
 	if (ret < 0) {
 		fprintf(stderr, "[PROGRAM] failed to write program command\n");
 		goto out;
 	}
 
-	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
 	fprintf(stderr, "[ERASE] erase %s+0x%x %s\n",
 		program->start_sector, program->num_sectors,
 		ret ? "failed" : "succeeded");
@@ -400,7 +400,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		if (n < max_payload_size)
 			memset(buf + n, 0, max_payload_size - n);
 
-		n = qdl_write(qdl, buf, chunk_size * program->sector_size, true, write_timeout);
+		n = qdl_write(qdl, buf, chunk_size * program->sector_size, write_timeout);
 		if (n < 0)
 			err(1, "failed to write");
 
@@ -430,7 +430,7 @@ out:
 	return ret;
 }
 
-static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch, unsigned int timeout)
+static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch, unsigned int read_timeout, unsigned int write_timeout)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -452,11 +452,11 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch, uns
 	xml_setpropf(node, "start_sector", "%s", patch->start_sector);
 	xml_setpropf(node, "value", "%s", patch->value);
 
-	ret = firehose_write(qdl, doc, timeout);
+	ret = firehose_write(qdl, doc, write_timeout);
 	if (ret < 0)
 		goto out;
 
-	ret = firehose_read(qdl, timeout, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
 	if (ret)
 		fprintf(stderr, "[APPLY PATCH] %d\n", ret);
 
@@ -627,13 +627,13 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 		if (ret)
 			return ret;
 		ret = ufs_provisioning_execute(qdl, firehose_apply_ufs_common,
-			firehose_apply_ufs_body, firehose_apply_ufs_epilogue);
+			firehose_apply_ufs_body, firehose_apply_ufs_epilogue, read_timeout, write_timeout);
 		if (!ret)
 			printf("UFS provisioning succeeded\n");
 		else
 			printf("UFS provisioning failed\n");
 
-		firehose_reset(qdl);
+		firehose_reset(qdl, read_timeout, write_timeout);
 
 		return ret;
 	}
@@ -642,15 +642,15 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	if (ret)
 		return ret;
 
-	ret = erase_execute(qdl, firehose_erase);
+	ret = erase_execute(qdl, firehose_erase, read_timeout, write_timeout);
 	if (ret)
 		return ret;
 
-	ret = program_execute(qdl, firehose_program, incdir);
+	ret = program_execute(qdl, firehose_program, incdir, read_timeout, write_timeout);
 	if (ret)
 		return ret;
 
-	ret = patch_execute(qdl, firehose_apply_patch);
+	ret = patch_execute(qdl, firehose_apply_patch, read_timeout, write_timeout);
 	if (ret)
 		return ret;
 

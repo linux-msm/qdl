@@ -173,7 +173,7 @@ static int parse_usb_desc(libusb_device *device, struct qdl_device *qdl, int *in
             /* bInterfaceProtocol of 0xff, 0x10 and 0x11 has been seen */
             if (interface.altsetting->bInterfaceProtocol != 0xff &&
                 interface.altsetting->bInterfaceProtocol != 16 &&
-                ifc->bInterfaceProtocol != 17) {
+                interface.altsetting->bInterfaceProtocol != 17) {
                 continue;
             }
 
@@ -244,7 +244,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int 
     unsigned char *data = (unsigned char *) buf;
     while (size > 0) {
         int xfer = (size > qdl->out_maxpktsize) ? qdl->out_maxpktsize : size;
-        ret = libusb_bulk_transfer(qdl->handle, qdl->out_ep, data, xfer, &transferred, 0);
+        ret = libusb_bulk_transfer(qdl->handle, qdl->out_ep, data, xfer, &transferred, timeout);
         if (ret) {
             err(1, "libusb_bulk_transfer error");
         }
@@ -254,7 +254,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int 
     }
 
     if (len % qdl->out_maxpktsize == 0) {
-        ret = libusb_bulk_transfer(qdl->handle, qdl->out_ep, NULL, 0, &transferred, 0);
+        ret = libusb_bulk_transfer(qdl->handle, qdl->out_ep, NULL, 0, &transferred, timeout);
         if (ret) {
             err(1, "libusb_bulk_transfer error");
         }
@@ -359,7 +359,7 @@ int main(int argc, char **argv)
     if (ret)
         return 1;
 
-    ret = sahara_run(&qdl, prog_mbn);
+    ret = sahara_run(&qdl, prog_mbn, read_timeout_ms);
     if (ret < 0)
         return 1;
 

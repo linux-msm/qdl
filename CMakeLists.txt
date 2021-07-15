@@ -31,3 +31,4 @@ add_executable(qdl
         util.c)
 target_include_directories(qdl PUBLIC ${LIBXML2_INCLUDE_DIR} ${LIBUSB_INCLUDE_DIR})
 target_link_libraries(qdl ${LIBXML2_LIBRARIES} ${LIBUSB_LIBRARY})
+target_compile_options(qdl PRIVATE -Werror -Wall)

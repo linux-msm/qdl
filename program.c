@@ -156,7 +156,7 @@ int program_load(const char *program_file, bool is_nand)
 }
 	
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd, unsigned int read_timeout, unsigned int write_timeout),
-		    const char *incdir)
+		    const char *incdir, unsigned int read_timeout, unsigned int write_timeout)
 {
 	struct program *program;
 	const char *filename;
@@ -182,7 +182,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 			continue;
 		}
 
-		ret = apply(qdl, program, fd);
+		ret = apply(qdl, program, fd, read_timeout, write_timeout);
 
 		close(fd);
 		if (ret)
@@ -192,7 +192,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 	return 0;
 }
 
-int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program))
+int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, unsigned int read_timeout, unsigned int write_timeout), unsigned int read_timeout, unsigned int write_timeout)
 {
 	struct program *program;
 	int ret;
@@ -202,7 +202,7 @@ int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 		if (!program->is_erase)
 			continue;
 
-		ret = apply(qdl, program);
+		ret = apply(qdl, program, read_timeout, write_timeout);
 		if (ret)
 			return ret;
 	}

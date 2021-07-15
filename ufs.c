@@ -266,7 +266,8 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 int ufs_provisioning_execute(struct qdl_device *qdl,
 	int (*apply_ufs_common)(struct qdl_device *, struct ufs_common*, unsigned int, unsigned int),
 	int (*apply_ufs_body)(struct qdl_device *, struct ufs_body*, unsigned int, unsigned int),
-	int (*apply_ufs_epilogue)(struct qdl_device *, struct ufs_epilogue*, bool, unsigned int, unsigned int))
+	int (*apply_ufs_epilogue)(struct qdl_device *, struct ufs_epilogue*, bool commit, unsigned int, unsigned int),
+	unsigned int read_timeout, unsigned int write_timeout)
 {
 	int ret;
 	struct ufs_body *body;
@@ -282,15 +283,15 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 	}
 
 	// Just ask a target to check the XML w/o real provisioning
-	ret = apply_ufs_common(qdl, ufs_common_p);
+	ret = apply_ufs_common(qdl, ufs_common_p, read_timeout, write_timeout);
 	if (ret)
 		return ret;
 	for (body = ufs_body_p; body; body = body->next) {
-		ret = apply_ufs_body(qdl, body);
+		ret = apply_ufs_body(qdl, body, read_timeout, write_timeout);
 		if (ret)
 			return ret;
 	}
-	ret = apply_ufs_epilogue(qdl, ufs_epilogue_p, false);
+	ret = apply_ufs_epilogue(qdl, ufs_epilogue_p, false, read_timeout, write_timeout);
 	if (ret) {
 		fprintf(stderr,
 			"UFS provisioning impossible, provisioning XML may be corrupted\n");
@@ -298,13 +299,13 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 	}
 
 	// Real provisioning -- target didn't refuse a given XML
-	ret = apply_ufs_common(qdl, ufs_common_p);
+	ret = apply_ufs_common(qdl, ufs_common_p, read_timeout, write_timeout);
 	if (ret)
 		return ret;
 	for (body = ufs_body_p; body; body = body->next) {
-		ret = apply_ufs_body(qdl, body);
+		ret = apply_ufs_body(qdl, body, read_timeout, write_timeout);
 		if (ret)
 			return ret;
 	}
-	return apply_ufs_epilogue(qdl, ufs_epilogue_p, true);
+	return apply_ufs_epilogue(qdl, ufs_epilogue_p, true, read_timeout, write_timeout);
 }

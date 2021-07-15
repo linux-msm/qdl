@@ -96,7 +96,7 @@ int patch_load(const char *patch_file)
 	return 0;
 }
 	
-int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch, unsigned int timeout))
+int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch, unsigned int read_timeout, unsigned int write_timeout), unsigned int read_timeout, unsigned int write_timeout)
 {
 	struct patch *patch;
 	int ret;
@@ -105,7 +105,7 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 		if (strcmp(patch->filename, "DISK"))
 			continue;
 
-		ret = apply(qdl, patch);
+		ret = apply(qdl, patch, read_timeout, write_timeout);
 		if (ret)
 			return ret;
 	}
