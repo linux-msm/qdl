@@ -19,10 +19,4 @@ for macos user:
 
   brew install libusb pkg-config
   make
-or use cmake:
-  cmake .
-  make
-
-INSTALL:
-  make install
 

@@ -1,7 +1,13 @@
 cmake_minimum_required(VERSION 3.14)
-project(libsparse CXX)
+project(libsparse C CXX)
 
-set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_COMP)
+
+find_package(ZLIB)
+message("ZLIB_INCLUDE_DIR: " ${ZLIB_INCLUDE_DIR})
+message("ZLIB_LIBRARY: " ${ZLIB_LIBRARY})
 
 add_library(libsparse STATIC
         backed_block.cpp
@@ -13,5 +19,9 @@ add_library(libsparse STATIC
         stringprintf.cpp
         )
 
-target_include_directories(libsparse PUBLIC include)
-target_compile_options(libsparse PRIVATE -Werror -Wall)
+include_directories(include)
+
+
+target_include_directories(libsparse PUBLIC include ${ZLIB_INCLUDE_DIR})
+target_link_libraries(libsparse ${ZLIB_LIBRARY})
+target_compile_options(libsparse PRIVATE -fPIC)

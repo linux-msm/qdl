@@ -353,7 +353,7 @@ static int firehose_program_init(struct qdl_device *qdl, unsigned int sector_siz
 		goto out;
 	}
 
-	ret = firehose_read(qdl, read_timeout, firehose_nop_parser, NULL);
+	ret = firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
 	if (ret) {
 		fprintf(stderr, "[PROGRAM] failed to setup programming\n");
 		goto out;
@@ -395,7 +395,8 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		err(1, "failed to allocate sector buffer");
 
 	ret = firehose_program_init(qdl, program->sector_size, num_sectors, program->partition,
-					program->start_sector, program->filename, read_timeout, write_timeout);
+					program->start_sector, program->filename,
+					read_timeout, write_timeout);
 
 	if (ret) {
 		goto out;
@@ -470,7 +471,8 @@ int firehose_program_sparse_do_flash(struct qdl_device *qdl, struct program* pro
 	snprintf(start_sector_str, sizeof(start_sector_str), "%lld", start_sector);
 
 	ret = firehose_program_init(qdl, program->sector_size, num_sectors, program->partition,
-					start_sector_str, program->filename);
+					start_sector_str, program->filename,
+					read_timeout, write_timeout);
 	if (ret) {
 		return ret;
 	}
@@ -492,7 +494,7 @@ int firehose_program_sparse_do_flash(struct qdl_device *qdl, struct program* pro
 		offset += n;
 	}
 
-	ret = firehose_read(qdl, read_timeout, firehose_nop_parser, NULL);
+	ret = firehose_read(qdl, read_timeout, firehose_generic_parser, NULL);
 	if (ret) {
 		fprintf(stderr, "[PROGRAM] failed\n");
 	}

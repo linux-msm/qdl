@@ -88,30 +88,30 @@ unsigned int sparse_count_chunks(struct sparse_file* s) {
   return chunks;
 }
 
-static int sparse_file_write_block(struct output_file* out, struct backed_block* bb) {
+static int sparse_file_write_block(struct output_file* out, struct backed_block* bb, unsigned int read_timeout, unsigned int write_timeout) {
   int ret = -EINVAL;
 
   switch (backed_block_type(bb)) {
     case BACKED_BLOCK_DATA:
-      ret = write_data_chunk(out, backed_block_len(bb), backed_block_data(bb));
+      ret = write_data_chunk(out, backed_block_len(bb), backed_block_data(bb), read_timeout, write_timeout);
       break;
     case BACKED_BLOCK_FILE:
       ret = write_file_chunk(out, backed_block_len(bb), backed_block_filename(bb),
-                             backed_block_file_offset(bb));
+                             backed_block_file_offset(bb), read_timeout, write_timeout);
       break;
     case BACKED_BLOCK_FD:
       ret = write_fd_chunk(out, backed_block_len(bb), backed_block_fd(bb),
-                           backed_block_file_offset(bb));
+                           backed_block_file_offset(bb), read_timeout, write_timeout);
       break;
     case BACKED_BLOCK_FILL:
-      ret = write_fill_chunk(out, backed_block_len(bb), backed_block_fill_val(bb));
+      ret = write_fill_chunk(out, backed_block_len(bb), backed_block_fill_val(bb), read_timeout, write_timeout);
       break;
   }
 
   return ret;
 }
 
-static int write_all_blocks(struct sparse_file* s, struct output_file* out) {
+static int write_all_blocks(struct sparse_file* s, struct output_file* out, unsigned int read_timeout, unsigned int write_timeout) {
   struct backed_block* bb;
   unsigned int last_block = 0;
   int64_t pad;
@@ -120,9 +120,9 @@ static int write_all_blocks(struct sparse_file* s, struct output_file* out) {
   for (bb = backed_block_iter_new(s->backed_block_list); bb; bb = backed_block_iter_next(bb)) {
     if (backed_block_block(bb) > last_block) {
       unsigned int blocks = backed_block_block(bb) - last_block;
-      write_skip_chunk(out, (int64_t)blocks * s->block_size);
+      write_skip_chunk(out, (int64_t)blocks * s->block_size, read_timeout, write_timeout);
     }
-    ret = sparse_file_write_block(out, bb);
+    ret = sparse_file_write_block(out, bb, read_timeout, write_timeout);
     if (ret) return ret;
     last_block = backed_block_block(bb) + DIV_ROUND_UP(backed_block_len(bb), s->block_size);
   }
@@ -130,43 +130,43 @@ static int write_all_blocks(struct sparse_file* s, struct output_file* out) {
   pad = s->len - (int64_t)last_block * s->block_size;
   assert(pad >= 0);
   if (pad > 0) {
-    write_skip_chunk(out, pad);
+    write_skip_chunk(out, pad, read_timeout, write_timeout);
   }
 
   return 0;
 }
 
-int sparse_file_write(struct sparse_file* s, int fd, bool gz, bool sparse, bool crc) {
+int sparse_file_write(struct sparse_file* s, int fd, bool gz, bool sparse, bool crc, unsigned int read_timeout, unsigned int write_timeout) {
   int ret;
   int chunks;
   struct output_file* out;
 
   chunks = sparse_count_chunks(s);
-  out = output_file_open_fd(fd, s->block_size, s->len, gz, sparse, chunks, crc);
+  out = output_file_open_fd(fd, s->block_size, s->len, gz, sparse, chunks, crc, read_timeout, write_timeout);
 
   if (!out) return -ENOMEM;
 
-  ret = write_all_blocks(s, out);
+  ret = write_all_blocks(s, out, read_timeout, write_timeout);
 
-  output_file_close(out);
+  output_file_close(out, read_timeout, write_timeout);
 
   return ret;
 }
 
 int sparse_file_callback(struct sparse_file* s, bool sparse, bool crc,
-                         int (*write)(void* priv, const void* data, size_t len), void* priv) {
+                         int (*write)(void* priv, const void* data, size_t len, unsigned int read_timeout, unsigned int write_timeout), void* priv, unsigned int read_timeout, unsigned int write_timeout) {
   int ret;
   int chunks;
   struct output_file* out;
 
   chunks = sparse_count_chunks(s);
-  out = output_file_open_callback(write, priv, s->block_size, s->len, false, sparse, chunks, crc);
+  out = output_file_open_callback(write, priv, s->block_size, s->len, false, sparse, chunks, crc, read_timeout, write_timeout);
 
   if (!out) return -ENOMEM;
 
-  ret = write_all_blocks(s, out);
+  ret = write_all_blocks(s, out, read_timeout, write_timeout);
 
-  output_file_close(out);
+  output_file_close(out, read_timeout, write_timeout);
 
   return ret;
 }
@@ -175,19 +175,19 @@ struct chunk_data {
   void* priv;
   unsigned int block;
   unsigned int nr_blocks;
-  int (*write)(void* priv, const void* data, size_t len, unsigned int block, unsigned int nr_blocks);
+  int (*write)(void* priv, const void* data, size_t len, unsigned int block, unsigned int nr_blocks, unsigned int read_timeout, unsigned int write_timeout);
 };
 
-static int foreach_chunk_write(void* priv, const void* data, size_t len) {
+static int foreach_chunk_write(void* priv, const void* data, size_t len, unsigned int read_timeout, unsigned int write_timeout) {
   struct chunk_data* chk = reinterpret_cast<chunk_data*>(priv);
 
-  return chk->write(chk->priv, data, len, chk->block, chk->nr_blocks);
+  return chk->write(chk->priv, data, len, chk->block, chk->nr_blocks, read_timeout, write_timeout);
 }
 
 int sparse_file_foreach_chunk(struct sparse_file* s, bool sparse, bool crc,
                               int (*write)(void* priv, const void* data, size_t len,
-                                           unsigned int block, unsigned int nr_blocks),
-                              void* priv) {
+                                           unsigned int block, unsigned int nr_blocks, unsigned int read_timeout, unsigned int write_timeout),
+                              void* priv, unsigned int read_timeout, unsigned int write_timeout) {
   int ret = 0;
   int chunks;
   struct chunk_data chk;
@@ -199,43 +199,43 @@ int sparse_file_foreach_chunk(struct sparse_file* s, bool sparse, bool crc,
   chk.block = chk.nr_blocks = 0;
   chunks = sparse_count_chunks(s);
   out = output_file_open_callback(foreach_chunk_write, &chk, s->block_size, s->len, false, sparse,
-                                  chunks, crc);
+                                  chunks, crc, read_timeout, write_timeout);
 
   if (!out) return -ENOMEM;
 
   for (bb = backed_block_iter_new(s->backed_block_list); bb; bb = backed_block_iter_next(bb)) {
     chk.block = backed_block_block(bb);
     chk.nr_blocks = (backed_block_len(bb) - 1) / s->block_size + 1;
-    ret = sparse_file_write_block(out, bb);
+    ret = sparse_file_write_block(out, bb, read_timeout, write_timeout);
     if (ret) return ret;
   }
 
-  output_file_close(out);
+  output_file_close(out, read_timeout, write_timeout);
 
   return ret;
 }
 
-static int out_counter_write(void* priv, const void* data __unused, size_t len) {
+static int out_counter_write(void* priv, const void* data __unused, size_t len, unsigned int /* read_timeout */, unsigned int /* write_timeout */) {
   int64_t* count = reinterpret_cast<int64_t*>(priv);
   *count += len;
   return 0;
 }
 
-int64_t sparse_file_len(struct sparse_file* s, bool sparse, bool crc) {
+int64_t sparse_file_len(struct sparse_file* s, bool sparse, bool crc, unsigned int read_timeout, unsigned int write_timeout) {
   int ret;
   int chunks = sparse_count_chunks(s);
   int64_t count = 0;
   struct output_file* out;
 
   out = output_file_open_callback(out_counter_write, &count, s->block_size, s->len, false, sparse,
-                                  chunks, crc);
+                                  chunks, crc, read_timeout, write_timeout);
   if (!out) {
     return -1;
   }
 
-  ret = write_all_blocks(s, out);
+  ret = write_all_blocks(s, out, read_timeout, write_timeout);
 
-  output_file_close(out);
+  output_file_close(out, read_timeout, write_timeout);
 
   if (ret < 0) {
     return -1;
@@ -249,7 +249,7 @@ unsigned int sparse_file_block_size(struct sparse_file* s) {
 }
 
 static struct backed_block* move_chunks_up_to_len(struct sparse_file* from, struct sparse_file* to,
-                                                  unsigned int len) {
+                                                  unsigned int len, unsigned int read_timeout, unsigned int write_timeout) {
   int64_t count = 0;
   struct output_file* out_counter;
   struct backed_block* last_bb = nullptr;
@@ -268,7 +268,7 @@ static struct backed_block* move_chunks_up_to_len(struct sparse_file* from, stru
 
   start = backed_block_iter_new(from->backed_block_list);
   out_counter = output_file_open_callback(out_counter_write, &count, to->block_size, to->len, false,
-                                          true, 0, false);
+                                          true, 0, false, read_timeout, write_timeout);
   if (!out_counter) {
     return nullptr;
   }
@@ -279,7 +279,7 @@ static struct backed_block* move_chunks_up_to_len(struct sparse_file* from, stru
     last_block = backed_block_block(bb) + DIV_ROUND_UP(backed_block_len(bb), to->block_size);
 
     /* will call out_counter_write to update count */
-    ret = sparse_file_write_block(out_counter, bb);
+    ret = sparse_file_write_block(out_counter, bb, read_timeout, write_timeout);
     if (ret) {
       bb = nullptr;
       goto out;
@@ -305,13 +305,13 @@ move:
   backed_block_list_move(from->backed_block_list, to->backed_block_list, start, last_bb);
 
 out:
-  output_file_close(out_counter);
+  output_file_close(out_counter, read_timeout, write_timeout);
 
   return bb;
 }
 
 int sparse_file_resparse(struct sparse_file* in_s, unsigned int max_len, struct sparse_file** out_s,
-                         int out_s_count) {
+                         int out_s_count, unsigned int read_timeout, unsigned int write_timeout) {
   struct backed_block* bb;
   struct sparse_file* s;
   struct sparse_file* tmp;
@@ -325,7 +325,7 @@ int sparse_file_resparse(struct sparse_file* in_s, unsigned int max_len, struct 
   do {
     s = sparse_file_new(in_s->block_size, in_s->len);
 
-    bb = move_chunks_up_to_len(in_s, s, max_len);
+    bb = move_chunks_up_to_len(in_s, s, max_len, read_timeout, write_timeout);
 
     if (c < out_s_count) {
       out_s[c] = s;

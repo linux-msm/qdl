@@ -205,9 +205,11 @@ static void usb_open(struct qdl_device *qdl) {
     }
 
     bool notify = false;
+    libusb_device **usb = NULL;
+    ssize_t usb_size = -1;
     for(;;) {
-        libusb_device **usb;
-        ssize_t usb_size = libusb_get_device_list(NULL, &usb);
+        usb = NULL;
+        usb_size = libusb_get_device_list(NULL, &usb);
         if (usb_size < 0) {
             err(1, "can't get usb devices.\n");
         }
@@ -224,7 +226,6 @@ static void usb_open(struct qdl_device *qdl) {
             notify = false;
             fprintf(stderr, "Waiting for EDL device\n");
         }
-        sleep(1);
     }
 
 found:
