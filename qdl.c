@@ -56,6 +56,9 @@
 #include "patch.h"
 #include "ufs.h"
 
+#define MAJOR_VERSION 1
+#define MINOR_VERSION 0
+
 #define MAX_USBFS_BULK_SIZE	(16*1024)
 
 enum {
@@ -397,6 +400,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
 static void print_usage(void)
 {
 	extern const char *__progname;
+	fprintf(stderr, "version %d.%d\n", MAJOR_VERSION, MINOR_VERSION);
 	fprintf(stderr,
 		"%s [--debug] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
@@ -414,6 +418,7 @@ int main(int argc, char **argv)
 
 
 	static struct option options[] = {
+		{"version", no_argument, 0, 'v'},
 		{"debug", no_argument, 0, 'd'},
 		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
@@ -423,6 +428,10 @@ int main(int argc, char **argv)
 
 	while ((opt = getopt_long(argc, argv, "di:", options, NULL )) != -1) {
 		switch (opt) {
+		case 'v':
+			fprintf(stderr, "qdl - version %d.%d\n", MAJOR_VERSION, MINOR_VERSION);
+			return 0;
+			break;
 		case 'd':
 			qdl_debug = true;
 			break;
