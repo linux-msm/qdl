@@ -17,14 +17,14 @@ struct program {
 
 	bool is_nand;
 	bool is_erase;
+	bool sparse;
 
 	struct program *next;
 };
 
 int program_load(const char *program_file, bool is_nand);
-int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
-		    const char *incdir);
-int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program));
+int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd, unsigned int read_timeout, unsigned int write_timeout), const char *incdir, unsigned int read_timeout, unsigned int write_timeout);
+int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, unsigned int read_timeout, unsigned int write_timeout), unsigned int read_timeout, unsigned int write_timeout);
 int program_find_bootable_partition(void);
 
 #endif

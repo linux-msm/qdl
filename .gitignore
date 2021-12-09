@@ -1,2 +1,7 @@
 *.o
 qdl
+cmake-build-debug/
+CMakeCache.txt
+CMakeFiles/
+*.cmake
+build/

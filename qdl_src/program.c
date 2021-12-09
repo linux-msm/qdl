@@ -101,7 +101,12 @@ static int load_program_tag(xmlNode *node, bool is_nand)
 	} else {
 		program->file_offset = attr_as_unsigned(node, "file_sector_offset", &errors);
 	}
-
+	int ignore_errors = 0;
+	const char *sparse = attr_as_string(node, "sparse", &ignore_errors);
+	if (sparse) {
+		program->sparse = strcmp(sparse, "true") == 0;
+	}
+	
 	if (errors) {
 		fprintf(stderr, "[PROGRAM] errors while parsing program\n");
 		free(program);
@@ -155,8 +160,8 @@ int program_load(const char *program_file, bool is_nand)
 	return 0;
 }
 
-int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
-		    const char *incdir)
+int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd, unsigned int read_timeout, unsigned int write_timeout),
+		    const char *incdir, unsigned int read_timeout, unsigned int write_timeout)
 {
 	struct program *program;
 	const char *filename;
@@ -182,7 +187,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 			continue;
 		}
 
-		ret = apply(qdl, program, fd);
+		ret = apply(qdl, program, fd, read_timeout, write_timeout);
 
 		close(fd);
 		if (ret)
@@ -192,7 +197,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 	return 0;
 }
 
-int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program))
+int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, unsigned int read_timeout, unsigned int write_timeout), unsigned int read_timeout, unsigned int write_timeout)
 {
 	struct program *program;
 	int ret;
@@ -202,7 +207,7 @@ int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 		if (!program->is_erase)
 			continue;
 
-		ret = apply(qdl, program);
+		ret = apply(qdl, program, read_timeout, write_timeout);
 		if (ret)
 			return ret;
 	}
