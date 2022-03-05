@@ -94,6 +94,7 @@ static int load_program_tag(xmlNode *node, bool is_nand)
 	program->label = attr_as_string(node, "label", &errors);
 	program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
 	program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
+	program->sparse = attr_as_bool(node, "sparse", &errors);
 	program->start_sector = attr_as_string(node, "start_sector", &errors);
 
 	if (is_nand) {
