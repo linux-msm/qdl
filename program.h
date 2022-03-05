@@ -19,6 +19,8 @@ struct program {
 	bool is_nand;
 	bool is_erase;
 
+	unsigned sparse_file_offset;
+
 	struct program *next;
 };
 
