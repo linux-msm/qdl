@@ -109,7 +109,8 @@ static int sahara_read_common(struct qdl_device *qdl, int progfd, off_t offset, 
 	ssize_t n;
 	void *buf;
 	int ret = 0;
-
+	int i;
+	int line, total_lines;
 
 	buf = malloc(len);
 	if (!buf)
@@ -123,8 +124,29 @@ static int sahara_read_common(struct qdl_device *qdl, int progfd, off_t offset, 
 	}
 
 	n = qdl_write(qdl, buf, n);
-	if (n != len)
+	if (n != len) {
 		err(1, "failed to write %zu bytes to sahara", len);
+	} else {
+		fprintf(stderr, "  Wrote 0x%04lx bytes to sahara\n", len);
+
+                // show buffer that was written
+		total_lines = len / 16;
+		for (line=0; line < total_lines; line++) {
+			fprintf(stderr, "  %08lx: ", offset + (line * 16));
+			for (i=0; i < 16; i++) {
+				fprintf(stderr, "%02x ", ((uint8_t *)buf)[i + (line*16)]);
+			}
+                        fprintf(stderr, "\n");
+		}
+		if ((len % 16) > 0) {
+			fprintf(stderr, "  %08lx: ", offset + (line * 16));
+			for (i=0; i < (len % 16); i++) {
+				fprintf(stderr, "%02x ", ((uint8_t *)buf)[i + (line*16)]);
+			}
+			fprintf(stderr, "\n");
+		}
+		fprintf(stderr, "\n");
+	}
 
 	free(buf);
 
@@ -138,7 +160,7 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, int prog
 
 	assert(pkt->length == 0x14);
 
-	printf("READ image: %d offset: 0x%x length: 0x%x\n",
+	printf("  READ image: %d offset: 0x%x length: 0x%x\n",
 	       pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
 	ret = sahara_read_common(qdl, prog_fd, pkt->read_req.offset, pkt->read_req.length);
@@ -152,7 +174,7 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, int pr
 
 	assert(pkt->length == 0x20);
 
-	printf("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
+	printf("  READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
 	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
 	ret = sahara_read_common(qdl, prog_fd, pkt->read64_req.offset, pkt->read64_req.length);
@@ -166,7 +188,7 @@ static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 
 	assert(pkt->length == 0x10);
 
-	printf("END OF IMAGE image: %d status: %d\n", pkt->eoi.image, pkt->eoi.status);
+	printf("  END OF IMAGE image: %d status: %d\n", pkt->eoi.image, pkt->eoi.status);
 
 	if (pkt->eoi.status != 0) {
 		printf("received non-successful result\n");
@@ -193,9 +215,10 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 	char buf[4096];
 	char tmp[32];
 	bool done = false;
-	int n;
+	int result;
 	int prog_fd;
 
+	fprintf(stderr, "Opening %s for transmit\n", prog_mbn);
 	prog_fd = open(prog_mbn, O_RDONLY);
 	if (prog_fd < 0) {
 		fprintf(stderr, "Can not open %s: %s\n", prog_mbn, strerror(errno));
@@ -203,15 +226,19 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 	}
 
 	while (!done) {
-		n = qdl_read(qdl, buf, sizeof(buf), 1000);
-		if (n < 0)
+		result = qdl_read(qdl, buf, sizeof(buf), 5000);
+		if (result < 0) {
+                        fprintf(stderr, "ERROR- qdl_read < 0 [%d]\n", result);
 			break;
+		}
 
 		pkt = (struct sahara_pkt*)buf;
-		if (n != pkt->length) {
-			fprintf(stderr, "length not matching");
+		if (result != pkt->length) {
+			fprintf(stderr, "ERROR- length not matching");
 			return -EINVAL;
 		}
+
+		fprintf(stderr, "Got packet- cmd: 0x%02x, len: 0x%04x\n", pkt->cmd, pkt->length);
 
 		switch (pkt->cmd) {
 		case 1:
@@ -226,13 +253,14 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 		case 6:
 			sahara_done(qdl, pkt);
 			done = true;
+			fprintf(stderr, "Done!\n");
 			break;
 		case 0x12:
 			sahara_read64(qdl, pkt, prog_fd);
 			break;
 		default:
 			sprintf(tmp, "CMD%x", pkt->cmd);
-			print_hex_dump(tmp, buf, n);
+			print_hex_dump(tmp, buf, result);
 			break;
 		}
 	}
