@@ -9,8 +9,8 @@ Usage:
 
 Building
 ========
-In order to build the project you need libxml2 headers and libraries, found in
-e.g. the libxml2-dev package.
+In order to build the project you need libxml2 and libudev headers
+and libraries, found in e.g. the libxml2-dev and libudev-dev packages
 
-With this installed run:
+With these installed run:
   make
