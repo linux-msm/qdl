@@ -477,16 +477,19 @@ int main(int argc, char **argv)
 	} while (++optind < argc);
 
 	ret = usb_open(&qdl);
-	if (ret)
-		return 1;
+	if (ret){
+		errx(1, "usb_open error %d", ret);
+	}
 
 	ret = sahara_run(&qdl, prog_mbn);
-	if (ret < 0)
-		return 1;
+	if (ret < 0){
+		errx(1, "sahara_run error %d", ret);
+	}
 
 	ret = firehose_run(&qdl, incdir, storage);
-	if (ret < 0)
-		return 1;
+	if (ret < 0){
+		errx(1, "firehose_run error %d", ret);
+	}
 
 	return 0;
 }
