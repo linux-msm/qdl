@@ -46,24 +46,28 @@ static int load_erase_tag(xmlNode *node, bool is_nand)
 	struct program *program;
 	int errors = 0;
 
-	if (!is_nand) {
-		fprintf(stderr, "got \"erase\" tag for non-NAND storage\n");
-		return -EINVAL;
-	}
-
 	program = calloc(1, sizeof(struct program));
 
 
-	program->is_nand = true;
+	program->is_nand = is_nand;
 	program->is_erase = true;
 
-	program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
-	program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
 	program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
 	program->start_sector = attr_as_string(node, "start_sector", &errors);
 
+	if(is_nand)
+	{
+		program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
+		program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
+	} else {
+		program->label = attr_as_string(node, "label", &errors);
+		program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
+	}
+	
+
 	if (errors) {
-		fprintf(stderr, "[PROGRAM] errors while parsing erase tag\n");
+		int line = xmlGetLineNo(node);
+		fprintf(stderr, "[PROGRAM] errors while parsing erase tag at line: %i\n", line);
 		free(program);
 		return -EINVAL;
 	}
@@ -103,7 +107,8 @@ static int load_program_tag(xmlNode *node, bool is_nand)
 	}
 
 	if (errors) {
-		fprintf(stderr, "[PROGRAM] errors while parsing program\n");
+		int line = xmlGetLineNo(node);
+		fprintf(stderr, "[PROGRAM] errors while parsing program at line: %i\n", line);
 		free(program);
 		return -EINVAL;
 	}
