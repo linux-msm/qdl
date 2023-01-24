@@ -66,17 +66,8 @@ enum {
 	QDL_FILE_CONTENTS,
 };
 
-struct qdl_device {
-	int fd;
-
-	int in_ep;
-	int out_ep;
-
-	size_t in_maxpktsize;
-	size_t out_maxpktsize;
-};
-
 bool qdl_debug;
+static struct qdl_device qdl;
 
 static int detect_type(const char *xml_file)
 {
@@ -410,7 +401,6 @@ int main(int argc, char **argv)
 	int ret;
 	int opt;
 	bool qdl_finalize_provisioning = false;
-	struct qdl_device qdl;
 
 
 	static struct option options[] = {
@@ -480,7 +470,8 @@ int main(int argc, char **argv)
 	if (ret)
 		return 1;
 
-	ret = sahara_run(&qdl, prog_mbn);
+	qdl.mappings[0] = prog_mbn;
+	ret = sahara_run(&qdl, qdl.mappings);
 	if (ret < 0)
 		return 1;
 

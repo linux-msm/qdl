@@ -85,6 +85,16 @@ struct sahara_pkt {
 	};
 };
 
+static void sahara_send_reset(struct qdl_device *qdl)
+{
+	struct sahara_pkt resp;
+
+	resp.cmd = 7;
+	resp.length = 8;
+
+	qdl_write(qdl, &resp, resp.length);
+}
+
 static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
 	struct sahara_pkt resp;
@@ -132,32 +142,67 @@ out:
 	return ret;
 }
 
-static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, int prog_fd)
+static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *img_arr[])
 {
 	int ret;
+	int fd;
 
 	assert(pkt->length == 0x14);
 
 	printf("READ image: %d offset: 0x%x length: 0x%x\n",
 	       pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
-	ret = sahara_read_common(qdl, prog_fd, pkt->read_req.offset, pkt->read_req.length);
+	if (pkt->read_req.image >= MAPPING_SZ) {
+		fprintf(stderr, "Device specified invalid image:%d\n", pkt->read_req.image);
+		sahara_send_reset(qdl);
+		return;
+	}
+
+	fd = open(img_arr[pkt->read_req.image], O_RDONLY);
+	if (fd < 0) {
+		fprintf(stderr, "Can not open %s: %s\n", img_arr[pkt->read_req.image], strerror(errno));
+		// Maybe this read was optional.  Notify device of error and let
+		// it decide how to proceed.
+		sahara_send_reset(qdl);
+		return;
+	}
+
+	ret = sahara_read_common(qdl, fd, pkt->read_req.offset, pkt->read_req.length);
 	if (ret < 0)
 		errx(1, "failed to read image chunk to sahara");
+
+	close(fd);
 }
 
-static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, int prog_fd)
+static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *img_arr[])
 {
 	int ret;
+	int fd;
 
 	assert(pkt->length == 0x20);
 
 	printf("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
 	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
-	ret = sahara_read_common(qdl, prog_fd, pkt->read64_req.offset, pkt->read64_req.length);
+	if (pkt->read64_req.image >= MAPPING_SZ) {
+		fprintf(stderr, "Device specified invalid image:%ld\n", pkt->read64_req.image);
+		sahara_send_reset(qdl);
+		return;
+	}
+	fd = open(img_arr[pkt->read64_req.image], O_RDONLY);
+	if (fd < 0) {
+		fprintf(stderr, "Can not open %s: %s\n", img_arr[pkt->read64_req.image], strerror(errno));
+		// Maybe this read was optional.  Notify device of error and let
+		// it decide how to proceed.
+		sahara_send_reset(qdl);
+		return;
+	}
+
+	ret = sahara_read_common(qdl, fd, pkt->read64_req.offset, pkt->read64_req.length);
 	if (ret < 0)
 		errx(1, "failed to read image chunk to sahara");
+
+	close(fd);
 }
 
 static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
@@ -184,23 +229,18 @@ static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
 
 	printf("DONE status: %d\n", pkt->done_resp.status);
 
+	// 0 == PENDING, 1 == COMPLETE.  Device expects more images if
+	// PENDING is set in status.
 	return pkt->done_resp.status;
 }
 
-int sahara_run(struct qdl_device *qdl, char *prog_mbn)
+int sahara_run(struct qdl_device *qdl, char *img_arr[])
 {
 	struct sahara_pkt *pkt;
 	char buf[4096];
 	char tmp[32];
 	bool done = false;
 	int n;
-	int prog_fd;
-
-	prog_fd = open(prog_mbn, O_RDONLY);
-	if (prog_fd < 0) {
-		fprintf(stderr, "Can not open %s: %s\n", prog_mbn, strerror(errno));
-		return -1;
-	}
 
 	while (!done) {
 		n = qdl_read(qdl, buf, sizeof(buf), 1000);
@@ -209,7 +249,7 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 
 		pkt = (struct sahara_pkt*)buf;
 		if (n != pkt->length) {
-			fprintf(stderr, "length not matching");
+			fprintf(stderr, "length not matching\n");
 			return -EINVAL;
 		}
 
@@ -218,17 +258,16 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 			sahara_hello(qdl, pkt);
 			break;
 		case 3:
-			sahara_read(qdl, pkt, prog_fd);
+			sahara_read(qdl, pkt, img_arr);
 			break;
 		case 4:
 			sahara_eoi(qdl, pkt);
 			break;
 		case 6:
-			sahara_done(qdl, pkt);
-			done = true;
+			done = sahara_done(qdl, pkt);
 			break;
 		case 0x12:
-			sahara_read64(qdl, pkt, prog_fd);
+			sahara_read64(qdl, pkt, img_arr);
 			break;
 		default:
 			sprintf(tmp, "CMD%x", pkt->cmd);
@@ -236,8 +275,6 @@ int sahara_run(struct qdl_device *qdl, char *prog_mbn)
 			break;
 		}
 	}
-
-	close(prog_fd);
 
 	return done ? 0 : -1;
 }
