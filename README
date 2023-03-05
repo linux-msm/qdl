@@ -14,3 +14,29 @@ e.g. the libxml2-dev package.
 
 With this installed run:
   make
+
+Buffer multiplier
+========
+**Warning**
+Using this parameter might not work stable on your system. Read 760b3df for
+more details. 
+
+
+To improve flashing speed buffer multiplier parameter was added.
+It uses bigger buffers for sending data on USB what allows to flash
+faster.
+
+Measurements made on VM Linux Mint 21.1 and may vary compared to native
+machine.
+
+| Multiplier | Measured speed [kB/s] |
+| ---------- | --------------------- |
+| 1          | 3365                  |
+| 2          | 6219                  |
+| 4          | 11515                 |
+| 8          | 18058                 |
+| 16         | 25133                 |
+| 32         | 28872                 |
+| 64         | 33399                 |
+| 128        | 36208                 |
+| 256        | 35574                 |
