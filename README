@@ -18,7 +18,7 @@ With this installed run:
 Buffer multiplier
 ========
 **Warning**
-Using this parameter might not work stable on your system. Read 760b3df for
+Using this parameter might not work stable on your system. Read [760b3df](https://github.com/andersson/qdl/commit/760b3dffb03d2b7dfb82c6eac652a092f51c572d) for
 more details. 
 
 
