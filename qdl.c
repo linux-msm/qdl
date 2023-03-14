@@ -416,7 +416,7 @@ int main(int argc, char **argv)
 	int opt;
 	bool qdl_finalize_provisioning = false;
 	struct qdl_device qdl;
-	qdl.multiplier = 1;
+	qdl.multiplier = 128;
 
 
 	static struct option options[] = {
