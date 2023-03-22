@@ -23,5 +23,6 @@ clean:
 	rm -f $(OUT) $(OBJS)
 	rm -f $(KS_OUT) $(KS_OBJS)
 
-install: $(OUT)
-	install -D -m 755 $< $(DESTDIR)$(prefix)/bin/$<
+install: $(OUT) $(KS_OUT)
+	install -d $(DESTDIR)$(prefix)/bin
+	install -m 755 $^ $(DESTDIR)$(prefix)/bin
