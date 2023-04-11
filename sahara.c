@@ -142,8 +142,9 @@ out:
 	return ret;
 }
 
-static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *img_arr[])
+static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *img_arr[], bool single_image)
 {
+	unsigned int image;
 	int ret;
 	int fd;
 
@@ -152,15 +153,20 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *im
 	printf("READ image: %d offset: 0x%x length: 0x%x\n",
 	       pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
-	if (pkt->read_req.image >= MAPPING_SZ) {
-		fprintf(stderr, "Device specified invalid image:%d\n", pkt->read_req.image);
+	if (single_image)
+		image = 0;
+	else
+		image = pkt->read_req.image;
+
+	if (image >= MAPPING_SZ || !img_arr[image]) {
+		fprintf(stderr, "Device specified invalid image: %u\n", image);
 		sahara_send_reset(qdl);
 		return;
 	}
 
-	fd = open(img_arr[pkt->read_req.image], O_RDONLY);
+	fd = open(img_arr[image], O_RDONLY);
 	if (fd < 0) {
-		fprintf(stderr, "Can not open %s: %s\n", img_arr[pkt->read_req.image], strerror(errno));
+		fprintf(stderr, "Can not open %s: %s\n", img_arr[image], strerror(errno));
 		// Maybe this read was optional.  Notify device of error and let
 		// it decide how to proceed.
 		sahara_send_reset(qdl);
@@ -174,8 +180,9 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *im
 	close(fd);
 }
 
-static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *img_arr[])
+static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *img_arr[], bool single_image)
 {
+	unsigned int image;
 	int ret;
 	int fd;
 
@@ -184,14 +191,19 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *
 	printf("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
 	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
-	if (pkt->read64_req.image >= MAPPING_SZ) {
-		fprintf(stderr, "Device specified invalid image:%ld\n", pkt->read64_req.image);
+	if (single_image)
+		image = 0;
+	else
+		image = pkt->read64_req.image;
+
+	if (image >= MAPPING_SZ || !img_arr[image]) {
+		fprintf(stderr, "Device specified invalid image: %u\n", image);
 		sahara_send_reset(qdl);
 		return;
 	}
-	fd = open(img_arr[pkt->read64_req.image], O_RDONLY);
+	fd = open(img_arr[image], O_RDONLY);
 	if (fd < 0) {
-		fprintf(stderr, "Can not open %s: %s\n", img_arr[pkt->read64_req.image], strerror(errno));
+		fprintf(stderr, "Can not open %s: %s\n", img_arr[image], strerror(errno));
 		// Maybe this read was optional.  Notify device of error and let
 		// it decide how to proceed.
 		sahara_send_reset(qdl);
@@ -234,7 +246,7 @@ static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	return pkt->done_resp.status;
 }
 
-int sahara_run(struct qdl_device *qdl, char *img_arr[])
+int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image)
 {
 	struct sahara_pkt *pkt;
 	char buf[4096];
@@ -258,16 +270,20 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[])
 			sahara_hello(qdl, pkt);
 			break;
 		case 3:
-			sahara_read(qdl, pkt, img_arr);
+			sahara_read(qdl, pkt, img_arr, single_image);
 			break;
 		case 4:
 			sahara_eoi(qdl, pkt);
 			break;
 		case 6:
 			done = sahara_done(qdl, pkt);
+
+			/* E.g MSM8916 EDL reports done = 0 here */
+			if (single_image)
+				done = true;
 			break;
 		case 0x12:
-			sahara_read64(qdl, pkt, img_arr);
+			sahara_read64(qdl, pkt, img_arr, single_image);
 			break;
 		default:
 			sprintf(tmp, "CMD%x", pkt->cmd);
