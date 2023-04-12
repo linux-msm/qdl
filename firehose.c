@@ -302,10 +302,20 @@ static int firehose_erase(struct qdl_device *qdl, struct program *program)
 	xmlDocSetRootElement(doc, root);
 
 	node = xmlNewChild(root, NULL, (xmlChar*)"erase", NULL);
-	xml_setpropf(node, "PAGES_PER_BLOCK", "%d", program->pages_per_block);
-	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", program->sector_size);
 	xml_setpropf(node, "num_partition_sectors", "%d", program->num_sectors);
+	// fprintf(stdout, "setting sector: %s\n", program->start_sector);
 	xml_setpropf(node, "start_sector", "%s", program->start_sector);
+	if(program->is_nand)
+	{
+		xml_setpropf(node, "PAGES_PER_BLOCK", "%d", program->pages_per_block);
+		xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", program->sector_size);
+	} else {
+		xml_setpropf(node, "label", "%s", program->label);
+		// Palm Pepito (PVG100)'s firehose requires both StorageDrive and physical_partition_number.
+		xml_setpropf(node, "StorageDrive", "%d", program->partition);
+		xml_setpropf(node, "physical_partition_number", "%d", program->partition);
+	}
+
 
 	ret = firehose_write(qdl, doc);
 	if (ret < 0) {
@@ -601,6 +611,7 @@ static int firehose_reset(struct qdl_device *qdl)
 
 	node = xmlNewChild(root, NULL, (xmlChar*)"power", NULL);
 	xml_setpropf(node, "value", "reset");
+	xml_setpropf(node, "DelayInSeconds", "2");
 
 	ret = firehose_write(qdl, doc);
 	xmlFreeDoc(doc);
