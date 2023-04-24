@@ -288,7 +288,6 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, co
 }
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
-#define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
 
 static int firehose_erase(struct qdl_device *qdl, struct program *program)
 {
@@ -337,8 +336,6 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	int left;
 	int ret;
 	int n;
-
-	num_sectors = program->num_sectors;
 
 	ret = fstat(fd, &sb);
 	if (ret < 0)
