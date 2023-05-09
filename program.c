@@ -30,6 +30,7 @@
  */
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/limits.h>
 #include <string.h>
 #include <unistd.h>
 #include <libxml/parser.h>
@@ -38,178 +39,173 @@
 #include "program.h"
 #include "qdl.h"
 
-static struct program *programes;
-static struct program *programes_last;
+static struct program *programs;
+static struct program *programs_last;
 
-static int load_erase_tag(xmlNode *node, bool is_nand)
-{
-	struct program *program;
-	int errors = 0;
+static int load_erase_tag(xmlNode *node, bool is_nand) {
+    struct program *program;
+    int errors = 0;
 
-	if (!is_nand) {
-		fprintf(stderr, "got \"erase\" tag for non-NAND storage\n");
-		return -EINVAL;
-	}
+    if (!is_nand) {
+        fprintf(stderr, "got \"erase\" tag for non-NAND storage\n");
+        return -EINVAL;
+    }
 
-	program = calloc(1, sizeof(struct program));
+    program = calloc(1, sizeof(struct program));
 
 
-	program->is_nand = true;
-	program->is_erase = true;
+    program->is_nand = true;
+    program->is_erase = true;
 
-	program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
-	program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
-	program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
-	program->start_sector = attr_as_string(node, "start_sector", &errors);
+    program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
+    program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
+    program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
+    program->start_sector = attr_as_string(node, "start_sector", &errors);
 
-	if (errors) {
-		fprintf(stderr, "[PROGRAM] errors while parsing erase tag\n");
-		free(program);
-		return -EINVAL;
-	}
+    if (errors) {
+        fprintf(stderr, "[PROGRAM] errors while parsing erase tag\n");
+        free(program);
+        return -EINVAL;
+    }
 
-	if (programes) {
-		programes_last->next = program;
-		programes_last = program;
-	} else {
-		programes = program;
-		programes_last = program;
-	}
+    if (programs) {
+        programs_last->next = program;
+        programs_last = program;
+    } else {
+        programs = program;
+        programs_last = program;
+    }
 
-	return 0;
+    return 0;
 }
 
-static int load_program_tag(xmlNode *node, bool is_nand)
-{
-	struct program *program;
-	int errors = 0;
+static int load_program_tag(xmlNode *node, bool is_nand) {
+    struct program *program;
+    int errors = 0;
 
-	program = calloc(1, sizeof(struct program));
+    program = calloc(1, sizeof(struct program));
 
-	program->is_nand = is_nand;
+    program->is_nand = is_nand;
 
-	program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
-	program->filename = attr_as_string(node, "filename", &errors);
-	program->label = attr_as_string(node, "label", &errors);
-	program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
-	program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
-	program->start_sector = attr_as_string(node, "start_sector", &errors);
+    program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
+    program->filename = attr_as_string(node, "filename", &errors);
+    program->label = attr_as_string(node, "label", &errors);
+    program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
+    program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
+    program->start_sector = attr_as_string(node, "start_sector", &errors);
 
-	if (is_nand) {
-		program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
-		if (NULL != xmlGetProp(node, (xmlChar *)"last_sector")) {
-			program->last_sector = attr_as_unsigned(node, "last_sector", &errors);
-		}
-	} else {
-		program->file_offset = attr_as_unsigned(node, "file_sector_offset", &errors);
-	}
+    if (is_nand) {
+        program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
+        if (NULL != xmlGetProp(node, (xmlChar *) "last_sector")) {
+            program->last_sector = attr_as_unsigned(node, "last_sector", &errors);
+        }
+    } else {
+        program->file_offset = attr_as_unsigned(node, "file_sector_offset", &errors);
+    }
 
-	if (errors) {
-		fprintf(stderr, "[PROGRAM] errors while parsing program\n");
-		free(program);
-		return -EINVAL;
-	}
+    if (errors) {
+        fprintf(stderr, "[PROGRAM] errors while parsing program\n");
+        free(program);
+        return -EINVAL;
+    }
 
-	if (programes) {
-		programes_last->next = program;
-		programes_last = program;
-	} else {
-		programes = program;
-		programes_last = program;
-	}
+    if (programs) {
+        programs_last->next = program;
+        programs_last = program;
+    } else {
+        programs = program;
+        programs_last = program;
+    }
 
-	return 0;
+    return 0;
 }
 
-int program_load(const char *program_file, bool is_nand)
-{
-	xmlNode *node;
-	xmlNode *root;
-	xmlDoc *doc;
-	int errors;
+int program_load(const char *program_file, bool is_nand) {
+    xmlNode *node;
+    xmlNode *root;
+    xmlDoc *doc;
+    int errors;
 
-	doc = xmlReadFile(program_file, NULL, 0);
-	if (!doc) {
-		fprintf(stderr, "[PROGRAM] failed to parse %s\n", program_file);
-		return -EINVAL;
-	}
+    doc = xmlReadFile(program_file, NULL, 0);
+    if (!doc) {
+        fprintf(stderr, "[PROGRAM] failed to parse %s\n", program_file);
+        return -EINVAL;
+    }
 
-	root = xmlDocGetRootElement(doc);
-	for (node = root->children; node ; node = node->next) {
-		if (node->type != XML_ELEMENT_NODE)
-			continue;
+    root = xmlDocGetRootElement(doc);
+    for (node = root->children; node; node = node->next) {
+        if (node->type != XML_ELEMENT_NODE)
+            continue;
 
-		errors = -EINVAL;
+        errors = -EINVAL;
 
-		if (!xmlStrcmp(node->name, (xmlChar *)"erase"))
-			errors = load_erase_tag(node, is_nand);
-		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
-			errors = load_program_tag(node, is_nand);
-		else
-			fprintf(stderr, "[PROGRAM] unrecognized tag \"%s\", ignoring\n", node->name);
+        if (!xmlStrcmp(node->name, (xmlChar *) "erase"))
+            errors = load_erase_tag(node, is_nand);
+        else if (!xmlStrcmp(node->name, (xmlChar *) "program"))
+            errors = load_program_tag(node, is_nand);
+        else
+            fprintf(stderr, "[PROGRAM] unrecognized tag \"%s\", ignoring\n", node->name);
 
-		if (errors)
-			return errors;
-	}
+        if (errors)
+            return errors;
+    }
 
-	xmlFreeDoc(doc);
+    xmlFreeDoc(doc);
 
-	return 0;
+    return 0;
 }
 
-int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
-		    const char *incdir)
-{
-	struct program *program;
-	const char *filename;
-	char tmp[PATH_MAX];
-	int ret;
-	int fd;
+int program_execute(struct qdl_device *ctx, int (*apply)(struct qdl_device *ctx, struct program *program, int fd),
+                    const char *incdir) {
+    struct program *program;
+    const char *filename;
+    char tmp[PATH_MAX];
+    int ret;
+    int fd;
 
-	for (program = programes; program; program = program->next) {
-		if (program->is_erase || !program->filename)
-			continue;
+    for (program = programs; program; program = program->next) {
+        if (program->is_erase || !program->filename)
+            continue;
 
-		filename = program->filename;
-		if (incdir) {
-			snprintf(tmp, PATH_MAX, "%s/%s", incdir, filename);
-			if (access(tmp, F_OK) != -1)
-				filename = tmp;
-		}
+        filename = program->filename;
+        if (incdir) {
+            snprintf(tmp, PATH_MAX, "%s/%s", incdir, filename);
+            if (access(tmp, F_OK) != -1)
+                filename = tmp;
+        }
 
-		fd = open(filename, O_RDONLY);
+        fd = open(filename, O_RDONLY);
 
-		if (fd < 0) {
-			printf("Unable to open %s...ignoring\n", program->filename);
-			continue;
-		}
+        if (fd < 0) {
+            printf("Unable to open %s...ignoring\n", program->filename);
+            continue;
+        }
 
-		ret = apply(qdl, program, fd);
+        ret = apply(ctx, program, fd);
 
-		close(fd);
-		if (ret)
-			return ret;
-	}
+        close(fd);
+        if (ret)
+            return ret;
+    }
 
-	return 0;
+    return 0;
 }
 
-int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program))
-{
-	struct program *program;
-	int ret;
+int erase_execute(struct qdl_device *ctx, int (*apply)(struct qdl_device *ctx, struct program *program)) {
+    struct program *program;
+    int ret;
 
 
-	for (program = programes; program; program = program->next) {
-		if (!program->is_erase)
-			continue;
+    for (program = programs; program; program = program->next) {
+        if (!program->is_erase)
+            continue;
 
-		ret = apply(qdl, program);
-		if (ret)
-			return ret;
-	}
+        ret = apply(ctx, program);
+        if (ret)
+            return ret;
+    }
 
-	return 0;
+    return 0;
 }
 
 /**
@@ -221,25 +217,24 @@ int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
  * and return the partition number for this. If more than one line matches
  * we're assuming our logic is flawed and return an error.
  */
-int program_find_bootable_partition(void)
-{
-	struct program *program;
-	const char *label;
-	int part = -ENOENT;
+int program_find_bootable_partition(void) {
+    struct program *program;
+    const char *label;
+    int part = -ENOENT;
 
-	for (program = programes; program; program = program->next) {
-		label = program->label;
-		if (!label)
-			continue;
+    for (program = programs; program; program = program->next) {
+        label = program->label;
+        if (!label)
+            continue;
 
-		if (!strcmp(label, "xbl") || !strcmp(label, "xbl_a") ||
-		    !strcmp(label, "sbl1")) {
-			if (part != -ENOENT)
-				return -EINVAL;
+        if (!strcmp(label, "xbl") || !strcmp(label, "xbl_a") ||
+            !strcmp(label, "sbl1")) {
+            if (part != -ENOENT)
+                return -EINVAL;
 
-			part = program->partition;
-		}
-	}
+            part = (int) program->partition;
+        }
+    }
 
-	return part;
+    return part;
 }

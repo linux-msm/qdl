@@ -28,269 +28,256 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <sys/types.h>
 #include <assert.h>
-#include <ctype.h>
-#include <dirent.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <poll.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
 #include <unistd.h>
 #include "qdl.h"
 
 struct sahara_pkt {
-	uint32_t cmd;
-	uint32_t length;
+    uint32_t cmd;
+    uint32_t length;
 
-	union {
-		struct {
-			uint32_t version;
-			uint32_t compatible;
-			uint32_t max_len;
-			uint32_t mode;
-		} hello_req;
-		struct {
-			uint32_t version;
-			uint32_t compatible;
-			uint32_t status;
-			uint32_t mode;
-		} hello_resp;
-		struct {
-			uint32_t image;
-			uint32_t offset;
-			uint32_t length;
-		} read_req;
-		struct {
-			uint32_t image;
-			uint32_t status;
-		} eoi;
-		struct {
-		} done_req;
-		struct {
-			uint32_t status;
-		} done_resp;
-		struct {
-			uint64_t image;
-			uint64_t offset;
-			uint64_t length;
-		} read64_req;
-	};
+    union {
+        struct {
+            uint32_t version;
+            uint32_t compatible;
+            uint32_t max_len;
+            uint32_t mode;
+        } hello_req;
+        struct {
+            uint32_t version;
+            uint32_t compatible;
+            uint32_t status;
+            uint32_t mode;
+        } hello_resp;
+        struct {
+            uint32_t image;
+            uint32_t offset;
+            uint32_t length;
+        } read_req;
+        struct {
+            uint32_t image;
+            uint32_t status;
+        } eoi;
+        //struct {
+        //} done_req;
+        struct {
+            uint32_t status;
+        } done_resp;
+        struct {
+            uint64_t image;
+            uint64_t offset;
+            uint64_t length;
+        } read64_req;
+    };
 };
 
-static void sahara_send_reset(struct qdl_device *qdl)
-{
-	struct sahara_pkt resp;
+static void sahara_send_reset(struct qdl_device *ctx) {
+    struct sahara_pkt resp;
 
-	resp.cmd = 7;
-	resp.length = 8;
+    resp.cmd = 7;
+    resp.length = 8;
 
-	qdl_write(qdl, &resp, resp.length);
+    qdl_write(ctx, &resp, resp.length);
 }
 
-static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
-{
-	struct sahara_pkt resp;
+static void sahara_hello(struct qdl_device *ctx, struct sahara_pkt *pkt) {
+    struct sahara_pkt resp;
 
-	assert(pkt->length == 0x30);
+    assert(pkt->length == 0x30);
 
-	printf("HELLO version: 0x%x compatible: 0x%x max_len: %d mode: %d\n",
-	       pkt->hello_req.version, pkt->hello_req.compatible, pkt->hello_req.max_len, pkt->hello_req.mode);
+    printf("HELLO version: 0x%x compatible: 0x%x max_len: %d mode: %d\n",
+           pkt->hello_req.version, pkt->hello_req.compatible, pkt->hello_req.max_len, pkt->hello_req.mode);
 
-	resp.cmd = 2;
-	resp.length = 0x30;
-	resp.hello_resp.version = 2;
-	resp.hello_resp.compatible = 1;
-	resp.hello_resp.status = 0;
-	resp.hello_resp.mode = pkt->hello_req.mode;
+    resp.cmd = 2;
+    resp.length = 0x30;
+    resp.hello_resp.version = 2;
+    resp.hello_resp.compatible = 1;
+    resp.hello_resp.status = 0;
+    resp.hello_resp.mode = pkt->hello_req.mode;
 
-	qdl_write(qdl, &resp, resp.length);
+    qdl_write(ctx, &resp, resp.length);
 }
 
-static int sahara_read_common(struct qdl_device *qdl, int progfd, off_t offset, size_t len)
-{
-	ssize_t n;
-	void *buf;
-	int ret = 0;
+static int sahara_read_common(struct qdl_device *ctx, int prog_fd, off_t offset, size_t len) {
+    ssize_t n;
+    void *buf;
+    int ret = 0;
 
 
-	buf = malloc(len);
-	if (!buf)
-		return -ENOMEM;
+    buf = malloc(len);
+    if (!buf)
+        return -ENOMEM;
 
-	lseek(progfd, offset, SEEK_SET);
-	n = read(progfd, buf, len);
-	if (n != len) {
-		ret = -errno;
-		goto out;
-	}
+    lseek(prog_fd, offset, SEEK_SET);
+    n = read(prog_fd, buf, len);
+    if (n != len) {
+        ret = -errno;
+        goto out;
+    }
 
-	n = qdl_write(qdl, buf, n);
-	if (n != len)
-		err(1, "failed to write %zu bytes to sahara", len);
+    n = qdl_write(ctx, buf, n);
+    if (n != len)
+        err(1, "failed to write %zu bytes to sahara", len);
 
-	free(buf);
+    free(buf);
 
-out:
-	return ret;
+    out:
+    return ret;
 }
 
-static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *img_arr[], bool single_image)
-{
-	unsigned int image;
-	int ret;
-	int fd;
+static void sahara_read(struct qdl_device *ctx, struct sahara_pkt *pkt, char *img_arr[], bool single_image) {
+    unsigned int image;
+    int ret;
+    int fd;
 
-	assert(pkt->length == 0x14);
+    assert(pkt->length == 0x14);
 
-	printf("READ image: %d offset: 0x%x length: 0x%x\n",
-	       pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
+    printf("READ image: %d offset: 0x%x length: 0x%x\n",
+           pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
-	if (single_image)
-		image = 0;
-	else
-		image = pkt->read_req.image;
+    if (single_image)
+        image = 0;
+    else
+        image = pkt->read_req.image;
 
-	if (image >= MAPPING_SZ || !img_arr[image]) {
-		fprintf(stderr, "Device specified invalid image: %u\n", image);
-		sahara_send_reset(qdl);
-		return;
-	}
+    if (image >= MAPPING_SZ || !img_arr[image]) {
+        fprintf(stderr, "Device specified invalid image: %u\n", image);
+        sahara_send_reset(ctx);
+        return;
+    }
 
-	fd = open(img_arr[image], O_RDONLY);
-	if (fd < 0) {
-		fprintf(stderr, "Can not open %s: %s\n", img_arr[image], strerror(errno));
-		// Maybe this read was optional.  Notify device of error and let
-		// it decide how to proceed.
-		sahara_send_reset(qdl);
-		return;
-	}
+    fd = open(img_arr[image], O_RDONLY);
+    if (fd < 0) {
+        fprintf(stderr, "Can not open %s: %s\n", img_arr[image], strerror(errno));
+        // Maybe this read was optional.  Notify device of error and let
+        // it decide how to proceed.
+        sahara_send_reset(ctx);
+        return;
+    }
 
-	ret = sahara_read_common(qdl, fd, pkt->read_req.offset, pkt->read_req.length);
-	if (ret < 0)
-		errx(1, "failed to read image chunk to sahara");
+    ret = sahara_read_common(ctx, fd, pkt->read_req.offset, pkt->read_req.length);
+    if (ret < 0)
+        errx(1, "failed to read image chunk to sahara");
 
-	close(fd);
+    close(fd);
 }
 
-static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *img_arr[], bool single_image)
-{
-	unsigned int image;
-	int ret;
-	int fd;
+static void sahara_read64(struct qdl_device *ctx, struct sahara_pkt *pkt, char *img_arr[], bool single_image) {
+    unsigned int image;
+    int ret;
+    int fd;
 
-	assert(pkt->length == 0x20);
+    assert(pkt->length == 0x20);
 
-	printf("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
-	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
+    printf("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
+           pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
-	if (single_image)
-		image = 0;
-	else
-		image = pkt->read64_req.image;
+    if (single_image)
+        image = 0;
+    else
+        image = pkt->read64_req.image;
 
-	if (image >= MAPPING_SZ || !img_arr[image]) {
-		fprintf(stderr, "Device specified invalid image: %u\n", image);
-		sahara_send_reset(qdl);
-		return;
-	}
-	fd = open(img_arr[image], O_RDONLY);
-	if (fd < 0) {
-		fprintf(stderr, "Can not open %s: %s\n", img_arr[image], strerror(errno));
-		// Maybe this read was optional.  Notify device of error and let
-		// it decide how to proceed.
-		sahara_send_reset(qdl);
-		return;
-	}
+    if (image >= MAPPING_SZ || !img_arr[image]) {
+        fprintf(stderr, "Device specified invalid image: %u\n", image);
+        sahara_send_reset(ctx);
+        return;
+    }
+    fd = open(img_arr[image], O_RDONLY);
+    if (fd < 0) {
+        fprintf(stderr, "Can not open %s: %s\n", img_arr[image], strerror(errno));
+        // Maybe this read was optional.  Notify device of error and let
+        // it decide how to proceed.
+        sahara_send_reset(ctx);
+        return;
+    }
 
-	ret = sahara_read_common(qdl, fd, pkt->read64_req.offset, pkt->read64_req.length);
-	if (ret < 0)
-		errx(1, "failed to read image chunk to sahara");
+    ret = sahara_read_common(ctx, fd, (off_t) pkt->read64_req.offset, pkt->read64_req.length);
+    if (ret < 0)
+        errx(1, "failed to read image chunk to sahara");
 
-	close(fd);
+    close(fd);
 }
 
-static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
-{
-	struct sahara_pkt done;
+static void sahara_eoi(struct qdl_device *ctx, struct sahara_pkt *pkt) {
+    struct sahara_pkt done;
 
-	assert(pkt->length == 0x10);
+    assert(pkt->length == 0x10);
 
-	printf("END OF IMAGE image: %d status: %d\n", pkt->eoi.image, pkt->eoi.status);
+    printf("END OF IMAGE image: %d status: %d\n", pkt->eoi.image, pkt->eoi.status);
 
-	if (pkt->eoi.status != 0) {
-		printf("received non-successful result\n");
-		return;
-	}
+    if (pkt->eoi.status != 0) {
+        printf("received non-successful result\n");
+        return;
+    }
 
-	done.cmd = 5;
-	done.length = 0x8;
-	qdl_write(qdl, &done, done.length);
+    done.cmd = 5;
+    done.length = 0x8;
+    qdl_write(ctx, &done, done.length);
 }
 
-static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
-{
-	assert(pkt->length == 0xc);
+static int sahara_done(struct qdl_device *ctx, struct sahara_pkt *pkt) {
+    (void) ctx;
+    assert(pkt->length == 0xc);
 
-	printf("DONE status: %d\n", pkt->done_resp.status);
+    printf("DONE status: %d\n", pkt->done_resp.status);
 
-	// 0 == PENDING, 1 == COMPLETE.  Device expects more images if
-	// PENDING is set in status.
-	return pkt->done_resp.status;
+    // 0 == PENDING, 1 == COMPLETE.  Device expects more images if
+    // PENDING is set in status.
+    return (int) pkt->done_resp.status;
 }
 
-int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image)
-{
-	struct sahara_pkt *pkt;
-	char buf[4096];
-	char tmp[32];
-	bool done = false;
-	int n;
+int sahara_run(struct qdl_device *ctx, char *img_arr[], bool single_image) {
+    struct sahara_pkt *pkt;
+    char buf[4096];
+    char tmp[32];
+    bool done = false;
+    int n;
 
-	while (!done) {
-		n = qdl_read(qdl, buf, sizeof(buf), 1000);
-		if (n < 0)
-			break;
+    while (!done) {
+        n = qdl_read(ctx, buf, sizeof(buf), 1000);
+        if (n < 0)
+            break;
 
-		pkt = (struct sahara_pkt*)buf;
-		if (n != pkt->length) {
-			fprintf(stderr, "length not matching\n");
-			return -EINVAL;
-		}
+        pkt = (struct sahara_pkt *) buf;
+        if (n != pkt->length) {
+            fprintf(stderr, "length not matching\n");
+            return -EINVAL;
+        }
 
-		switch (pkt->cmd) {
-		case 1:
-			sahara_hello(qdl, pkt);
-			break;
-		case 3:
-			sahara_read(qdl, pkt, img_arr, single_image);
-			break;
-		case 4:
-			sahara_eoi(qdl, pkt);
-			break;
-		case 6:
-			done = sahara_done(qdl, pkt);
+        switch (pkt->cmd) {
+            case 1:
+                sahara_hello(ctx, pkt);
+                break;
+            case 3:
+                sahara_read(ctx, pkt, img_arr, single_image);
+                break;
+            case 4:
+                sahara_eoi(ctx, pkt);
+                break;
+            case 6:
+                done = sahara_done(ctx, pkt);
 
-			/* E.g MSM8916 EDL reports done = 0 here */
-			if (single_image)
-				done = true;
-			break;
-		case 0x12:
-			sahara_read64(qdl, pkt, img_arr, single_image);
-			break;
-		default:
-			sprintf(tmp, "CMD%x", pkt->cmd);
-			print_hex_dump(tmp, buf, n);
-			break;
-		}
-	}
+                /* E.g MSM8916 EDL reports done = 0 here */
+                if (single_image)
+                    done = true;
+                break;
+            case 0x12:
+                sahara_read64(ctx, pkt, img_arr, single_image);
+                break;
+            default:
+                sprintf(tmp, "CMD%x", pkt->cmd);
+                print_hex_dump(tmp, buf, n);
+                break;
+        }
+    }
 
-	return done ? 0 : -1;
+    return done ? 0 : -1;
 }
