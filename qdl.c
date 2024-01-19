@@ -48,6 +48,7 @@ enum {
 	QDL_FILE_UNKNOWN,
 	QDL_FILE_PATCH,
 	QDL_FILE_PROGRAM,
+	QDL_FILE_READ,
 	QDL_FILE_UFS,
 	QDL_FILE_CONTENTS,
 };
@@ -77,6 +78,10 @@ static int detect_type(const char *xml_file)
 				continue;
 			if (!xmlStrcmp(node->name, (xmlChar*)"program")) {
 				type = QDL_FILE_PROGRAM;
+				break;
+			}
+			if (!xmlStrcmp(node->name, (xmlChar*)"read")) {
+				type = QDL_FILE_READ;
 				break;
 			}
 			if (!xmlStrcmp(node->name, (xmlChar*)"ufs")) {
@@ -167,6 +172,11 @@ int main(int argc, char **argv)
 			ret = program_load(argv[optind], !strcmp(storage, "nand"));
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[optind]);
+			break;
+		case QDL_FILE_READ:
+			ret = read_op_load(argv[optind]);
+			if (ret < 0)
+				errx(1, "read_op_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_UFS:
 			ret = ufs_load(argv[optind],qdl_finalize_provisioning);

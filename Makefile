@@ -5,7 +5,7 @@ CFLAGS += -O2 -Wall -g `pkg-config --cflags libxml-2.0 libusb-1.0`
 LDFLAGS += `pkg-config --libs libxml-2.0 libusb-1.0`
 prefix := /usr/local
 
-QDL_SRCS := firehose.c qdl.c sahara.c util.c patch.c program.c ufs.c usb.c
+QDL_SRCS := firehose.c qdl.c sahara.c util.c patch.c program.c read.c ufs.c usb.c
 QDL_OBJS := $(QDL_SRCS:.c=.o)
 
 RAMDUMP_SRCS := ramdump.c sahara.c usb.c util.c
