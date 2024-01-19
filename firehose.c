@@ -430,6 +430,104 @@ out:
 	return ret;
 }
 
+static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int fd)
+{
+	size_t chunk_size;
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	void *buf;
+	time_t t0;
+	time_t t;
+	int left;
+	int ret;
+	int n;
+	bool expect_empty;
+
+	buf = malloc(max_payload_size);
+	if (!buf)
+		err(1, "failed to allocate sector buffer");
+
+	doc = xmlNewDoc((xmlChar*)"1.0");
+	root = xmlNewNode(NULL, (xmlChar*)"data");
+	xmlDocSetRootElement(doc, root);
+
+	node = xmlNewChild(root, NULL, (xmlChar*)"read", NULL);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", read_op->sector_size);
+	xml_setpropf(node, "num_partition_sectors", "%d", read_op->num_sectors);
+	xml_setpropf(node, "physical_partition_number", "%d", read_op->partition);
+	xml_setpropf(node, "start_sector", "%s", read_op->start_sector);
+	if (read_op->filename)
+		xml_setpropf(node, "filename", "%s", read_op->filename);
+
+	ret = firehose_write(qdl, doc);
+	if (ret < 0) {
+		fprintf(stderr, "[READ] failed to write read command\n");
+		goto out;
+	}
+
+	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
+	if (ret) {
+		fprintf(stderr, "[READ] failed to setup reading\n");
+		goto out;
+	}
+
+	t0 = time(NULL);
+
+	left = read_op->num_sectors;
+	expect_empty = false;
+	while (left > 0 || expect_empty) {
+		chunk_size = MIN(max_payload_size / read_op->sector_size, left);
+
+		n = qdl_read(qdl, buf, chunk_size * read_op->sector_size, 30000);
+		if (n < 0) {
+			err(1, "failed to read");
+		}
+
+		if (n == 0 && expect_empty) {
+			// Every second transfer is empty during this stage.
+			expect_empty = false;
+			continue;
+		} else if (expect_empty) {
+			err(1, "expected empty transfer but received non-empty transfer during read");
+		} else if (n != chunk_size * read_op->sector_size){
+			err(1, "failed to read full sector");
+		}
+
+		n = write(fd, buf, n);
+
+		if (n != chunk_size * read_op->sector_size) {
+			err(1, "failed to write");
+		}
+
+		left -= chunk_size;
+		expect_empty = true;
+	}
+
+	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
+	if (ret) {
+		fprintf(stderr, "[READ] failed to complete reading\n");
+		goto out;
+	}
+
+	t = time(NULL) - t0;
+
+	if (t) {
+		fprintf(stderr,
+			"[READ] read \"%s\" successfully at %ldkB/s\n",
+			read_op->filename,
+			read_op->sector_size * read_op->num_sectors / t / 1024);
+	} else {
+		fprintf(stderr, "[READ] read \"%s\" successfully\n",
+			read_op->filename);
+	}
+
+out:
+	xmlFreeDoc(doc);
+	free(buf);
+	return ret;
+}
+
 static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 {
 	xmlNode *root;
@@ -646,6 +744,10 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 		return ret;
 
 	ret = program_execute(qdl, firehose_program, incdir);
+	if (ret)
+		return ret;
+
+	ret = read_op_execute(qdl, firehose_read_op, incdir);
 	if (ret)
 		return ret;
 

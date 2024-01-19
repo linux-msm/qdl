@@ -5,6 +5,7 @@
 
 #include "patch.h"
 #include "program.h"
+#include "read.h"
 #include <libxml/tree.h>
 
 #define MAPPING_SZ 64
