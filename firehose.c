@@ -344,13 +344,15 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	if (ret < 0)
 		err(1, "failed to stat \"%s\"\n", program->filename);
 
-	num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
+	if (!program->sparse) {
+		num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
 
-	if (program->num_sectors && num_sectors > program->num_sectors) {
-		fprintf(stderr, "[PROGRAM] %s truncated to %d\n",
-			program->label,
-			program->num_sectors * program->sector_size);
-		num_sectors = program->num_sectors;
+		if (program->num_sectors && num_sectors > program->num_sectors) {
+			fprintf(stderr, "[PROGRAM] %s truncated to %d\n",
+				program->label,
+				program->num_sectors * program->sector_size);
+			num_sectors = program->num_sectors;
+		}
 	}
 
 	buf = malloc(max_payload_size);
@@ -388,7 +390,10 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t0 = time(NULL);
 
-	lseek(fd, (off_t) program->file_offset * program->sector_size, SEEK_SET);
+	if (program->sparse)
+		lseek(fd, (off_t) program->sparse_file_offset, SEEK_SET);
+	else
+		lseek(fd, (off_t) program->file_offset * program->sector_size, SEEK_SET);
 	left = num_sectors;
 	while (left > 0) {
 		chunk_size = MIN(max_payload_size / program->sector_size, left);
