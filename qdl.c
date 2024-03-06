@@ -421,7 +421,7 @@ static void print_usage(void)
 {
 	extern const char *__progname;
 	fprintf(stderr,
-		"%s [--debug] [--multiplier 1-2048] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
+		"%s [--debug] [--multiplier 1-2048] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--timeout <time_in_secs>] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
 }
 
