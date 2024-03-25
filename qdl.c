@@ -471,7 +471,7 @@ int main(int argc, char **argv)
 		return 1;
 
 	qdl.mappings[0] = prog_mbn;
-	ret = sahara_run(&qdl, qdl.mappings, true);
+	ret = sahara_run(&qdl, qdl.mappings, true, NULL);
 	if (ret < 0)
 		return 1;
 

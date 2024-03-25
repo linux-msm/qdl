@@ -46,6 +46,8 @@
 #include <unistd.h>
 #include "qdl.h"
 
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+
 #define SAHARA_HELLO_CMD		0x1  /* Min protocol version 1.0 */
 #define SAHARA_HELLO_RESP_CMD		0x2  /* Min protocol version 1.0 */
 #define SAHARA_READ_DATA_CMD		0x3  /* Min protocol version 1.0 */
@@ -85,6 +87,8 @@
 #define SAHARA_DONE_RESP_LENGTH		0xc
 #define SAHARA_RESET_LENGTH		0x8
 
+#define DEBUG_BLOCK_SIZE (512*1024)
+
 struct sahara_pkt {
 	uint32_t cmd;
 	uint32_t length;
@@ -117,11 +121,23 @@ struct sahara_pkt {
 			uint32_t status;
 		} done_resp;
 		struct {
+			uint64_t addr;
+			uint64_t length;
+		} debug64_req;
+		struct {
 			uint64_t image;
 			uint64_t offset;
 			uint64_t length;
 		} read64_req;
 	};
+};
+
+struct sahara_debug_region64 {
+	uint64_t type;
+	uint64_t addr;
+	uint64_t length;
+	char region[20];
+	char filename[20];
 };
 
 static void sahara_send_reset(struct qdl_device *qdl)
@@ -284,13 +300,123 @@ static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	return pkt->done_resp.status;
 }
 
-int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image)
+static ssize_t sahara_debug64_one(struct qdl_device *qdl,
+				  struct sahara_debug_region64 region,
+				  int ramdump_dir)
+{
+	struct sahara_pkt read_req;
+	uint64_t remain;
+	size_t offset;
+	size_t chunk;
+	ssize_t n;
+	void *buf;
+	int fd;
+
+	buf = malloc(DEBUG_BLOCK_SIZE);
+	if (!buf)
+		return -1;
+
+	fd = openat(ramdump_dir, region.filename, O_WRONLY | O_CREAT, 0644);
+	if (fd < 0) {
+		warn("failed to open \"%s\"", region.filename);
+		return -1;
+	}
+
+	chunk = 0;
+	while (chunk < region.length) {
+		remain = MIN(region.length - chunk, DEBUG_BLOCK_SIZE);
+
+		read_req.cmd = SAHARA_MEM_READ64_CMD;
+		read_req.length = SAHARA_MEM_READ64_LENGTH;
+		read_req.debug64_req.addr = region.addr + chunk;
+		read_req.debug64_req.length = remain;
+		n = qdl_write(qdl, &read_req, read_req.length);
+		if (n < 0)
+			break;
+
+		offset = 0;
+		while (offset < remain) {
+			n = qdl_read(qdl, buf, DEBUG_BLOCK_SIZE, 30000);
+			if (n < 0) {
+				warn("failed to read ramdump chunk");
+				goto out;
+			}
+
+			write(fd, buf, n);
+			offset += n;
+		}
+
+		qdl_read(qdl, buf, DEBUG_BLOCK_SIZE, 10);
+
+		chunk += DEBUG_BLOCK_SIZE;
+	}
+out:
+
+	close(fd);
+	free(buf);
+
+	return 0;
+}
+
+static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
+			   int ramdump_dir)
+{
+	struct sahara_debug_region64 *table;
+	struct sahara_pkt read_req;
+	ssize_t n;
+	int i;
+
+	assert(pkt->length == SAHARA_MEM_DEBUG64_LENGTH);
+
+	printf("DEBUG64 address: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
+		pkt->debug64_req.addr, pkt->debug64_req.length);
+
+	read_req.cmd = SAHARA_MEM_READ64_CMD;
+	read_req.length = SAHARA_MEM_READ64_LENGTH;
+	read_req.debug64_req.addr = pkt->debug64_req.addr;
+	read_req.debug64_req.length = pkt->debug64_req.length;
+
+	n = qdl_write(qdl, &read_req, read_req.length);
+	if (n < 0)
+		return;
+
+	table = malloc(read_req.debug64_req.length);
+
+	n = qdl_read(qdl, table, pkt->debug64_req.length, 1000);
+	if (n < 0)
+		return;
+
+	for (i = 0; i < pkt->debug64_req.length / sizeof(table[0]); i++) {
+		printf("%-2d: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%" PRIx64 " region: %s filename: %s\n",
+		       i, table[i].type, table[i].addr, table[i].length, table[i].region, table[i].filename);
+
+
+		n = sahara_debug64_one(qdl, table[i], ramdump_dir);
+		if (n < 0)
+			break;
+
+	}
+
+	free(table);
+
+	sahara_send_reset(qdl);
+}
+
+int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
+	       const char *ramdump_path)
 {
 	struct sahara_pkt *pkt;
+	int ramdump_dir = -1;
 	char buf[4096];
 	char tmp[32];
 	bool done = false;
 	int n;
+
+	if (ramdump_path) {
+		ramdump_dir = open(ramdump_path, O_DIRECTORY);
+		if (ramdump_dir < 0)
+			err(1, "failed to open directory for ramdump output");
+	}
 
 	while (!done) {
 		n = qdl_read(qdl, buf, sizeof(buf), 1000);
@@ -320,8 +446,16 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image)
 			if (single_image)
 				done = true;
 			break;
+		case SAHARA_MEM_DEBUG64_CMD:
+			sahara_debug64(qdl, pkt, ramdump_dir);
+			break;
 		case SAHARA_READ_DATA64_CMD:
 			sahara_read64(qdl, pkt, img_arr, single_image);
+			break;
+		case SAHARA_RESET_RESP_CMD:
+			assert(pkt->length == SAHARA_RESET_LENGTH);
+			if (ramdump_path)
+				done = true;
 			break;
 		default:
 			sprintf(tmp, "CMD%x", pkt->cmd);
@@ -329,6 +463,8 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image)
 			break;
 		}
 	}
+
+	close(ramdump_dir);
 
 	return done ? 0 : -1;
 }

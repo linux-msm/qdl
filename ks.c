@@ -109,7 +109,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	ret = sahara_run(&qdl, qdl.mappings, false);
+	ret = sahara_run(&qdl, qdl.mappings, false, NULL);
 	if (ret < 0)
 		return 1;
 
