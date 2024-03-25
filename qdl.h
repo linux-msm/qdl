@@ -25,7 +25,8 @@ int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len);
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage);
-int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image);
+int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
+	       const char *ramdump_path);
 void print_hex_dump(const char *prefix, const void *buf, size_t len);
 unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors);
 const char *attr_as_string(xmlNode *node, const char *attr, int *errors);
