@@ -1,3 +1,5 @@
 *.o
 qdl
 ks
+compile_commands.json
+.cache
