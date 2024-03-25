@@ -135,8 +135,8 @@ static int parse_usb_desc(int fd, struct qdl_device *qdl, int *intf)
 
 	dev = ptr;
 
-	/* Consider only devices with vid 0x0506 and product id 0x9008 */
-	if (dev->idVendor != 0x05c6 || dev->idProduct != 0x9008)
+	/* Consider only devices with vid 0x0506 and product id 0x9008 or 0x900e */
+	if (dev->idVendor != 0x05c6 || (dev->idProduct != 0x9008 && dev->idProduct != 0x900e))
 		return -EINVAL;
 
 	ptr += dev->bLength;
@@ -391,6 +391,9 @@ static void print_usage(void)
 	fprintf(stderr,
 		"%s [--debug] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
+	fprintf(stderr,
+		"%s --ramdump [segment-filter,...] [--ramdump-path <PATH>]\n",
+		__progname);
 }
 
 static int qdl_download(int argc, char **argv, char *storage, char *incdir,
@@ -451,23 +454,40 @@ static int qdl_download(int argc, char **argv, char *storage, char *incdir,
 	return 0;
 }
 
+static int qdl_ramdump(const char *path)
+{
+	int ret;
+
+	ret = usb_open(&qdl);
+	if (ret)
+		return 1;
+
+	ret = sahara_run(&qdl, NULL, true, path);
+	if (ret < 0)
+		return 1;
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
-	char *storage="ufs";
+	char *ramdump_path = NULL;
+	char *storage = "ufs";
 	char *incdir = NULL;
 	int opt;
 	bool qdl_finalize_provisioning = false;
 
-
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
+		{"ramdump", no_argument, 0, 'r'},
+		{"ramdump-out", required_argument, 0, 'o'},
 		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
 		{"storage", required_argument, 0, 's'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "di:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "di:rp:", options, NULL )) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -478,6 +498,16 @@ int main(int argc, char **argv)
 		case 'l':
 			qdl_finalize_provisioning = true;
 			break;
+		case 'r':
+			if (!ramdump_path)
+				ramdump_path = ".";
+			break;
+		case 'o':
+			if (optarg)
+				ramdump_path = optarg;
+			else if (argv[optind] && argv[optind][0] != '-')
+				ramdump_path = argv[optind++];
+			break;
 		case 's':
 			storage = optarg;
 			break;
@@ -487,6 +517,15 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (ramdump_path) {
+		if (incdir || qdl_finalize_provisioning ||
+		    strcmp(storage, "ufs") || optind != argc) {
+			print_usage();
+			return 1;
+		}
 
-	return qdl_download(argc, argv, storage, incdir, qdl_finalize_provisioning);
+		return qdl_ramdump(ramdump_path);
+	} else {
+		return qdl_download(argc, argv, storage, incdir, qdl_finalize_provisioning);
+	}
 }
