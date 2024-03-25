@@ -11,7 +11,7 @@ static void print_usage(void)
 {
 	extern const char *__progname;
 	fprintf(stderr,
-		"%s [--debug] [-o <ramdump-path>]\n",
+		"%s [--debug] [-o <ramdump-path>] [segment-filter,...]\n",
 		__progname);
 	exit(1);
 }
@@ -20,6 +20,7 @@ int main(int argc, char **argv)
 {
 	struct qdl_device qdl;
 	char *ramdump_path = ".";
+	char *filter = NULL;
 	int ret;
 	int opt;
 
@@ -42,6 +43,9 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (optind < argc)
+		filter = argv[optind++];
+
 	if (optind != argc)
 		print_usage();
 
@@ -49,7 +53,7 @@ int main(int argc, char **argv)
 	if (ret)
 		return 1;
 
-	ret = sahara_run(&qdl, NULL, true, ramdump_path);
+	ret = sahara_run(&qdl, NULL, true, ramdump_path, filter);
 	if (ret < 0)
 		return 1;
 
