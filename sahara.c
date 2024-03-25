@@ -35,6 +35,7 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <inttypes.h>
 #include <poll.h>
 #include <stdbool.h>
@@ -358,8 +359,30 @@ out:
 	return 0;
 }
 
+static bool sahara_debug64_filter(const char *filename, const char *filter)
+{
+	bool anymatch = false;
+	char *ptr;
+	char *tmp;
+	char *s;
+
+	if (!filter)
+		return false;
+
+	tmp = strdup(filter);
+	for (s = strtok_r(tmp, ",", &ptr); s; s = strtok_r(NULL, ",", &ptr)) {
+		if (fnmatch(s, filename, 0) == 0) {
+			anymatch = true;
+			break;
+		}
+	}
+	free(tmp);
+
+	return !anymatch;
+}
+
 static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
-			   int ramdump_dir)
+			   int ramdump_dir, const char *filter)
 {
 	struct sahara_debug_region64 *table;
 	struct sahara_pkt read_req;
@@ -387,6 +410,9 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		return;
 
 	for (i = 0; i < pkt->debug64_req.length / sizeof(table[0]); i++) {
+		if (sahara_debug64_filter(table[i].filename, filter))
+			continue;
+
 		printf("%-2d: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%" PRIx64 " region: %s filename: %s\n",
 		       i, table[i].type, table[i].addr, table[i].length, table[i].region, table[i].filename);
 
@@ -403,7 +429,7 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 }
 
 int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
-	       const char *ramdump_path)
+	       const char *ramdump_path, const char *ramdump_filter)
 {
 	struct sahara_pkt *pkt;
 	int ramdump_dir = -1;
@@ -447,7 +473,7 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 				done = true;
 			break;
 		case SAHARA_MEM_DEBUG64_CMD:
-			sahara_debug64(qdl, pkt, ramdump_dir);
+			sahara_debug64(qdl, pkt, ramdump_dir, ramdump_filter);
 			break;
 		case SAHARA_READ_DATA64_CMD:
 			sahara_read64(qdl, pkt, img_arr, single_image);

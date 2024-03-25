@@ -443,7 +443,7 @@ static int qdl_download(int argc, char **argv, char *storage, char *incdir,
 		return 1;
 
 	qdl.mappings[0] = prog_mbn;
-	ret = sahara_run(&qdl, qdl.mappings, true, NULL);
+	ret = sahara_run(&qdl, qdl.mappings, true, NULL, NULL);
 	if (ret < 0)
 		return 1;
 
@@ -454,7 +454,7 @@ static int qdl_download(int argc, char **argv, char *storage, char *incdir,
 	return 0;
 }
 
-static int qdl_ramdump(const char *path)
+static int qdl_ramdump(const char *path, const char *filter)
 {
 	int ret;
 
@@ -462,7 +462,7 @@ static int qdl_ramdump(const char *path)
 	if (ret)
 		return 1;
 
-	ret = sahara_run(&qdl, NULL, true, path);
+	ret = sahara_run(&qdl, NULL, true, path, filter);
 	if (ret < 0)
 		return 1;
 
@@ -471,6 +471,7 @@ static int qdl_ramdump(const char *path)
 
 int main(int argc, char **argv)
 {
+	char *ramdump_filter = NULL;
 	char *ramdump_path = NULL;
 	char *storage = "ufs";
 	char *incdir = NULL;
@@ -479,7 +480,7 @@ int main(int argc, char **argv)
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
-		{"ramdump", no_argument, 0, 'r'},
+		{"ramdump", optional_argument, 0, 'r'},
 		{"ramdump-out", required_argument, 0, 'o'},
 		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
@@ -487,7 +488,7 @@ int main(int argc, char **argv)
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "di:rp:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "di:r::p:", options, NULL )) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -499,6 +500,10 @@ int main(int argc, char **argv)
 			qdl_finalize_provisioning = true;
 			break;
 		case 'r':
+			if (optarg)
+				ramdump_filter = optarg;
+			else if (argv[optind] && argv[optind][0] != '-')
+				ramdump_filter = argv[optind++];
 			if (!ramdump_path)
 				ramdump_path = ".";
 			break;
@@ -524,7 +529,7 @@ int main(int argc, char **argv)
 			return 1;
 		}
 
-		return qdl_ramdump(ramdump_path);
+		return qdl_ramdump(ramdump_path, ramdump_filter);
 	} else {
 		return qdl_download(argc, argv, storage, incdir, qdl_finalize_provisioning);
 	}
