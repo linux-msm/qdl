@@ -393,43 +393,12 @@ static void print_usage(void)
 		__progname);
 }
 
-int main(int argc, char **argv)
+static int qdl_download(int argc, char **argv, char *storage, char *incdir,
+			bool qdl_finalize_provisioning)
 {
-	char *prog_mbn, *storage="ufs";
-	char *incdir = NULL;
+	char *prog_mbn;
 	int type;
 	int ret;
-	int opt;
-	bool qdl_finalize_provisioning = false;
-
-
-	static struct option options[] = {
-		{"debug", no_argument, 0, 'd'},
-		{"include", required_argument, 0, 'i'},
-		{"finalize-provisioning", no_argument, 0, 'l'},
-		{"storage", required_argument, 0, 's'},
-		{0, 0, 0, 0}
-	};
-
-	while ((opt = getopt_long(argc, argv, "di:", options, NULL )) != -1) {
-		switch (opt) {
-		case 'd':
-			qdl_debug = true;
-			break;
-		case 'i':
-			incdir = optarg;
-			break;
-		case 'l':
-			qdl_finalize_provisioning = true;
-			break;
-		case 's':
-			storage = optarg;
-			break;
-		default:
-			print_usage();
-			return 1;
-		}
-	}
 
 	/* at least 2 non optional args required */
 	if ((optind + 2) > argc) {
@@ -480,4 +449,44 @@ int main(int argc, char **argv)
 		return 1;
 
 	return 0;
+}
+
+int main(int argc, char **argv)
+{
+	char *storage="ufs";
+	char *incdir = NULL;
+	int opt;
+	bool qdl_finalize_provisioning = false;
+
+
+	static struct option options[] = {
+		{"debug", no_argument, 0, 'd'},
+		{"include", required_argument, 0, 'i'},
+		{"finalize-provisioning", no_argument, 0, 'l'},
+		{"storage", required_argument, 0, 's'},
+		{0, 0, 0, 0}
+	};
+
+	while ((opt = getopt_long(argc, argv, "di:", options, NULL )) != -1) {
+		switch (opt) {
+		case 'd':
+			qdl_debug = true;
+			break;
+		case 'i':
+			incdir = optarg;
+			break;
+		case 'l':
+			qdl_finalize_provisioning = true;
+			break;
+		case 's':
+			storage = optarg;
+			break;
+		default:
+			print_usage();
+			return 1;
+		}
+	}
+
+
+	return qdl_download(argc, argv, storage, incdir, qdl_finalize_provisioning);
 }
