@@ -46,6 +46,45 @@
 #include <unistd.h>
 #include "qdl.h"
 
+#define SAHARA_HELLO_CMD		0x1  /* Min protocol version 1.0 */
+#define SAHARA_HELLO_RESP_CMD		0x2  /* Min protocol version 1.0 */
+#define SAHARA_READ_DATA_CMD		0x3  /* Min protocol version 1.0 */
+#define SAHARA_END_OF_IMAGE_CMD		0x4  /* Min protocol version 1.0 */
+#define SAHARA_DONE_CMD			0x5  /* Min protocol version 1.0 */
+#define SAHARA_DONE_RESP_CMD		0x6  /* Min protocol version 1.0 */
+#define SAHARA_RESET_CMD		0x7  /* Min protocol version 1.0 */
+#define SAHARA_RESET_RESP_CMD		0x8  /* Min protocol version 1.0 */
+#define SAHARA_MEM_DEBUG_CMD		0x9  /* Min protocol version 2.0 */
+#define SAHARA_MEM_READ_CMD		0xa  /* Min protocol version 2.0 */
+#define SAHARA_CMD_READY_CMD		0xb  /* Min protocol version 2.1 */
+#define SAHARA_SWITCH_MODE_CMD		0xc  /* Min protocol version 2.1 */
+#define SAHARA_EXECUTE_CMD		0xd  /* Min protocol version 2.1 */
+#define SAHARA_EXECUTE_RESP_CMD		0xe  /* Min protocol version 2.1 */
+#define SAHARA_EXECUTE_DATA_CMD		0xf  /* Min protocol version 2.1 */
+#define SAHARA_MEM_DEBUG64_CMD		0x10 /* Min protocol version 2.5 */
+#define SAHARA_MEM_READ64_CMD		0x11 /* Min protocol version 2.5 */
+#define SAHARA_READ_DATA64_CMD		0x12 /* Min protocol version 2.8 */
+#define SAHARA_RESET_STATE_CMD		0x13 /* Min protocol version 2.9 */
+#define SAHARA_WRITE_DATA_CMD		0x14 /* Min protocol version 3.0 */
+
+#define SAHARA_VERSION			2
+#define SAHARA_SUCCESS			0
+
+#define SAHARA_MODE_IMAGE_TX_PENDING	0x0
+#define SAHARA_MODE_IMAGE_TX_COMPLETE	0x1
+#define SAHARA_MODE_MEMORY_DEBUG	0x2
+#define SAHARA_MODE_COMMAND		0x3
+
+#define SAHARA_HELLO_LENGTH		0x30
+#define SAHARA_READ_DATA_LENGTH		0x14
+#define SAHARA_READ_DATA64_LENGTH	0x20
+#define SAHARA_END_OF_IMAGE_LENGTH	0x10
+#define SAHARA_MEM_READ64_LENGTH	0x18
+#define SAHARA_MEM_DEBUG64_LENGTH	0x18
+#define SAHARA_DONE_LENGTH		0x8
+#define SAHARA_DONE_RESP_LENGTH		0xc
+#define SAHARA_RESET_LENGTH		0x8
+
 struct sahara_pkt {
 	uint32_t cmd;
 	uint32_t length;
@@ -89,8 +128,8 @@ static void sahara_send_reset(struct qdl_device *qdl)
 {
 	struct sahara_pkt resp;
 
-	resp.cmd = 7;
-	resp.length = 8;
+	resp.cmd = SAHARA_RESET_CMD;
+	resp.length = SAHARA_RESET_LENGTH;
 
 	qdl_write(qdl, &resp, resp.length);
 }
@@ -99,16 +138,16 @@ static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
 	struct sahara_pkt resp;
 
-	assert(pkt->length == 0x30);
+	assert(pkt->length == SAHARA_HELLO_LENGTH);
 
 	printf("HELLO version: 0x%x compatible: 0x%x max_len: %d mode: %d\n",
 	       pkt->hello_req.version, pkt->hello_req.compatible, pkt->hello_req.max_len, pkt->hello_req.mode);
 
-	resp.cmd = 2;
-	resp.length = 0x30;
-	resp.hello_resp.version = 2;
+	resp.cmd = SAHARA_HELLO_RESP_CMD;
+	resp.length = SAHARA_HELLO_LENGTH;
+	resp.hello_resp.version = SAHARA_VERSION;
 	resp.hello_resp.compatible = 1;
-	resp.hello_resp.status = 0;
+	resp.hello_resp.status = SAHARA_SUCCESS;
 	resp.hello_resp.mode = pkt->hello_req.mode;
 
 	qdl_write(qdl, &resp, resp.length);
@@ -119,7 +158,6 @@ static int sahara_read_common(struct qdl_device *qdl, int progfd, off_t offset, 
 	ssize_t n;
 	void *buf;
 	int ret = 0;
-
 
 	buf = malloc(len);
 	if (!buf)
@@ -148,7 +186,7 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *im
 	int ret;
 	int fd;
 
-	assert(pkt->length == 0x14);
+	assert(pkt->length == SAHARA_READ_DATA_LENGTH);
 
 	printf("READ image: %d offset: 0x%x length: 0x%x\n",
 	       pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
@@ -186,7 +224,7 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *
 	int ret;
 	int fd;
 
-	assert(pkt->length == 0x20);
+	assert(pkt->length == SAHARA_READ_DATA64_LENGTH);
 
 	printf("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
 	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
@@ -221,7 +259,7 @@ static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
 	struct sahara_pkt done;
 
-	assert(pkt->length == 0x10);
+	assert(pkt->length == SAHARA_END_OF_IMAGE_LENGTH);
 
 	printf("END OF IMAGE image: %d status: %d\n", pkt->eoi.image, pkt->eoi.status);
 
@@ -230,14 +268,14 @@ static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 		return;
 	}
 
-	done.cmd = 5;
-	done.length = 0x8;
+	done.cmd = SAHARA_DONE_CMD;
+	done.length = SAHARA_DONE_LENGTH;
 	qdl_write(qdl, &done, done.length);
 }
 
 static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
-	assert(pkt->length == 0xc);
+	assert(pkt->length == SAHARA_DONE_RESP_LENGTH);
 
 	printf("DONE status: %d\n", pkt->done_resp.status);
 
@@ -266,23 +304,23 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image)
 		}
 
 		switch (pkt->cmd) {
-		case 1:
+		case SAHARA_HELLO_CMD:
 			sahara_hello(qdl, pkt);
 			break;
-		case 3:
+		case SAHARA_READ_DATA_CMD:
 			sahara_read(qdl, pkt, img_arr, single_image);
 			break;
-		case 4:
+		case SAHARA_END_OF_IMAGE_CMD:
 			sahara_eoi(qdl, pkt);
 			break;
-		case 6:
+		case SAHARA_DONE_RESP_CMD:
 			done = sahara_done(qdl, pkt);
 
 			/* E.g MSM8916 EDL reports done = 0 here */
 			if (single_image)
 				done = true;
 			break;
-		case 0x12:
+		case SAHARA_READ_DATA64_CMD:
 			sahara_read64(qdl, pkt, img_arr, single_image);
 			break;
 		default:
