@@ -39,8 +39,8 @@ static int parse_usb_desc(int fd, struct qdl_device *qdl, int *intf)
 
 	dev = ptr;
 
-	/* Consider only devices with vid 0x0506 and product id 0x9008 */
-	if (dev->idVendor != 0x05c6 || dev->idProduct != 0x9008)
+	/* Consider only devices with vid 0x0506 and product id 0x9008 or 0x900e */
+	if (dev->idVendor != 0x05c6 || (dev->idProduct != 0x9008 && dev->idProduct != 0x900e))
 		return -EINVAL;
 
 	ptr += dev->bLength;
