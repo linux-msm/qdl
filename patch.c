@@ -29,6 +29,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>

@@ -19,9 +19,13 @@ $(OUT): $(OBJS)
 $(KS_OUT): $(KS_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
+compile_commands.json: $(SRCS) $(KS_SRCS)
+	@echo -n $^ | jq -snR "[inputs|split(\" \")[]|{directory:\"$(PWD)\", command: \"$(CC) $(CFLAGS) -c \(.)\", file:.}]" > $@
+
 clean:
 	rm -f $(OUT) $(OBJS)
 	rm -f $(KS_OUT) $(KS_OBJS)
+	rm -f compile_commands.json
 
 install: $(OUT) $(KS_OUT)
 	install -d $(DESTDIR)$(prefix)/bin
