@@ -146,8 +146,10 @@ int program_load(const char *program_file, bool is_nand)
 			errors = load_erase_tag(node, is_nand);
 		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
 			errors = load_program_tag(node, is_nand);
-		else
-			fprintf(stderr, "[PROGRAM] unrecognized tag \"%s\", ignoring\n", node->name);
+		else {
+			fprintf(stderr, "[PROGRAM] unrecognized tag \"%s\"\n", node->name);
+			errors = -EINVAL;
+		}
 
 		if (errors)
 			return errors;
