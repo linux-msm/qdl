@@ -21,6 +21,7 @@ struct qdl_device {
         char *mappings[MAPPING_SZ]; // array index is the id from the device
 };
 
+int qdl_open(struct qdl_device *qdl);
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len);
 
