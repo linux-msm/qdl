@@ -105,6 +105,7 @@ int main(int argc, char **argv)
 {
 	char *prog_mbn, *storage="ufs";
 	char *incdir = NULL;
+	char *serial = NULL;
 	int type;
 	int ret;
 	int opt;
@@ -115,11 +116,12 @@ int main(int argc, char **argv)
 		{"debug", no_argument, 0, 'd'},
 		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
+		{"serial", required_argument, 0, 'S'},
 		{"storage", required_argument, 0, 's'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "di:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "di:S:", options, NULL )) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -132,6 +134,9 @@ int main(int argc, char **argv)
 			break;
 		case 's':
 			storage = optarg;
+			break;
+		case 'S':
+			serial = optarg;
 			break;
 		default:
 			print_usage();
@@ -174,7 +179,7 @@ int main(int argc, char **argv)
 		}
 	} while (++optind < argc);
 
-	ret = qdl_open(&qdl);
+	ret = qdl_open(&qdl, serial);
 	if (ret)
 		return 1;
 
