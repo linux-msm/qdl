@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <err.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -9,12 +10,40 @@
 
 #include "qdl.h"
 
-static int qdl_parse_usb_descriptors(libusb_device *dev, struct qdl_device *qdl, int *intf)
+static bool qdl_match_usb_serial(struct libusb_device_handle *handle, const char *serial,
+				 const struct libusb_device_descriptor *desc)
+{
+	char buf[128];
+	char *p;
+	int ret;
+
+	/* If no serial is requested, consider everything a match */
+	if (!serial)
+		return true;
+
+	ret = libusb_get_string_descriptor_ascii(handle, desc->iProduct, (unsigned char *)buf, sizeof(buf));
+	if (ret < 0) {
+		warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
+		return false;
+	}
+
+	p = strstr(buf, "_SN:");
+	if (!p)
+		return false;
+
+	p += strlen("_SN:");
+	p[strcspn(p, " _")] = '\0';
+
+	return strcmp(p, serial) == 0;
+}
+
+static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *serial)
 {
 	const struct libusb_endpoint_descriptor *endpoint;
 	const struct libusb_interface_descriptor *ifc;
 	struct libusb_config_descriptor *config;
 	struct libusb_device_descriptor desc;
+	struct libusb_device_handle *handle;
 	size_t out_size;
 	size_t in_size;
 	uint8_t type;
@@ -76,12 +105,29 @@ static int qdl_parse_usb_descriptors(libusb_device *dev, struct qdl_device *qdl,
 		    ifc->bInterfaceProtocol != 17)
 			continue;
 
+		ret = libusb_open(dev, &handle);
+		if (ret < 0) {
+			warnx("unable to open USB device");
+			continue;
+		}
+
+		if (!qdl_match_usb_serial(handle, serial, &desc)) {
+			libusb_close(handle);
+			continue;
+		}
+
+		ret = libusb_claim_interface(handle, ifc->bInterfaceNumber);
+		if (ret < 0) {
+			warnx("failed to claim USB interface");
+			libusb_close(handle);
+			continue;
+		}
+
+		qdl->usb_handle = handle;
 		qdl->in_ep = in;
 		qdl->out_ep = out;
 		qdl->in_maxpktsize = in_size;
 		qdl->out_maxpktsize = out_size;
-
-		*intf = ifc->bInterfaceNumber;
 
 		return 1;
 	}
@@ -89,13 +135,12 @@ static int qdl_parse_usb_descriptors(libusb_device *dev, struct qdl_device *qdl,
 	return 0;
 }
 
-int qdl_open(struct qdl_device *qdl)
+int qdl_open(struct qdl_device *qdl, const char *serial)
 {
-	struct libusb_device_handle *handle;
 	struct libusb_device **devs;
 	struct libusb_device *dev;
 	bool wait_printed = false;
-	int intf_num;
+	bool found = false;
 	ssize_t n;
 	int ret;
 	int i;
@@ -112,29 +157,16 @@ int qdl_open(struct qdl_device *qdl)
 		for (i = 0; devs[i]; i++) {
 			dev = devs[i];
 
-			ret = qdl_parse_usb_descriptors(dev, qdl, &intf_num);
-			if (ret != 1)
-				continue;
-
-			ret = libusb_open(dev, &handle);
-			if (ret < 0) {
-				warnx("unable to open USB device");
-				continue;
+			ret = qdl_try_open(dev, qdl, serial);
+			if (ret == 1) {
+				found = true;
+				break;
 			}
-
-			ret = libusb_claim_interface(handle, intf_num);
-			if (ret < 0) {
-				warnx("failed to claim USB interface");
-				libusb_close(handle);
-			}
-
-			qdl->usb_handle = handle;
-			break;
 		}
 
 		libusb_free_device_list(devs, 1);
 
-		if (qdl->usb_handle)
+		if (found)
 			return 0;
 
 		if (!wait_printed) {
