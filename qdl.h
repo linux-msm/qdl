@@ -9,7 +9,10 @@
 
 #define MAPPING_SZ 64
 
+struct libusb_device_handle;
+
 struct qdl_device {
+        struct libusb_device_handle *usb_handle;
         int fd;
 
         int in_ep;
