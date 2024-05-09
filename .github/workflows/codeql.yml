@@ -1,0 +1,30 @@
+name: CodeQL
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev
+
+      - name: CodeQL init
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: autobuild
+
+      - name: CodeQL build
+        uses: github/codeql-action/autobuild@v3
+
+      - name: CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+
