@@ -6,6 +6,12 @@ on:
 
 jobs:
   codeql:
+    permissions:
+      # required for all workflows
+      security-events: write
+
+      # required to fetch internal or private CodeQL packs
+      packages: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
