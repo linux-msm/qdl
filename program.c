@@ -127,7 +127,7 @@ int program_load(const char *program_file, bool is_nand)
 	xmlNode *node;
 	xmlNode *root;
 	xmlDoc *doc;
-	int errors;
+	int errors = 0;
 
 	doc = xmlReadFile(program_file, NULL, 0);
 	if (!doc) {
@@ -140,8 +140,6 @@ int program_load(const char *program_file, bool is_nand)
 		if (node->type != XML_ELEMENT_NODE)
 			continue;
 
-		errors = -EINVAL;
-
 		if (!xmlStrcmp(node->name, (xmlChar *)"erase"))
 			errors = load_erase_tag(node, is_nand);
 		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
@@ -152,12 +150,13 @@ int program_load(const char *program_file, bool is_nand)
 		}
 
 		if (errors)
-			return errors;
+			goto out;
 	}
 
+out:
 	xmlFreeDoc(doc);
 
-	return 0;
+	return errors;
 }
 
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
