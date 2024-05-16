@@ -10,7 +10,10 @@
 
 #define MAPPING_SZ 64
 
+struct libusb_device_handle;
+
 struct qdl_device {
+        struct libusb_device_handle *usb_handle;
         int fd;
 
         int in_ep;
@@ -22,11 +25,13 @@ struct qdl_device {
         char *mappings[MAPPING_SZ]; // array index is the id from the device
 };
 
+int qdl_open(struct qdl_device *qdl, const char *serial);
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len);
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage);
-int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image);
+int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
+	       const char *ramdump_path, const char *ramdump_filter);
 void print_hex_dump(const char *prefix, const void *buf, size_t len);
 unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors);
 const char *attr_as_string(xmlNode *node, const char *attr, int *errors);
