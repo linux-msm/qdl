@@ -136,7 +136,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 			if (timercmp(&now, &timeout, <))
 				continue;
 
-			warnx("firehose operation timed out");
+			warnx("firehose operation timed out: %d ms", timeout_ms);
 			return -ETIMEDOUT;
 		}
 		buf[n] = '\0';
@@ -192,7 +192,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 	return ret < 0 ? -saved_errno : 0;
 }
 
-static size_t max_payload_size = 1048576;
+static size_t max_payload_size = 1024*1024;
 
 /**
  * firehose_configure_response_parser() - parse a configure response
