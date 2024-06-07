@@ -53,6 +53,11 @@
 #include "qdl.h"
 #include "ufs.h"
 
+enum {
+	FIREHOSE_ACK = 0,
+	FIREHOSE_NAK,
+};
+
 static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 {
 	xmlChar buf[128];
@@ -106,10 +111,15 @@ static int firehose_generic_parser(xmlNode *node, void *data)
 
 	if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
 		printf("LOG: %s\n", value);
-		return 0;
+		return -EAGAIN;
 	}
 
-	return xmlStrcmp(value, (xmlChar*)"ACK") == 0 ? 1 : -1;
+	if (xmlStrcmp(value, (xmlChar*)"ACK") == 0)
+		return FIREHOSE_ACK;
+	if (xmlStrcmp(value, (xmlChar*)"NAK") == 0)
+		return FIREHOSE_NAK;
+
+	return -EINVAL;
 }
 
 static int firehose_read(struct qdl_device *qdl, int timeout_ms,
@@ -151,13 +161,13 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 		}
 
 		ret = response_parser(node, data);
-		if (ret != 0)
+		if (ret != -EAGAIN)
 			break;
 
 		xmlFreeDoc(node->doc);
 	}
 
-	return ret < 0 ? ret : 0;
+	return ret;
 }
 
 static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
@@ -209,7 +219,7 @@ static int firehose_configure_response_parser(xmlNode *node, void *data)
 	value = xmlGetProp(node, (xmlChar*)"value");
 	if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
 		printf("LOG: %s\n", value);
-		return 0;
+		return -EAGAIN;
 	}
 
 	payload = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytes");
@@ -232,7 +242,7 @@ static int firehose_configure_response_parser(xmlNode *node, void *data)
 
 	*(size_t*)data = max_size;
 
-	return 1;
+	return FIREHOSE_ACK;
 }
 
 static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, bool skip_storage_init, const char *storage, size_t *max_payload_size)
@@ -267,14 +277,18 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, co
 	int ret;
 
 	ret = firehose_send_configure(qdl, max_payload_size, skip_storage_init, storage, &size);
-	if (ret < 0)
-		return ret;
+	if (ret < 0) {
+		fprintf(stderr, "[CONFIGURE] request failed\n");
+		return -1;
+	}
 
 	/* Retry if remote proposed different size */
 	if (size != max_payload_size) {
 		ret = firehose_send_configure(qdl, size, skip_storage_init, storage, &size);
-		if (ret < 0)
-			return ret;
+		if (ret != FIREHOSE_ACK) {
+			fprintf(stderr, "[CONFIGURE] request failed\n");
+			return -1;
+		}
 
 		max_payload_size = size;
 	}
@@ -320,7 +334,7 @@ static int firehose_erase(struct qdl_device *qdl, struct program *program)
 
 out:
 	xmlFreeDoc(doc);
-	return ret;
+	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
 static int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
@@ -427,7 +441,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 out:
 	xmlFreeDoc(doc);
-	return ret;
+	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
 static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
@@ -462,7 +476,7 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 
 out:
 	xmlFreeDoc(doc);
-	return ret;
+	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
 static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node){
@@ -511,7 +525,7 @@ int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs)
 	if (ret)
 		fprintf(stderr, "[APPLY UFS common] %d\n", ret);
 
-	return ret;
+	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
 int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
@@ -538,7 +552,7 @@ int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
 	if (ret)
 		fprintf(stderr, "[APPLY UFS body] %d\n", ret);
 
-	return ret;
+	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
 int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs,
@@ -556,7 +570,7 @@ int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs
 	if (ret)
 		fprintf(stderr, "[APPLY UFS epilogue] %d\n", ret);
 
-	return ret;
+	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
 static int firehose_set_bootable(struct qdl_device *qdl, int part)
@@ -576,7 +590,7 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	ret = firehose_write(qdl, doc);
 	xmlFreeDoc(doc);
 	if (ret < 0)
-		return ret;
+		return -1;
 
 	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 	if (ret) {
@@ -605,13 +619,13 @@ static int firehose_reset(struct qdl_device *qdl)
 	ret = firehose_write(qdl, doc);
 	xmlFreeDoc(doc);
 	if (ret < 0)
-		return ret;
+		return -1;
 
 	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 	/* drain any remaining log messages for reset */
 	if (!ret)
 		firehose_read(qdl, 1000, firehose_generic_parser, NULL);
-	return ret;
+	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage)
