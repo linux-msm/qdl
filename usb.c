@@ -126,6 +126,8 @@ static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *
 			continue;
 		}
 
+		libusb_detach_kernel_driver(handle, ifc->bInterfaceNumber);
+
 		ret = libusb_claim_interface(handle, ifc->bInterfaceNumber);
 		if (ret < 0) {
 			warnx("failed to claim USB interface");
