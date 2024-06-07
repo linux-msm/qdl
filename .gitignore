@@ -4,3 +4,5 @@ qdl-ramdump
 ks
 compile_commands.json
 .cache
+
+.vscode/settings.json

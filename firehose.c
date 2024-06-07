@@ -192,7 +192,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 	return ret < 0 ? -saved_errno : 0;
 }
 
-static size_t max_payload_size = 1048576;
+static size_t max_payload_size = 1024*1024;
 
 /**
  * firehose_configure_response_parser() - parse a configure response
