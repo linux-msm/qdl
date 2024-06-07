@@ -10,6 +10,16 @@
 
 #include "qdl.h"
 
+/*
+ * libusb commit f0cce43f882d ("core: Fix definition and use of enum
+ * libusb_transfer_type") split transfer type and endpoint transfer types.
+ * Provide an alias in order to make the code compile with the old (non-split)
+ * definition.
+ */
+#ifndef LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK
+#define LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK LIBUSB_TRANSFER_TYPE_BULK
+#endif
+
 static bool qdl_match_usb_serial(struct libusb_device_handle *handle, const char *serial,
 				 const struct libusb_device_descriptor *desc)
 {
