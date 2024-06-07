@@ -146,7 +146,6 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 			if (timercmp(&now, &timeout, <))
 				continue;
 
-			warnx("firehose operation timed out");
 			return -ETIMEDOUT;
 		}
 		buf[n] = '\0';
@@ -622,9 +621,12 @@ static int firehose_reset(struct qdl_device *qdl)
 		return -1;
 
 	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+	if (ret < 0)
+		fprintf(stderr, "[RESET] request failed: %s\n", strerror(ret));
 	/* drain any remaining log messages for reset */
-	if (!ret)
+	else
 		firehose_read(qdl, 1000, firehose_generic_parser, NULL);
+
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
