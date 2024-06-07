@@ -129,7 +129,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 	char buf[4096];
 	xmlNode *node;
 	int error;
-	int ret = -ENXIO;
+	int ret = -EAGAIN;
 	int n;
 	struct timeval timeout;
 	struct timeval now;
@@ -139,7 +139,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 	gettimeofday(&now, NULL);
 	timeradd(&now, &delta, &timeout);
 
-	for (;;) {
+	do {
 		n = qdl_read(qdl, buf, sizeof(buf), 100);
 		if (n < 0) {
 			gettimeofday(&now, NULL);
@@ -160,11 +160,8 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 		}
 
 		ret = response_parser(node, data);
-		if (ret != -EAGAIN)
-			break;
-
 		xmlFreeDoc(node->doc);
-	}
+	} while (ret == -EAGAIN);
 
 	return ret;
 }
