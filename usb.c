@@ -126,9 +126,16 @@ static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *
 			continue;
 		}
 
+		ret = libusb_detach_kernel_driver(handle, ifc->bInterfaceNumber);
+		if (ret < 0) {
+			warnx("failed to detach USB interface %d", ret);
+			libusb_close(handle);
+			continue;
+		}
+
 		ret = libusb_claim_interface(handle, ifc->bInterfaceNumber);
 		if (ret < 0) {
-			warnx("failed to claim USB interface");
+			warnx("failed to claim USB interface %d", ret);
 			libusb_close(handle);
 			continue;
 		}
@@ -196,8 +203,10 @@ int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout
 	int ret;
 
 	ret = libusb_bulk_transfer(qdl->usb_handle, qdl->in_ep, buf, len, &actual, timeout);
-	if (ret < 0)
+	if (ret < 0){
+		warnx("bulk read failed: %d, %s", ret, libusb_strerror(ret));
 		return -1;
+	}
 
 	return actual;
 }
@@ -217,7 +226,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
 		ret = libusb_bulk_transfer(qdl->usb_handle, qdl->out_ep, data,
 					   xfer, &actual, 1000);
 		if (ret < 0) {
-			warnx("bulk write failed: %s", libusb_strerror(ret));
+			warnx("bulk write failed: %d, %s", ret, libusb_strerror(ret));
 			return -1;
 		}
 

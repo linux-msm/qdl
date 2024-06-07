@@ -111,6 +111,7 @@ int main(int argc, char **argv)
 	int opt;
 	bool qdl_finalize_provisioning = false;
 
+	printf("QDL version %s %s\n", VERSION, BUILD_TIME);
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
