@@ -10,6 +10,8 @@
 
 #include "qdl.h"
 
+#define DEFAULT_OUT_CHUNK_SIZE (1024 * 1024)
+
 /*
  * libusb commit f0cce43f882d ("core: Fix definition and use of enum
  * libusb_transfer_type") split transfer type and endpoint transfer types.
@@ -141,6 +143,20 @@ static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *
 		qdl->in_maxpktsize = in_size;
 		qdl->out_maxpktsize = out_size;
 
+		if (qdl->out_chunk_size && qdl->out_chunk_size % out_size) {
+			fprintf(stderr,
+				"WARNING: requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld\n",
+				out_size, out_size);
+			qdl->out_chunk_size = out_size;
+		} else if (!qdl->out_chunk_size) {
+			qdl->out_chunk_size = DEFAULT_OUT_CHUNK_SIZE;
+		}
+
+		if (qdl_debug) {
+			fprintf(stderr, "USB: using out-chunk-size of %ld\n",
+				qdl->out_chunk_size);
+		}
+
 		return 1;
 	}
 
@@ -215,7 +231,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
 	int ret;
 
 	while (len > 0) {
-		xfer = (len > qdl->out_maxpktsize) ? qdl->out_maxpktsize : len;
+		xfer = (len > qdl->out_chunk_size) ? qdl->out_chunk_size : len;
 
 		ret = libusb_bulk_transfer(qdl->usb_handle, qdl->out_ep, data,
 					   xfer, &actual, 1000);
@@ -238,4 +254,9 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
 	}
 
 	return count;
+}
+
+void qdl_set_out_chunk_size(struct qdl_device *qdl, long size)
+{
+	qdl->out_chunk_size = size;
 }

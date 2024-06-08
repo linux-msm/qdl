@@ -21,6 +21,7 @@ struct qdl_device {
 
         size_t in_maxpktsize;
         size_t out_maxpktsize;
+        size_t out_chunk_size;
 
         char *mappings[MAPPING_SZ]; // array index is the id from the device
 };
@@ -28,6 +29,7 @@ struct qdl_device {
 int qdl_open(struct qdl_device *qdl, const char *serial);
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len);
+void qdl_set_out_chunk_size(struct qdl_device *qdl, long size);
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage);
 int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,

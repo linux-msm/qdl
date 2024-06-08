@@ -34,6 +34,7 @@
 #include <getopt.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
@@ -106,6 +107,10 @@ static void print_usage(void)
 		__progname);
 }
 
+enum {
+	OPT_OUT_CHUNK_SIZE = 1000,
+};
+
 int main(int argc, char **argv)
 {
 	char *prog_mbn, *storage="ufs";
@@ -115,12 +120,13 @@ int main(int argc, char **argv)
 	int ret;
 	int opt;
 	bool qdl_finalize_provisioning = false;
-
+	long out_chunk_size;
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
 		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
+		{"out-chunk-size", required_argument, 0, OPT_OUT_CHUNK_SIZE },
 		{"serial", required_argument, 0, 'S'},
 		{"storage", required_argument, 0, 's'},
 		{0, 0, 0, 0}
@@ -136,6 +142,10 @@ int main(int argc, char **argv)
 			break;
 		case 'l':
 			qdl_finalize_provisioning = true;
+			break;
+		case OPT_OUT_CHUNK_SIZE:
+			out_chunk_size = strtol(optarg, NULL, 10);
+			qdl_set_out_chunk_size(&qdl, out_chunk_size);
 			break;
 		case 's':
 			storage = optarg;
