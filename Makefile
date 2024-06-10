@@ -1,7 +1,10 @@
 QDL := qdl
 RAMDUMP := qdl-ramdump
 
-CFLAGS += -O2 -Wall -g `pkg-config --cflags libxml-2.0 libusb-1.0`
+BUILD_TIME := $(shell date +"%c")
+VERSION := "1.0.0"
+
+CFLAGS += -O2 -Wall -g `pkg-config --cflags libxml-2.0 libusb-1.0` -D "BUILD_TIME=\"$(BUILD_TIME)\"" -D "VERSION=\"$(VERSION)\""
 LDFLAGS += `pkg-config --libs libxml-2.0 libusb-1.0`
 prefix := /usr/local
 
