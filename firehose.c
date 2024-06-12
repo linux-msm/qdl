@@ -317,9 +317,10 @@ static int firehose_erase(struct qdl_device *qdl, struct program *program)
 	xml_setpropf(node, "num_partition_sectors", "%d", program->num_sectors);
 	xml_setpropf(node, "start_sector", "%s", program->start_sector);
 
+	fprintf(stderr, "[ERASE] Please wait, erasing \"%s\" now...\n", program->label);
 	ret = firehose_write(qdl, doc);
 	if (ret < 0) {
-		fprintf(stderr, "[PROGRAM] failed to write program command\n");
+		fprintf(stderr, "[ERASE] failed to write program command\n");
 		goto out;
 	}
 
@@ -344,6 +345,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	void *buf;
 	time_t t0;
 	time_t t;
+	time_t tn;
 	int left;
 	int ret;
 	int n;
@@ -384,6 +386,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		xml_setpropf(node, "last_sector", "%d", program->last_sector);
 	}
 
+	fprintf(stderr, "[PROGRAM] Please wait, flashing \"%s\" now...\n", program->label);
 	ret = firehose_write(qdl, doc);
 	if (ret < 0) {
 		fprintf(stderr, "[PROGRAM] failed to write program command\n");
@@ -400,7 +403,16 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	lseek(fd, (off_t) program->file_offset * program->sector_size, SEEK_SET);
 	left = num_sectors;
+	tn = t0;
 	while (left > 0) {
+	        t = time(NULL);
+		// Update status every second
+		if (t - tn > 1) {
+			fprintf(stderr, "[PROGRAM] %d sectors remaining out of %d (%.2f%%)\r",
+				left, num_sectors,
+				(float) (num_sectors - left) / num_sectors * 100.0);
+			tn = t;
+		}
 		chunk_size = MIN(max_payload_size / program->sector_size, left);
 
 		n = read(fd, buf, chunk_size * program->sector_size);
