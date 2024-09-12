@@ -103,7 +103,7 @@ static void print_usage(void)
 {
 	extern const char *__progname;
 	fprintf(stderr,
-		"%s [--debug] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
+		"%s [--debug] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
 }
 
@@ -120,6 +120,7 @@ int main(int argc, char **argv)
 	int ret;
 	int opt;
 	bool qdl_finalize_provisioning = false;
+	bool allow_missing = false;
 	long out_chunk_size;
 
 	static struct option options[] = {
@@ -129,13 +130,17 @@ int main(int argc, char **argv)
 		{"out-chunk-size", required_argument, 0, OPT_OUT_CHUNK_SIZE },
 		{"serial", required_argument, 0, 'S'},
 		{"storage", required_argument, 0, 's'},
+		{"allow-missing", no_argument, 0, 'f'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "di:S:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "dfi:S:", options, NULL )) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
+			break;
+		case 'f':
+			allow_missing = true;
 			break;
 		case 'i':
 			incdir = optarg;
@@ -208,7 +213,7 @@ int main(int argc, char **argv)
 	if (ret < 0)
 		return 1;
 
-	ret = firehose_run(&qdl, incdir, storage);
+	ret = firehose_run(&qdl, incdir, storage, allow_missing);
 	if (ret < 0)
 		return 1;
 

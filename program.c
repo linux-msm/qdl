@@ -160,7 +160,7 @@ out:
 }
 
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
-		    const char *incdir)
+		    const char *incdir, bool allow_missing)
 {
 	struct program *program;
 	const char *filename;
@@ -182,7 +182,12 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 		fd = open(filename, O_RDONLY);
 
 		if (fd < 0) {
-			printf("Unable to open %s...ignoring\n", program->filename);
+			printf("Unable to open %s", program->filename);
+			if (!allow_missing) {
+				printf("...failing\n");
+				return -1;
+			}
+			printf("...ignoring\n");
 			continue;
 		}
 
