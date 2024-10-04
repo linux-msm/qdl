@@ -613,7 +613,7 @@ int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs)
 	xml_setpropf(node_to_send, "bSecureRemovalType", "%d", ufs->bSecureRemovalType);
 	xml_setpropf(node_to_send, "bInitActiveICCLevel", "%d", ufs->bInitActiveICCLevel);
 	xml_setpropf(node_to_send, "wPeriodicRTCUpdate", "%d", ufs->wPeriodicRTCUpdate);
-	xml_setpropf(node_to_send, "bConfigDescrLock", "%d", 0/*ufs->bConfigDescrLock*/); //Safety, remove before fly
+	xml_setpropf(node_to_send, "bConfigDescrLock", "%d", ufs->bConfigDescrLock);
 
 	ret = firehose_send_single_tag(qdl, node_to_send);
 	if (ret)
