@@ -79,6 +79,9 @@ struct ufs_common *ufs_parse_common_params(xmlNode *node, bool finalize_provisio
 	result->bInitActiveICCLevel = attr_as_unsigned(node, "bInitActiveICCLevel", &errors);
 	result->wPeriodicRTCUpdate = attr_as_unsigned(node, "wPeriodicRTCUpdate", &errors);
 	result->bConfigDescrLock = !!attr_as_unsigned(node, "bConfigDescrLock", &errors);
+	result->bWriteBoosterBufferPreserveUserSpaceEn = !!attr_as_unsigned(node, "bWriteBoosterBufferPreserveUserSpaceEn", &errors);
+	result->bWriteBoosterBufferType = attr_as_unsigned(node, "bWriteBoosterBufferType", &errors);
+	result->shared_wb_buffer_size_in_kb = attr_as_unsigned(node, "shared_wb_buffer_size_in_kb", &errors);
 
 	if (errors) {
 		fprintf(stderr, "[UFS] errors while parsing common\n");

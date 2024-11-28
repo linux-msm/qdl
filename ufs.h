@@ -42,6 +42,9 @@ struct ufs_common {
 	unsigned	bInitActiveICCLevel;
 	unsigned	wPeriodicRTCUpdate;
 	bool		bConfigDescrLock;
+	bool		bWriteBoosterBufferPreserveUserSpaceEn;
+	unsigned	bWriteBoosterBufferType;
+	unsigned	shared_wb_buffer_size_in_kb;
 };
 
 struct ufs_body {
