@@ -86,6 +86,13 @@ struct ufs_common *ufs_parse_common_params(xmlNode *node, bool finalize_provisio
 		return NULL;
 	}
 
+	/* These parameters are optional */
+	errors = 0;
+	result->bWriteBoosterBufferPreserveUserSpaceEn = !!attr_as_unsigned(node, "bWriteBoosterBufferPreserveUserSpaceEn", &errors);
+	result->bWriteBoosterBufferType = !!attr_as_unsigned(node, "bWriteBoosterBufferType", &errors);
+	result->shared_wb_buffer_size_in_kb = attr_as_unsigned(node, "shared_wb_buffer_size_in_kb", &errors);
+	result->wb = !errors;
+
 	return result;
 }
 
