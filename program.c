@@ -250,3 +250,19 @@ int program_find_bootable_partition(void)
 
 	return part;
 }
+
+void free_programs(void)
+{
+	struct program *program = programes;
+	struct program *next;
+
+	for (program = programes; program; program = next) {
+		next = program->next;
+		free((void *)program->filename);
+		free((void *)program->label);
+		free((void *)program->start_sector);
+		free(program);
+	}
+
+	programes = NULL;
+}
