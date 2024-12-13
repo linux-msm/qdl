@@ -106,20 +106,24 @@ static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 static int firehose_generic_parser(xmlNode *node, void *data)
 {
 	xmlChar *value;
+	int ret = -EINVAL;
 
 	value = xmlGetProp(node, (xmlChar*)"value");
+	if (!value)
+		return -EINVAL;
 
 	if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
 		printf("LOG: %s\n", value);
-		return -EAGAIN;
+		ret = -EAGAIN;
+	} else if (xmlStrcmp(value, (xmlChar*)"ACK") == 0) {
+		ret = FIREHOSE_ACK;
+	} else if (xmlStrcmp(value, (xmlChar*)"NAK") == 0) {
+		ret = FIREHOSE_NAK;
 	}
 
-	if (xmlStrcmp(value, (xmlChar*)"ACK") == 0)
-		return FIREHOSE_ACK;
-	if (xmlStrcmp(value, (xmlChar*)"NAK") == 0)
-		return FIREHOSE_NAK;
+	xmlFree(value);
 
-	return -EINVAL;
+	return ret;
 }
 
 static int firehose_read(struct qdl_device *qdl, int timeout_ms,
@@ -213,16 +217,23 @@ static int firehose_configure_response_parser(xmlNode *node, void *data)
 	size_t max_size;
 
 	value = xmlGetProp(node, (xmlChar*)"value");
+	if (!value)
+		return -EINVAL;
+
 	if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
 		printf("LOG: %s\n", value);
+		xmlFree(value);
 		return -EAGAIN;
 	}
 
 	payload = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytes");
-	if (!value || !payload)
+	if (!payload) {
+		xmlFree(value);
 		return -EINVAL;
+	}
 
 	max_size = strtoul((char*)payload, NULL, 10);
+	xmlFree(payload);
 
 	/*
 	 * When receiving an ACK the remote may indicate that we should attempt
@@ -234,9 +245,11 @@ static int firehose_configure_response_parser(xmlNode *node, void *data)
 			return -EINVAL;
 
 		max_size = strtoul((char*)payload, NULL, 10);
+		xmlFree(payload);
 	}
 
 	*(size_t*)data = max_size;
+	xmlFree(value);
 
 	return FIREHOSE_ACK;
 }
