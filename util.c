@@ -84,6 +84,7 @@ void print_hex_dump(const char *prefix, const void *buf, size_t len)
 
 unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors)
 {
+	unsigned int ret;
 	xmlChar *value;
 
 	value = xmlGetProp(node, (xmlChar*)attr);
@@ -92,12 +93,15 @@ unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors)
 		return 0;
 	}
 
-	return (unsigned int) strtoul((char*)value, NULL, 0);
+	ret = (unsigned int) strtoul((char*)value, NULL, 0);
+	xmlFree(value);
+	return ret;
 }
 
 const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
 {
 	xmlChar *value;
+	char *ret = NULL;
 
 	value = xmlGetProp(node, (xmlChar*)attr);
 	if (!value) {
@@ -105,8 +109,9 @@ const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
 		return NULL;
 	}
 
-	if (value[0] == '\0')
-		return NULL;
+	if (value[0] != '\0')
+		ret = strdup((char*)value);
 
-	return strdup((char*)value);
+	xmlFree(value);
+	return ret;
 }
