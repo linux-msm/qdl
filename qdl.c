@@ -206,16 +206,19 @@ int main(int argc, char **argv)
 
 	ret = qdl_open(&qdl, serial);
 	if (ret)
-		return 1;
+		goto out_cleanup;
 
 	qdl.mappings[0] = prog_mbn;
 	ret = sahara_run(&qdl, qdl.mappings, true, NULL, NULL);
 	if (ret < 0)
-		return 1;
+		goto out_cleanup;
 
 	ret = firehose_run(&qdl, incdir, storage, allow_missing);
 	if (ret < 0)
-		return 1;
+		goto out_cleanup;
 
-	return 0;
+out_cleanup:
+	qdl_close(&qdl);
+
+	return !!ret;
 }

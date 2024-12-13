@@ -157,10 +157,12 @@ static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *
 				qdl->out_chunk_size);
 		}
 
-		return 1;
+		break;
 	}
 
-	return 0;
+	libusb_free_config_descriptor(config);
+
+	return !!qdl->usb_handle;
 }
 
 int qdl_open(struct qdl_device *qdl, const char *serial)
@@ -206,6 +208,12 @@ int qdl_open(struct qdl_device *qdl, const char *serial)
 	}
 
 	return -1;
+}
+
+void qdl_close(struct qdl_device *qdl)
+{
+	libusb_close(qdl->usb_handle);
+	libusb_exit(NULL);
 }
 
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
