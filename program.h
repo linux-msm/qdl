@@ -26,5 +26,6 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 		    const char *incdir, bool allow_missing);
 int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program));
 int program_find_bootable_partition(void);
+void free_programs(void);
 
 #endif

@@ -113,3 +113,20 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 
 	return 0;
 }
+
+void free_patches(void)
+{
+	struct patch *patch = patches;
+	struct patch *next;
+
+	for (patch = patches; patch; patch = next) {
+		next = patch->next;
+		free((void *)patch->filename);
+		free((void *)patch->start_sector);
+		free((void *)patch->value);
+		free((void *)patch->what);
+		free(patch);
+	}
+
+	patches = NULL;
+}

@@ -219,6 +219,8 @@ int main(int argc, char **argv)
 
 out_cleanup:
 	qdl_close(&qdl);
+	free_programs();
+	free_patches();
 
 	return !!ret;
 }
