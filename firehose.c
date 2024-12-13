@@ -437,6 +437,8 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 out:
 	xmlFreeDoc(doc);
+	free(buf);
+
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
