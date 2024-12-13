@@ -100,12 +100,14 @@ struct sahara_pkt {
 			uint32_t compatible;
 			uint32_t max_len;
 			uint32_t mode;
+			uint32_t reserved[6];
 		} hello_req;
 		struct {
 			uint32_t version;
 			uint32_t compatible;
 			uint32_t status;
 			uint32_t mode;
+			uint32_t reserved[6];
 		} hello_resp;
 		struct {
 			uint32_t image;
@@ -153,7 +155,7 @@ static void sahara_send_reset(struct qdl_device *qdl)
 
 static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
-	struct sahara_pkt resp;
+	struct sahara_pkt resp = {};
 
 	assert(pkt->length == SAHARA_HELLO_LENGTH);
 
