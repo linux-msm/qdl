@@ -492,7 +492,8 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 		}
 	}
 
-	close(ramdump_dir);
+	if (ramdump_dir >= 0)
+		close(ramdump_dir);
 
 	return done ? 0 : -1;
 }
