@@ -170,6 +170,8 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	ux_init();
+
 	prog_mbn = argv[optind++];
 
 	do {

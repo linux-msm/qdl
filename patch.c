@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
+#include <unistd.h>
 
 #include "patch.h"
 #include "qdl.h"
@@ -100,7 +101,14 @@ int patch_load(const char *patch_file)
 int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch))
 {
 	struct patch *patch;
+	unsigned int count = 0;
+	unsigned int idx = 0;
 	int ret;
+
+	for (patch = patches; patch; patch = patch->next) {
+		if (!strcmp(patch->filename, "DISK"))
+			count++;
+	}
 
 	for (patch = patches; patch; patch = patch->next) {
 		if (strcmp(patch->filename, "DISK"))
@@ -109,7 +117,11 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 		ret = apply(qdl, patch);
 		if (ret)
 			return ret;
+
+		ux_progress("Applying patches", idx++, count);
 	}
+
+	ux_info("%d patches applied\n", idx);
 
 	return 0;
 }
