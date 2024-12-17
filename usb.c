@@ -144,18 +144,14 @@ static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *
 		qdl->out_maxpktsize = out_size;
 
 		if (qdl->out_chunk_size && qdl->out_chunk_size % out_size) {
-			fprintf(stderr,
-				"WARNING: requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld\n",
+			ux_err("WARNING: requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld\n",
 				out_size, out_size);
 			qdl->out_chunk_size = out_size;
 		} else if (!qdl->out_chunk_size) {
 			qdl->out_chunk_size = DEFAULT_OUT_CHUNK_SIZE;
 		}
 
-		if (qdl_debug) {
-			fprintf(stderr, "USB: using out-chunk-size of %ld\n",
-				qdl->out_chunk_size);
-		}
+		ux_debug("USB: using out-chunk-size of %ld\n", qdl->out_chunk_size);
 
 		break;
 	}
@@ -200,7 +196,7 @@ int qdl_open(struct qdl_device *qdl, const char *serial)
 			return 0;
 
 		if (!wait_printed) {
-			fprintf(stderr, "Waiting for EDL device\n");
+			ux_info("Waiting for EDL device\n");
 			wait_printed = true;
 		}
 

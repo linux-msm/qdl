@@ -48,7 +48,7 @@ static int load_erase_tag(xmlNode *node, bool is_nand)
 	int errors = 0;
 
 	if (!is_nand) {
-		fprintf(stderr, "got \"erase\" tag for non-NAND storage\n");
+		ux_err("got \"erase\" tag for non-NAND storage\n");
 		return -EINVAL;
 	}
 
@@ -64,7 +64,7 @@ static int load_erase_tag(xmlNode *node, bool is_nand)
 	program->start_sector = attr_as_string(node, "start_sector", &errors);
 
 	if (errors) {
-		fprintf(stderr, "[PROGRAM] errors while parsing erase tag\n");
+		ux_err("[PROGRAM] errors while parsing erase tag\n");
 		free(program);
 		return -EINVAL;
 	}
@@ -106,7 +106,7 @@ static int load_program_tag(xmlNode *node, bool is_nand)
 	}
 
 	if (errors) {
-		fprintf(stderr, "[PROGRAM] errors while parsing program\n");
+		ux_err("[PROGRAM] errors while parsing program\n");
 		free(program);
 		return -EINVAL;
 	}
@@ -131,7 +131,7 @@ int program_load(const char *program_file, bool is_nand)
 
 	doc = xmlReadFile(program_file, NULL, 0);
 	if (!doc) {
-		fprintf(stderr, "[PROGRAM] failed to parse %s\n", program_file);
+		ux_err("[PROGRAM] failed to parse %s\n", program_file);
 		return -EINVAL;
 	}
 
@@ -145,7 +145,7 @@ int program_load(const char *program_file, bool is_nand)
 		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
 			errors = load_program_tag(node, is_nand);
 		else {
-			fprintf(stderr, "[PROGRAM] unrecognized tag \"%s\"\n", node->name);
+			ux_err("[PROGRAM] unrecognized tag \"%s\"\n", node->name);
 			errors = -EINVAL;
 		}
 
@@ -182,12 +182,12 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 		fd = open(filename, O_RDONLY);
 
 		if (fd < 0) {
-			printf("Unable to open %s", program->filename);
+			ux_info("Unable to open %s", program->filename);
 			if (!allow_missing) {
-				printf("...failing\n");
+				ux_info("...failing\n");
 				return -1;
 			}
-			printf("...ignoring\n");
+			ux_info("...ignoring\n");
 			continue;
 		}
 
