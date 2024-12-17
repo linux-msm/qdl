@@ -25,7 +25,7 @@ int program_load(const char *program_file, bool is_nand);
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
 		    const char *incdir, bool allow_missing);
 int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program));
-int program_find_bootable_partition(void);
+int program_find_bootable_partition(bool *multiple_found);
 void free_programs(void);
 
 #endif

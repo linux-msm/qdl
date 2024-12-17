@@ -748,6 +748,7 @@ static int firehose_reset(struct qdl_device *qdl)
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage, bool allow_missing)
 {
+	bool multiple;
 	int bootable;
 	int ret;
 
@@ -789,11 +790,17 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	if (ret)
 		return ret;
 
-	bootable = program_find_bootable_partition();
-	if (bootable < 0)
+	bootable = program_find_bootable_partition(&multiple);
+	if (bootable < 0) {
 		fprintf(stderr, "no boot partition found\n");
-	else
+	} else {
+		if (multiple) {
+			fprintf(stderr,
+				"WARNING: Multiple candidates for primary bootloader found, using partition %d\n",
+				bootable);
+		}
 		firehose_set_bootable(qdl, bootable);
+	}
 
 	firehose_reset(qdl);
 
