@@ -438,6 +438,8 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		}
 
 		left -= chunk_size;
+
+		ux_progress("%s", num_sectors - left, num_sectors, program->label);
 	}
 
 	t = time(NULL) - t0;
@@ -565,7 +567,7 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 	xmlDoc *doc;
 	int ret;
 
-	ux_info("applying patch \"%s\"\n", patch->what);
+	ux_debug("applying patch \"%s\"\n", patch->what);
 
 	doc = xmlNewDoc((xmlChar*)"1.0");
 	root = xmlNewNode(NULL, (xmlChar*)"data");
