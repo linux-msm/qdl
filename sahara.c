@@ -159,8 +159,8 @@ static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 
 	assert(pkt->length == SAHARA_HELLO_LENGTH);
 
-	ux_info("HELLO version: 0x%x compatible: 0x%x max_len: %d mode: %d\n",
-	       pkt->hello_req.version, pkt->hello_req.compatible, pkt->hello_req.max_len, pkt->hello_req.mode);
+	ux_debug("HELLO version: 0x%x compatible: 0x%x max_len: %d mode: %d\n",
+		 pkt->hello_req.version, pkt->hello_req.compatible, pkt->hello_req.max_len, pkt->hello_req.mode);
 
 	resp.cmd = SAHARA_HELLO_RESP_CMD;
 	resp.length = SAHARA_HELLO_LENGTH;
@@ -207,8 +207,8 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *im
 
 	assert(pkt->length == SAHARA_READ_DATA_LENGTH);
 
-	ux_info("READ image: %d offset: 0x%x length: 0x%x\n",
-	       pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
+	ux_debug("READ image: %d offset: 0x%x length: 0x%x\n",
+		 pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
 	if (single_image)
 		image = 0;
@@ -216,14 +216,14 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *im
 		image = pkt->read_req.image;
 
 	if (image >= MAPPING_SZ || !img_arr[image]) {
-		ux_err("Device specified invalid image: %u\n", image);
+		ux_err("device requested invalid image: %u\n", image);
 		sahara_send_reset(qdl);
 		return;
 	}
 
 	fd = open(img_arr[image], O_RDONLY);
 	if (fd < 0) {
-		ux_err("Can not open %s: %s\n", img_arr[image], strerror(errno));
+		ux_err("Can not open \"%s\": %s\n", img_arr[image], strerror(errno));
 		// Maybe this read was optional.  Notify device of error and let
 		// it decide how to proceed.
 		sahara_send_reset(qdl);
@@ -245,8 +245,8 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *
 
 	assert(pkt->length == SAHARA_READ_DATA64_LENGTH);
 
-	ux_info("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
-	       pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
+	ux_debug("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
+		 pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
 	if (single_image)
 		image = 0;
@@ -254,13 +254,13 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *
 		image = pkt->read64_req.image;
 
 	if (image >= MAPPING_SZ || !img_arr[image]) {
-		ux_err("Device specified invalid image: %u\n", image);
+		ux_err("device requested invalid image: %u\n", image);
 		sahara_send_reset(qdl);
 		return;
 	}
 	fd = open(img_arr[image], O_RDONLY);
 	if (fd < 0) {
-		ux_err("Can not open %s: %s\n", img_arr[image], strerror(errno));
+		ux_err("Can not open \"%s\": %s\n", img_arr[image], strerror(errno));
 		// Maybe this read was optional.  Notify device of error and let
 		// it decide how to proceed.
 		sahara_send_reset(qdl);
@@ -280,10 +280,10 @@ static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 
 	assert(pkt->length == SAHARA_END_OF_IMAGE_LENGTH);
 
-	ux_info("END OF IMAGE image: %d status: %d\n", pkt->eoi.image, pkt->eoi.status);
+	ux_debug("END OF IMAGE image: %d status: %d\n", pkt->eoi.image, pkt->eoi.status);
 
 	if (pkt->eoi.status != 0) {
-		ux_info("received non-successful result\n");
+		ux_err("received non-successful end-of-image result\n");
 		return;
 	}
 
@@ -296,7 +296,7 @@ static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
 	assert(pkt->length == SAHARA_DONE_RESP_LENGTH);
 
-	ux_info("DONE status: %d\n", pkt->done_resp.status);
+	ux_debug("DONE status: %d\n", pkt->done_resp.status);
 
 	// 0 == PENDING, 1 == COMPLETE.  Device expects more images if
 	// PENDING is set in status.
@@ -393,8 +393,8 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 
 	assert(pkt->length == SAHARA_MEM_DEBUG64_LENGTH);
 
-	ux_info("DEBUG64 address: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
-		pkt->debug64_req.addr, pkt->debug64_req.length);
+	ux_debug("DEBUG64 address: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
+		 pkt->debug64_req.addr, pkt->debug64_req.length);
 
 	read_req.cmd = SAHARA_MEM_READ64_CMD;
 	read_req.length = SAHARA_MEM_READ64_LENGTH;
@@ -415,14 +415,12 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		if (sahara_debug64_filter(table[i].filename, filter))
 			continue;
 
-		ux_info("%-2d: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%" PRIx64 " region: %s filename: %s\n",
-		       i, table[i].type, table[i].addr, table[i].length, table[i].region, table[i].filename);
-
+		ux_debug("%-2d: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%" PRIx64 " region: %s filename: %s\n",
+			 i, table[i].type, table[i].addr, table[i].length, table[i].region, table[i].filename);
 
 		n = sahara_debug64_one(qdl, table[i], ramdump_dir);
 		if (n < 0)
 			break;
-
 	}
 
 	free(table);
@@ -453,7 +451,7 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 
 		pkt = (struct sahara_pkt*)buf;
 		if (n != pkt->length) {
-			ux_err("length not matching\n");
+			ux_err("request length not matching received request\n");
 			return -EINVAL;
 		}
 
