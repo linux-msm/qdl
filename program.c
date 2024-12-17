@@ -226,13 +226,16 @@ int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
  *
  * Scan program tags for a partition with the label "sbl1", "xbl" or "xbl_a"
  * and return the partition number for this. If more than one line matches
- * we're assuming our logic is flawed and return an error.
+ * we're informing the caller so that they can warn the user about the
+ * uncertainty of this logic.
  */
-int program_find_bootable_partition(void)
+int program_find_bootable_partition(bool *multiple_found)
 {
 	struct program *program;
 	const char *label;
 	int part = -ENOENT;
+
+	*multiple_found = false;
 
 	for (program = programes; program; program = program->next) {
 		label = program->label;
@@ -241,8 +244,10 @@ int program_find_bootable_partition(void)
 
 		if (!strcmp(label, "xbl") || !strcmp(label, "xbl_a") ||
 		    !strcmp(label, "sbl1")) {
-			if (part != -ENOENT)
-				return -EINVAL;
+			if (part != -ENOENT) {
+				*multiple_found = true;
+				continue;
+			}
 
 			part = program->partition;
 		}
