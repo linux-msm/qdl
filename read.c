@@ -52,7 +52,7 @@ int read_op_load(const char *read_op_file)
 
 	doc = xmlReadFile(read_op_file, NULL, 0);
 	if (!doc) {
-		ux_err("[READ] failed to parse %s\n", read_op_file);
+		ux_err("failed to parse read-type file \"%s\"\n", read_op_file);
 		return -EINVAL;
 	}
 
@@ -62,7 +62,8 @@ int read_op_load(const char *read_op_file)
 			continue;
 
 		if (xmlStrcmp(node->name, (xmlChar*)"read")) {
-			ux_err("[READ] unrecognized tag \"%s\", ignoring\n", node->name);
+			ux_err("unrecognized tag \"%s\" in read-type file \"%s\", ignoring\n",
+			       node->name, read_op_file);
 			continue;
 		}
 
@@ -77,7 +78,7 @@ int read_op_load(const char *read_op_file)
 		read_op->start_sector = attr_as_string(node, "start_sector", &errors);
 
 		if (errors) {
-			ux_err("[READ] errors while parsing read\n");
+			ux_err("errors while parsing read-type file \"%s\"\n", read_op_file);
 			free(read_op);
 			continue;
 		}
@@ -116,7 +117,7 @@ int read_op_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 		fd = open(filename, O_WRONLY|O_CREAT|O_TRUNC, 0644);
 
 		if (fd < 0) {
-			ux_info("Unable to open %s...\n", read_op->filename);
+			ux_info("unable to open %s...\n", read_op->filename);
 			return ret;
 		}
 

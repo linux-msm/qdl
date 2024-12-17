@@ -81,7 +81,7 @@ struct ufs_common *ufs_parse_common_params(xmlNode *node, bool finalize_provisio
 	result->bConfigDescrLock = !!attr_as_unsigned(node, "bConfigDescrLock", &errors);
 
 	if (errors) {
-		ux_err("[UFS] errors while parsing common\n");
+		ux_err("errors while parsing UFS common tag\n");
 		free(result);
 		return NULL;
 	}
@@ -117,7 +117,7 @@ struct ufs_body *ufs_parse_body(xmlNode *node)
 	result->desc = attr_as_string(node, "desc", &errors);
 
 	if (errors) {
-		ux_err("[UFS] errors while parsing body\n");
+		ux_err("errors while parsing UFS body tag\n");
 		free(result);
 		return NULL;
 	}
@@ -134,7 +134,7 @@ struct ufs_epilogue *ufs_parse_epilogue(xmlNode *node)
 	result->LUNtoGrow = attr_as_unsigned(node, "LUNtoGrow", &errors);
 
 	if (errors) {
-		ux_err("[UFS] errors while parsing epilogue\n");
+		ux_err("errors while parsing UFS epilogue tag\n");
 		free(result);
 		return NULL;
 	}
@@ -150,14 +150,14 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 	struct ufs_body *ufs_body_tmp;
 
 	if (ufs_common_p) {
-		ux_err("Only one UFS provisioning XML allowed, %s ignored\n",
+		ux_err("Only one UFS provisioning XML allowed, \"%s\" ignored\n",
 			ufs_file);
 		return -EEXIST;
 	}
 
 	doc = xmlReadFile(ufs_file, NULL, 0);
 	if (!doc) {
-		ux_err("[UFS] failed to parse %s\n", ufs_file);
+		ux_err("failed to parse ufs-type file \"%s\"\n", ufs_file);
 		return -EINVAL;
 	}
 
@@ -168,8 +168,8 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 			continue;
 
 		if (xmlStrcmp(node->name, (xmlChar*)"ufs")) {
-			ux_err("[UFS] unrecognized tag \"%s\", ignoring\n",
-				node->name);
+			ux_err("unrecognized tag \"%s\" in ufs-type file \"%s\", ignoring\n",
+				ufs_file, node->name);
 			continue;
 		}
 
@@ -179,15 +179,15 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 					finalize_provisioning);
 			}
 			else {
-				ux_err("[UFS] Only one common tag is allowed\n"
-					"[UFS] provisioning aborted\n");
+				ux_err("multiple UFS common tags found in \"%s\"\n",
+				       ufs_file);
 				retval = -EINVAL;
 				break;
 			}
 
 			if (!ufs_common_p) {
-				ux_err("[UFS] Common tag corrupted\n"
-					"[UFS] provisioning aborted\n");
+				ux_err("invalid UFS common tag found in \"%s\"\n",
+				       ufs_file);
 				retval = -EINVAL;
 				break;
 			}
@@ -204,8 +204,8 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 				}
 			}
 			else {
-				ux_err("[UFS] LU tag corrupted\n"
-					"[UFS] provisioning aborted\n");
+				ux_err("invalid UFS body tag found in \"%s\"\n",
+				       ufs_file);
 				retval = -EINVAL;
 				break;
 			}
@@ -216,22 +216,21 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 					continue;
 			}
 			else {
-				ux_err("[UFS] Only one finalizing tag is allowed\n"
-					"[UFS] provisioning aborted\n");
+				ux_err("multiple UFS finalizing tags found in \"%s\"\n",
+				       ufs_file);
 				retval = -EINVAL;
 				break;
 			}
 
 			if (!ufs_epilogue_p) {
-				ux_err("[UFS] Finalizing tag corrupted\n"
-					"[UFS] provisioning aborted\n");
+				ux_err("invalid UFS finalizing tag found in \"%s\"\n",
+				       ufs_file);
 				retval = -EINVAL;
 				break;
 			}
 
 		} else {
-			ux_err("[UFS] Unknown tag or %s corrupted\n"
-				"[UFS] provisioning aborted\n", ufs_file);
+			ux_err("unknown tag found in ufs-type file \"%s\"\n", ufs_file);
 			retval = -EINVAL;
 			break;
 		}
@@ -240,8 +239,7 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 	xmlFreeDoc(doc);
 
 	if (!retval && (!ufs_common_p || !ufs_body_p || !ufs_epilogue_p)) {
-		ux_err("[UFS] %s seems to be incomplete\n"
-			"[UFS] provisioning aborted\n", ufs_file);
+		ux_err("incomplete UFS provisioning information in \"%s\"\n", ufs_file);
 		retval = -EINVAL;
 	}
 
@@ -255,12 +253,10 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 		if (ufs_epilogue_p) {
 			free(ufs_epilogue_p);
 		}
-		ux_err("[UFS] %s seems to be corrupted, ignore\n", ufs_file);
 		return retval;
 	}
 	if (!finalize_provisioning != !ufs_common_p->bConfigDescrLock) {
-		ux_err("[UFS] Value bConfigDescrLock %d in file %s don't match command line parameter --finalize-provisioning %d\n"
-			"[UFS] provisioning aborted\n",
+		ux_err("UFS provisioning value bConfigDescrLock %d in file \"%s\" don't match command line parameter --finalize-provisioning %d\n",
 			ufs_common_p->bConfigDescrLock, ufs_file, finalize_provisioning);
 		ux_err(notice_bconfigdescrlock);
 		return -EINVAL;
@@ -278,9 +274,10 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 
 	if (ufs_common_p->bConfigDescrLock) {
 		int i;
-		ux_info("Attention!\nIrreversible provisioning will start in 5 s\n");
+		ux_info("WARNING: irreversible provisioning will start in 5s");
 		for(i=5; i>0; i--) {
 			ux_info(".\a");
+			fflush(stdout);
 			sleep(1);
 		}
 		ux_info("\n");
