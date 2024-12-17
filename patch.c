@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
+#include <unistd.h>
 
 #include "patch.h"
 #include "qdl.h"
@@ -50,7 +51,7 @@ int patch_load(const char *patch_file)
 
 	doc = xmlReadFile(patch_file, NULL, 0);
 	if (!doc) {
-		fprintf(stderr, "[PATCH] failed to parse %s\n", patch_file);
+		ux_err("failed to parse patch-type file \"%s\"\n", patch_file);
 		return -EINVAL;
 	}
 
@@ -60,7 +61,7 @@ int patch_load(const char *patch_file)
 			continue;
 
 		if (xmlStrcmp(node->name, (xmlChar*)"patch")) {
-			fprintf(stderr, "[PATCH] unrecognized tag \"%s\", ignoring\n", node->name);
+			ux_err("unrecognized tag \"%s\" in patch-type file, ignoring\n", node->name);
 			continue;
 		}
 
@@ -78,7 +79,7 @@ int patch_load(const char *patch_file)
 		patch->what = attr_as_string(node, "what", &errors);
 
 		if (errors) {
-			fprintf(stderr, "[PATCH] errors while parsing patch\n");
+			ux_err("errors while parsing patch-type file \"%s\"\n", patch_file);
 			free(patch);
 			continue;
 		}
@@ -100,7 +101,14 @@ int patch_load(const char *patch_file)
 int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch))
 {
 	struct patch *patch;
+	unsigned int count = 0;
+	unsigned int idx = 0;
 	int ret;
+
+	for (patch = patches; patch; patch = patch->next) {
+		if (!strcmp(patch->filename, "DISK"))
+			count++;
+	}
 
 	for (patch = patches; patch; patch = patch->next) {
 		if (strcmp(patch->filename, "DISK"))
@@ -109,7 +117,11 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 		ret = apply(qdl, patch);
 		if (ret)
 			return ret;
+
+		ux_progress("Applying patches", idx++, count);
 	}
+
+	ux_info("%d patches applied\n", idx);
 
 	return 0;
 }

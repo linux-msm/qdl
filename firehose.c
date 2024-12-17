@@ -77,7 +77,7 @@ static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 
 	doc = xmlReadMemory(buf, len, NULL, NULL, 0);
 	if (!doc) {
-		fprintf(stderr, "failed to parse firehose packet\n");
+		ux_err("failed to parse firehose response\n");
 		*error = -EINVAL;
 		return NULL;
 	}
@@ -91,7 +91,7 @@ static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 	}
 
 	if (!node) {
-		fprintf(stderr, "firehose packet without data tag\n");
+		ux_err("firehose response without data tag\n");
 		*error = -EINVAL;
 		xmlFreeDoc(doc);
 		return NULL;
@@ -99,6 +99,11 @@ static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 
 	for (node = node->children; node && node->type != XML_ELEMENT_NODE; node = node->next)
 		;
+
+	if (!node) {
+		ux_err("empty firehose response\n");
+		*error = -EINVAL;
+	}
 
 	return node;
 }
@@ -113,7 +118,7 @@ static int firehose_generic_parser(xmlNode *node, void *data)
 		return -EINVAL;
 
 	if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
-		printf("LOG: %s\n", value);
+		ux_log("LOG: %s\n", value);
 		ret = -EAGAIN;
 	} else if (xmlStrcmp(value, (xmlChar*)"ACK") == 0) {
 		ret = FIREHOSE_ACK;
@@ -154,14 +159,11 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 		}
 		buf[n] = '\0';
 
-		if (qdl_debug)
-			fprintf(stderr, "FIREHOSE READ: %s\n", buf);
+		ux_debug("FIREHOSE READ: %s\n", buf);
 
 		node = firehose_response_parse(buf, n, &error);
-		if (!node) {
-			fprintf(stderr, "unable to parse response\n");
+		if (!node)
 			return error;
-		}
 
 		ret = response_parser(node, data);
 		xmlFreeDoc(node->doc);
@@ -180,8 +182,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 	xmlDocDumpMemory(doc, &s, &len);
 
 	for (;;) {
-		if (qdl_debug)
-			fprintf(stderr, "FIREHOSE WRITE: %s\n", s);
+		ux_debug("FIREHOSE WRITE: %s\n", s);
 
 		ret = qdl_write(qdl, s, len);
 		saved_errno = errno;
@@ -221,7 +222,7 @@ static int firehose_configure_response_parser(xmlNode *node, void *data)
 		return -EINVAL;
 
 	if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
-		printf("LOG: %s\n", value);
+		ux_log("LOG: %s\n", value);
 		xmlFree(value);
 		return -EAGAIN;
 	}
@@ -287,7 +288,7 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, co
 
 	ret = firehose_send_configure(qdl, max_payload_size, skip_storage_init, storage, &size);
 	if (ret < 0) {
-		fprintf(stderr, "[CONFIGURE] request failed\n");
+		ux_err("configure request failed\n");
 		return -1;
 	}
 
@@ -295,17 +296,14 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, co
 	if (size != max_payload_size) {
 		ret = firehose_send_configure(qdl, size, skip_storage_init, storage, &size);
 		if (ret != FIREHOSE_ACK) {
-			fprintf(stderr, "[CONFIGURE] request failed\n");
+			ux_err("configure request with updated payload size failed\n");
 			return -1;
 		}
 
 		max_payload_size = size;
 	}
 
-	if (qdl_debug) {
-		fprintf(stderr, "[CONFIGURE] max payload size: %zu\n",
-			max_payload_size);
-	}
+	ux_debug("accepted max payload size: %zu\n", max_payload_size);
 
 	return 0;
 }
@@ -332,14 +330,15 @@ static int firehose_erase(struct qdl_device *qdl, struct program *program)
 
 	ret = firehose_write(qdl, doc);
 	if (ret < 0) {
-		fprintf(stderr, "[PROGRAM] failed to write program command\n");
+		ux_err("failed to send program request\n");
 		goto out;
 	}
 
 	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
-	fprintf(stderr, "[ERASE] erase %s+0x%x %s\n",
-		program->start_sector, program->num_sectors,
-		ret ? "failed" : "succeeded");
+	if (ret)
+		ux_err("failed to erase %s+0x%x\n", program->start_sector, program->num_sectors);
+	else
+		ux_info("successfully erased %s+0x%x\n", program->start_sector, program->num_sectors);
 
 out:
 	xmlFreeDoc(doc);
@@ -370,7 +369,8 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
 
 	if (program->num_sectors && num_sectors > program->num_sectors) {
-		fprintf(stderr, "[PROGRAM] %s truncated to %d\n",
+		ux_err("%s to big for %s truncated to %d\n",
+			program->filename,
 			program->label,
 			program->num_sectors * program->sector_size);
 		num_sectors = program->num_sectors;
@@ -399,13 +399,13 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	ret = firehose_write(qdl, doc);
 	if (ret < 0) {
-		fprintf(stderr, "[PROGRAM] failed to write program command\n");
+		ux_err("failed to send program request\n");
 		goto out;
 	}
 
 	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
 	if (ret) {
-		fprintf(stderr, "[PROGRAM] failed to setup programming\n");
+		ux_err("failed to setup programming\n");
 		goto out;
 	}
 
@@ -417,34 +417,42 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		chunk_size = MIN(max_payload_size / program->sector_size, left);
 
 		n = read(fd, buf, chunk_size * program->sector_size);
-		if (n < 0)
-			err(1, "failed to read");
+		if (n < 0) {
+			ux_err("failed to read %s\n", program->filename);
+			goto out;
+		}
 
 		if (n < max_payload_size)
 			memset(buf + n, 0, max_payload_size - n);
 
 		n = qdl_write(qdl, buf, chunk_size * program->sector_size);
-		if (n < 0)
-			err(1, "failed to write");
+		if (n < 0) {
+			ux_err("USB write failed for data chunk\n");
+			goto out;
+		}
 
-		if (n != chunk_size * program->sector_size)
-			err(1, "failed to write full sector");
+		if (n != chunk_size * program->sector_size) {
+			ux_err("USB write truncated\n");
+			ret = -1;
+			goto out;
+		}
 
 		left -= chunk_size;
+
+		ux_progress("%s", num_sectors - left, num_sectors, program->label);
 	}
 
 	t = time(NULL) - t0;
 
 	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
 	if (ret) {
-		fprintf(stderr, "[PROGRAM] failed\n");
+		ux_err("flashing of %s failed\n", program->label);
 	} else if (t) {
-		fprintf(stderr,
-			"[PROGRAM] flashed \"%s\" successfully at %lukB/s\n",
+		ux_err("flashed \"%s\" successfully at %lukB/s\n",
 			program->label,
 			(unsigned long)program->sector_size * num_sectors / t / 1024);
 	} else {
-		fprintf(stderr, "[PROGRAM] flashed \"%s\" successfully\n",
+		ux_err("flashed \"%s\" successfully\n",
 			program->label);
 	}
 
@@ -487,13 +495,13 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 
 	ret = firehose_write(qdl, doc);
 	if (ret < 0) {
-		fprintf(stderr, "[READ] failed to write read command\n");
+		ux_err("failed to send read command\n");
 		goto out;
 	}
 
 	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
 	if (ret) {
-		fprintf(stderr, "[READ] failed to setup reading\n");
+		ux_err("failed to setup reading operation\n");
 		goto out;
 	}
 
@@ -531,19 +539,18 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 
 	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
 	if (ret) {
-		fprintf(stderr, "[READ] failed to complete reading\n");
+		ux_err("read operation failed\n");
 		goto out;
 	}
 
 	t = time(NULL) - t0;
 
 	if (t) {
-		fprintf(stderr,
-			"[READ] read \"%s\" successfully at %ldkB/s\n",
+		ux_err("read \"%s\" successfully at %ldkB/s\n",
 			read_op->filename,
 			(unsigned long)read_op->sector_size * read_op->num_sectors / t / 1024);
 	} else {
-		fprintf(stderr, "[READ] read \"%s\" successfully\n",
+		ux_err("read \"%s\" successfully\n",
 			read_op->filename);
 	}
 
@@ -560,7 +567,7 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 	xmlDoc *doc;
 	int ret;
 
-	printf("%s\n", patch->what);
+	ux_debug("applying patch \"%s\"\n", patch->what);
 
 	doc = xmlNewDoc((xmlChar*)"1.0");
 	root = xmlNewNode(NULL, (xmlChar*)"data");
@@ -581,7 +588,7 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 
 	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 	if (ret)
-		fprintf(stderr, "[APPLY PATCH] %d\n", ret);
+		ux_err("patch application failed\n");
 
 out:
 	xmlFreeDoc(doc);
@@ -604,7 +611,7 @@ static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node){
 
         ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
         if (ret) {
-                fprintf(stderr, "[UFS] %s err %d\n", __func__, ret);
+                ux_err("ufs request failed\n");
                 ret = -EINVAL;
         }
 
@@ -638,7 +645,7 @@ int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs)
 
 	ret = firehose_send_single_tag(qdl, node_to_send);
 	if (ret)
-		fprintf(stderr, "[APPLY UFS common] %d\n", ret);
+		ux_err("failed to send ufs common tag\n");
 
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
@@ -665,7 +672,7 @@ int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
 
 	ret = firehose_send_single_tag(qdl, node_to_send);
 	if (ret)
-		fprintf(stderr, "[APPLY UFS body] %d\n", ret);
+		ux_err("failed to apply ufs body tag\n");
 
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
@@ -683,7 +690,7 @@ int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs
 
 	ret = firehose_send_single_tag(qdl, node_to_send);
 	if (ret)
-		fprintf(stderr, "[APPLY UFS epilogue] %d\n", ret);
+		ux_err("failed to apply ufs epilogue\n");
 
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
@@ -709,11 +716,11 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 
 	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 	if (ret) {
-		fprintf(stderr, "failed to mark partition %d as bootable\n", part);
+		ux_err("failed to mark partition %d as bootable\n", part);
 		return -1;
 	}
 
-	printf("partition %d is now bootable\n", part);
+	ux_info("partition %d is now bootable\n", part);
 	return 0;
 }
 
@@ -738,7 +745,7 @@ static int firehose_reset(struct qdl_device *qdl)
 
 	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 	if (ret < 0)
-		fprintf(stderr, "[RESET] request failed: %s\n", strerror(ret));
+		ux_err("failed to request device reset\n");
 	/* drain any remaining log messages for reset */
 	else
 		firehose_read(qdl, 1000, firehose_generic_parser, NULL);
@@ -751,6 +758,8 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 	int bootable;
 	int ret;
 
+	ux_info("waiting for programmer...\n");
+
 	firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 
 	if(ufs_need_provisioning()) {
@@ -760,9 +769,9 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 		ret = ufs_provisioning_execute(qdl, firehose_apply_ufs_common,
 			firehose_apply_ufs_body, firehose_apply_ufs_epilogue);
 		if (!ret)
-			printf("UFS provisioning succeeded\n");
+			ux_info("UFS provisioning succeeded\n");
 		else
-			printf("UFS provisioning failed\n");
+			ux_info("UFS provisioning failed\n");
 
 		firehose_reset(qdl);
 
@@ -791,7 +800,7 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 
 	bootable = program_find_bootable_partition();
 	if (bootable < 0)
-		fprintf(stderr, "no boot partition found\n");
+		ux_info("no boot partition found\n");
 	else
 		firehose_set_bootable(qdl, bootable);
 
