@@ -50,7 +50,7 @@ int patch_load(const char *patch_file)
 
 	doc = xmlReadFile(patch_file, NULL, 0);
 	if (!doc) {
-		ux_err("[PATCH] failed to parse %s\n", patch_file);
+		ux_err("failed to parse patch-type file \"%s\"\n", patch_file);
 		return -EINVAL;
 	}
 
@@ -60,7 +60,7 @@ int patch_load(const char *patch_file)
 			continue;
 
 		if (xmlStrcmp(node->name, (xmlChar*)"patch")) {
-			ux_err("[PATCH] unrecognized tag \"%s\", ignoring\n", node->name);
+			ux_err("unrecognized tag \"%s\" in patch-type file, ignoring\n", node->name);
 			continue;
 		}
 
@@ -78,7 +78,7 @@ int patch_load(const char *patch_file)
 		patch->what = attr_as_string(node, "what", &errors);
 
 		if (errors) {
-			ux_err("[PATCH] errors while parsing patch\n");
+			ux_err("errors while parsing patch-type file \"%s\"\n", patch_file);
 			free(patch);
 			continue;
 		}
