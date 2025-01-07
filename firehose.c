@@ -804,7 +804,7 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 		ux_debug("no boot partition found\n");
 	} else {
 		if (multiple) {
-			ux_err("WARNING: Multiple candidates for primary bootloader found, using partition %d\n",
+			ux_info("Multiple candidates for primary bootloader found, using partition %d\n",
 				bootable);
 		}
 		firehose_set_bootable(qdl, bootable);
