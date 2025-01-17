@@ -103,7 +103,7 @@ static void print_usage(void)
 {
 	extern const char *__progname;
 	fprintf(stderr,
-		"%s [--debug] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] <prog.mbn> [<program> <patch> ...]\n",
+		"%s [--debug] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
 }
 
@@ -125,6 +125,7 @@ int main(int argc, char **argv)
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
+		{"version", no_argument, 0, 'v'},
 		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
 		{"out-chunk-size", required_argument, 0, OPT_OUT_CHUNK_SIZE },
@@ -134,11 +135,14 @@ int main(int argc, char **argv)
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dfi:S:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvfi:S:", options, NULL )) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
 			break;
+		case 'v':
+			print_version();
+			return 0;
 		case 'f':
 			allow_missing = true;
 			break;
@@ -171,6 +175,9 @@ int main(int argc, char **argv)
 	}
 
 	ux_init();
+
+	if (qdl_debug)
+		print_version();
 
 	prog_mbn = argv[optind++];
 

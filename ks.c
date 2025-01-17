@@ -58,13 +58,21 @@ int main(int argc, char **argv)
 	int ret;
 
 	static struct option options[] = {
+		{"debug", no_argument, 0, 'd'},
+		{"version", no_argument, 0, 'v'},
 		{"port", required_argument, 0, 'p'},
 		{"sahara", required_argument, 0, 's'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "p:s:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvp:s:", options, NULL )) != -1) {
 		switch (opt) {
+		case 'd':
+			qdl_debug = true;
+			break;
+		case 'v':
+			print_version();
+			return 0;
 		case 'p':
 			dev_node = optarg;
 			printf("Using port - %s\n", dev_node);
@@ -102,6 +110,9 @@ int main(int argc, char **argv)
 		print_usage();
 		return 1;
 	}
+
+	if (qdl_debug)
+		print_version();
 
 	qdl.fd = open(dev_node, O_RDWR);
 	if (qdl.fd < 0) {
