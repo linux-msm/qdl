@@ -46,6 +46,8 @@ void ux_log(const char *fmt, ...);
 void ux_debug(const char *fmt, ...);
 void ux_progress(const char *fmt, unsigned int value, unsigned int size, ...);
 
+void print_version(void);
+
 extern bool qdl_debug;
 
 #endif

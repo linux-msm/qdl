@@ -4,3 +4,5 @@ qdl-ramdump
 ks
 compile_commands.json
 .cache
+.version.h
+version.h
