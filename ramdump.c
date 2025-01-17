@@ -27,16 +27,20 @@ int main(int argc, char **argv)
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
+		{"version", no_argument, 0, 'v'},
 		{"output", required_argument, 0, 'o'},
 		{"serial", required_argument, 0, 'S'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "do:S:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvo:S:", options, NULL )) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
 			break;
+		case 'v':
+			print_version();
+			return 0;
 		case 'o':
 			ramdump_path = optarg;
 			break;
@@ -53,6 +57,9 @@ int main(int argc, char **argv)
 
 	if (optind != argc)
 		print_usage();
+
+	if (qdl_debug)
+		print_version();
 
 	ret = qdl_open(&qdl, serial);
 	if (ret)
