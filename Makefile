@@ -16,7 +16,9 @@ KS_OUT := ks
 KS_SRCS := ks.c sahara.c util.c ux.c
 KS_OBJS := $(KS_SRCS:.c=.o)
 
-default: versionfile $(QDL) $(RAMDUMP) $(KS_OUT)
+default: versionfile .WAIT $(QDL) $(RAMDUMP) $(KS_OUT)
+
+.WAIT:
 
 $(QDL): $(QDL_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
