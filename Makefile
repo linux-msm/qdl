@@ -34,7 +34,7 @@ versionfile:
 	@echo "#define VERSION \"$(GITREF)\"" > .version.h
 	@cmp -s .version.h version.h || cp .version.h version.h
 
-util.o: version.h
+util.o: versionfile
 
 clean:
 	rm -f $(QDL) $(QDL_OBJS)
