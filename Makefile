@@ -1,6 +1,6 @@
 QDL := qdl
 RAMDUMP := qdl-ramdump
-GITREF := $(or $(shell git describe --dirty --always --tags), "unknown-version")
+VERSION := $(or $(shell git describe --dirty --always --tags), "unknown-version")
 
 CFLAGS += -O2 -Wall -g `pkg-config --cflags libxml-2.0 libusb-1.0`
 LDFLAGS += `pkg-config --libs libxml-2.0 libusb-1.0`
@@ -31,7 +31,7 @@ compile_commands.json: $(QDL_SRCS) $(KS_SRCS)
 	@echo -n $^ | jq -snR "[inputs|split(\" \")[]|{directory:\"$(PWD)\", command: \"$(CC) $(CFLAGS) -c \(.)\", file:.}]" > $@
 
 versionfile:
-	@echo "#define VERSION \"$(GITREF)\"" > .version.h
+	@echo "#define VERSION \"$(VERSION)\"" > .version.h
 	@cmp -s .version.h version.h || cp .version.h version.h
 
 util.o: versionfile
