@@ -1,6 +1,6 @@
 QDL := qdl
 RAMDUMP := qdl-ramdump
-VERSION := $(or $(shell git describe --dirty --always --tags), "unknown-version")
+VERSION := $(or $(VERSION), $(shell git describe --dirty --always --tags 2>/dev/null), "unknown-version")
 
 CFLAGS += -O2 -Wall -g `pkg-config --cflags libxml-2.0 libusb-1.0`
 LDFLAGS += `pkg-config --libs libxml-2.0 libusb-1.0`
