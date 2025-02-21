@@ -1,8 +1,9 @@
 #include <stdarg.h>
-#include <sys/ioctl.h>
+
 #include <sys/time.h>
 #include <unistd.h>
 
+#include "qdl_oscompat.h"
 #include "qdl.h"
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
@@ -36,8 +37,29 @@ static void ux_clear_line(void)
 	ux_cur_line_length = 0;
 }
 
+#ifdef _WIN32
 void ux_init(void)
 {
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	int rows, cols;
+	_set_printf_count_output(1);
+	// Get the console screen buffer info
+	if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
+		cols = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+		rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+		ux_width = MIN(cols, UX_PROGRESS_SIZE_MAX);
+		printf("Rows: %d, Columns: %d\n", rows, cols);
+	}
+	else {
+		printf("Error getting console screen buffer info\n");
+	}
+}
+
+#else
+
+void ux_init(void)
+{
+	
 	struct winsize w;
 	int ret;
 
@@ -45,6 +67,8 @@ void ux_init(void)
 	if (!ret)
 		ux_width = MIN(w.ws_col, UX_PROGRESS_SIZE_MAX);
 }
+#endif
+
 
 void ux_err(const char *fmt, ...)
 {
