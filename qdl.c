@@ -29,7 +29,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <err.h>
+
 #include <errno.h>
 #include <getopt.h>
 #include <stdbool.h>
@@ -40,6 +40,7 @@
 #include <libxml/tree.h>
 
 #include "qdl.h"
+#include "qdl_oscompat.h"
 #include "patch.h"
 #include "ufs.h"
 
@@ -99,12 +100,11 @@ static int detect_type(const char *xml_file)
 	return type;
 }
 
-static void print_usage(void)
+static void print_usage(char * progName)
 {
-	extern const char *__progname;
 	fprintf(stderr,
 		"%s [--debug] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] <prog.mbn> [<program> <patch> ...]\n",
-		__progname);
+		progName);
 }
 
 enum {
@@ -141,7 +141,7 @@ int main(int argc, char **argv)
 			qdl_debug = true;
 			break;
 		case 'v':
-			print_version();
+			print_version(argv[0]);
 			return 0;
 		case 'f':
 			allow_missing = true;
@@ -163,21 +163,21 @@ int main(int argc, char **argv)
 			serial = optarg;
 			break;
 		default:
-			print_usage();
+			print_usage(argv[0]);
 			return 1;
 		}
 	}
 
 	/* at least 2 non optional args required */
 	if ((optind + 2) > argc) {
-		print_usage();
+		print_usage(argv[0]);
 		return 1;
 	}
 
 	ux_init();
 
 	if (qdl_debug)
-		print_version();
+		print_version(argv[0]);
 
 	prog_mbn = argv[optind++];
 

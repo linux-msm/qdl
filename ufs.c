@@ -36,7 +36,7 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include <libxml/xpath.h>
-
+#include "qdl_oscompat.h"
 #include "ufs.h"
 #include "qdl.h"
 #include "patch.h"
@@ -253,6 +253,7 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 		if (ufs_epilogue_p) {
 			free(ufs_epilogue_p);
 		}
+		ux_err("[UFS] %s seems to be corrupted, ignore\n", ufs_file);
 		return retval;
 	}
 	if (!finalize_provisioning != !ufs_common_p->bConfigDescrLock) {
@@ -277,8 +278,8 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 		ux_info("WARNING: irreversible provisioning will start in 5s");
 		for(i=5; i>0; i--) {
 			ux_info(".\a");
-			fflush(stdout);
-			sleep(1);
+			fflush(stdout); 
+			SLEEP(1);
 		}
 		ux_info("\n");
 	}

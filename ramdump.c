@@ -7,12 +7,12 @@
 
 bool qdl_debug;
 
-static void print_usage(void)
+static void print_usage(char* progName)
 {
-	extern const char *__progname;
+	
 	fprintf(stderr,
 		"%s [--debug] [-o <ramdump-path>] [segment-filter,...]\n",
-		__progname);
+		progName);
 	exit(1);
 }
 
@@ -39,7 +39,7 @@ int main(int argc, char **argv)
 			qdl_debug = true;
 			break;
 		case 'v':
-			print_version();
+			print_version(argv[0]);
 			return 0;
 		case 'o':
 			ramdump_path = optarg;
@@ -48,7 +48,7 @@ int main(int argc, char **argv)
 			serial = optarg;
 			break;
 		default:
-			print_usage();
+			print_usage(argv[0]);
 		}
 	}
 
@@ -56,10 +56,10 @@ int main(int argc, char **argv)
 		filter = argv[optind++];
 
 	if (optind != argc)
-		print_usage();
+		print_usage(argv[0]);
 
 	if (qdl_debug)
-		print_version();
+		print_version(argv[0]);
 
 	ret = qdl_open(&qdl, serial);
 	if (ret)

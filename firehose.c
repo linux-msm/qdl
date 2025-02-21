@@ -36,20 +36,21 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <err.h>
+
 #include <errno.h>
 #include <fcntl.h>
-#include <poll.h>
+//#include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
+//#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
+#include "qdl_oscompat.h"
 #include "qdl.h"
 #include "ufs.h"
 
@@ -162,8 +163,10 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 		ux_debug("FIREHOSE READ: %s\n", buf);
 
 		node = firehose_response_parse(buf, n, &error);
-		if (!node)
+		if (!node) {
+			ux_err(stderr, "unable to parse response\n");
 			return error;
+		}
 
 		ret = response_parser(node, data);
 		xmlFreeDoc(node->doc);
@@ -348,7 +351,7 @@ out:
 static int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
 {
 	unsigned num_sectors;
-	struct stat sb;
+	struct STAT64 sb;
 	size_t chunk_size;
 	xmlNode *root;
 	xmlNode *node;
@@ -361,10 +364,15 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	int n;
 
 	num_sectors = program->num_sectors;
+	//printf("firehose_program using _fstat before fstat  %d, filename is %s , label is %s, pro num_sectors is %d , sector_size is %d \n", fd, program->filename, program->label, program->num_sectors, program->sector_size);
+	ret = FSTAT64(fd, &sb);
+	if (ret < 0) {
+		perror("_fstat failed");
+		ux_err("error: %d\n", errno);
+		ux_info("firehose_program after fstat  %d, num_sectors is %d , sector_size is %d \n", ret, program->num_sectors, program->sector_size);
+		err(1, "failed to stat \"%s\", return of fstat is %d \n", program->filename, ret);
+	}
 
-	ret = fstat(fd, &sb);
-	if (ret < 0)
-		err(1, "failed to stat \"%s\"\n", program->filename);
 
 	num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
 
@@ -389,8 +397,14 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	xml_setpropf(node, "num_partition_sectors", "%d", num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
 	xml_setpropf(node, "start_sector", "%s", program->start_sector);
-	if (program->filename)
+	if (program->filename){
 		xml_setpropf(node, "filename", "%s", program->filename);
+	}
+	else {
+		ux_info("[PROGRAM] lable %s, filename empty, %d \n",
+			program->label,
+			program->num_sectors * program->sector_size);
+	}
 
 	if (program->is_nand) {
 		xml_setpropf(node, "PAGES_PER_BLOCK", "%d", program->pages_per_block);
@@ -411,19 +425,19 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t0 = time(NULL);
 
-	lseek(fd, (off_t) program->file_offset * program->sector_size, SEEK_SET);
+	LSEEK(fd, (off_t) program->file_offset * program->sector_size, SEEK_SET);
 	left = num_sectors;
 	while (left > 0) {
 		chunk_size = MIN(max_payload_size / program->sector_size, left);
 
-		n = read(fd, buf, chunk_size * program->sector_size);
+		n = READ(fd, buf, chunk_size * program->sector_size);
 		if (n < 0) {
 			ux_err("failed to read %s\n", program->filename);
 			goto out;
 		}
 
 		if (n < max_payload_size)
-			memset(buf + n, 0, max_payload_size - n);
+			memset((char *)buf + n, 0, max_payload_size - n);
 
 		n = qdl_write(qdl, buf, chunk_size * program->sector_size);
 		if (n < 0) {
@@ -452,8 +466,8 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 			program->label,
 			(unsigned long)program->sector_size * num_sectors / t / 1024);
 	} else {
-		ux_err("flashed \"%s\" successfully\n",
-			program->label);
+		ux_err("flashed \"%s\" successfully, size in Byte flashed is %lu \n",
+			program->label,(unsigned long)program->sector_size * num_sectors);
 	}
 
 out:
@@ -527,7 +541,7 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 			err(1, "failed to read full sector");
 		}
 
-		n = write(fd, buf, n);
+		n = WRITE(fd, buf, n);
 
 		if (n != chunk_size * read_op->sector_size) {
 			err(1, "failed to write");
@@ -810,6 +824,13 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 		firehose_set_bootable(qdl, bootable);
 	}
 
+	printf("to sleep 10 seconds before reset\n");
+	SLEEP(10000);  //Sleep for 10 seconds before attempting
+                 //to reboot the target. 
+                 //This has been a known issue in firehose
+                 //that after a device reflash, a reboot without
+                 //a long wait, hangs..
+	printf("after sleep 10 seconds, to reset\n");
 	firehose_reset(qdl);
 
 	return 0;

@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "qdl_oscompat.h"
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
@@ -110,11 +111,11 @@ int read_op_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 		filename = read_op->filename;
 		if (incdir) {
 			snprintf(tmp, PATH_MAX, "%s/%s", incdir, filename);
-			if (access(tmp, F_OK) != -1)
+			if (ACCESS(tmp, F_OK) != -1)
 				filename = tmp;
 		}
 
-		fd = open(filename, O_WRONLY|O_CREAT|O_TRUNC, 0644);
+		fd = OPEN(filename, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, 0644);
 
 		if (fd < 0) {
 			ux_info("unable to open %s...\n", read_op->filename);
@@ -123,7 +124,7 @@ int read_op_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 
 		ret = apply(qdl, read_op, fd);
 
-		close(fd);
+		CLOSE(fd);
 		if (ret)
 			return ret;
 	}

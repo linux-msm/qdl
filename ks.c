@@ -2,17 +2,17 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <err.h>
+#include "qdl_oscompat.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <poll.h>
+//#include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
+//#include <termios.h>
 #include <unistd.h>
 
 #include "qdl.h"
@@ -23,21 +23,20 @@ bool qdl_debug;
 
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
 {
-	return read(qdl->fd, buf, len);
+	return READ(qdl->fd, buf, len);
 }
 
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
 {
 
-	return write(qdl->fd, buf, len);
+	return WRITE(qdl->fd, buf, len);
 }
 
-static void print_usage(void)
+static void print_usage(char * progName)
 {
-	extern const char *__progname;
 	fprintf(stderr,
 		"%s -p <sahara dev_node> -s <id:file path> ...\n",
-		__progname);
+		progName);
 	fprintf(stderr,
 		" -p                   --port                      Sahara device node to use\n"
 		" -s <id:file path>    --sahara <id:file path>     Sahara protocol file mapping\n"
@@ -71,7 +70,7 @@ int main(int argc, char **argv)
 			qdl_debug = true;
 			break;
 		case 'v':
-			print_version();
+			print_version(argv[0]);
 			return 0;
 		case 'p':
 			dev_node = optarg;
@@ -81,7 +80,7 @@ int main(int argc, char **argv)
 			found_mapping = true;
 			file_id = strtol(optarg, NULL, 10);
 			if (file_id < 0) {
-				print_usage();
+				print_usage(argv[0]);
 				return 1;
 			}
 			if (file_id >= MAPPING_SZ) {
@@ -93,28 +92,28 @@ int main(int argc, char **argv)
 			}
 			colon = strchr(optarg, ':');
 			if (!colon) {
-				print_usage();
+				print_usage(argv[0]);
 				return 1;
 			}
 			qdl.mappings[file_id] = &optarg[colon - optarg + 1];
 			printf("Created mapping ID:%ld File:%s\n", file_id, qdl.mappings[file_id]);
 			break;
 		default:
-			print_usage();
+			print_usage(argv[0]);
 			return 1;
 		}
 	}
 
 	// -p and -s is required
 	if (!dev_node || !found_mapping) {
-		print_usage();
+		print_usage(argv[0]);
 		return 1;
 	}
 
 	if (qdl_debug)
-		print_version();
+		print_version(argv[0]);
 
-	qdl.fd = open(dev_node, O_RDWR);
+	qdl.fd = OPEN(dev_node, O_RDWR| O_BINARY);
 	if (qdl.fd < 0) {
 		fprintf(stderr, "Unable to open %s\n", dev_node);
 		return 1;

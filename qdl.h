@@ -10,6 +10,7 @@
 
 #define MAPPING_SZ 64
 
+
 struct libusb_device_handle;
 
 struct qdl_device {
@@ -46,7 +47,7 @@ void ux_log(const char *fmt, ...);
 void ux_debug(const char *fmt, ...);
 void ux_progress(const char *fmt, unsigned int value, unsigned int size, ...);
 
-void print_version(void);
+void print_version(const char*);
 
 extern bool qdl_debug;
 
