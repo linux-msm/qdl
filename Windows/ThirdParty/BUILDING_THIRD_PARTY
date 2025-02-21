@@ -1,0 +1,25 @@
+Qualcomm Download
+=================
+
+This tool communicates with USB devices of id 05c6:9008 to upload a flash
+loader and use this to flash images.
+
+Usage:
+  qdl.exe <prog.mbn> [<program> <patch> ...]
+
+Building
+========
+
+Tools: Using VS 2019. 
+
+1. Build libusb 1.0.27. https://github.com/libusb/libusb/releases/tag/v1.0.27
+2. Build libiconv 1.17 https://github.com/kiyolee/libiconv-win-build/releases/tag/v1.17
+3. Build zlib 1.3.1 https://github.com/kiyolee/zlib-win-build/releases/tag/v1.3.1
+4. Build xz 5.6.2 https://github.com/kiyolee/xz-win-build/releases/tag/v5.6.2
+5. Build libxml2=2.13.5 https://github.com/kiyolee/libxml2-win-build/releases/tag/v2.13.5
+
+6. Copy the generated static libs to qdl\Windows\ThirdParty\x64 (Or other architecture desired) 
+7. Build QDL using VS 2019. 
+
+
+
