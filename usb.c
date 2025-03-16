@@ -71,8 +71,10 @@ static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *
 		return -1;
 	}
 
-	/* Consider only devices with vid 0x0506 and product id 0x9008 or 0x900e */
-	if (desc.idVendor != 0x05c6 || (desc.idProduct != 0x9008 && desc.idProduct != 0x900e))
+	/* Consider only devices with vid 0x0506 and known product id */
+	if (desc.idVendor != 0x05c6)
+		return 0;
+	if (desc.idProduct != 0x9008 && desc.idProduct != 0x900e && desc.idProduct != 0x901d)
 		return 0;
 
 	ret = libusb_get_active_config_descriptor(dev, &config);
