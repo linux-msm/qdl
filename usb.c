@@ -1,6 +1,6 @@
-#include <sys/ioctl.h>
+
 #include <sys/types.h>
-#include <err.h>
+#include "qdl_oscompat.h"
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -35,7 +35,7 @@ static bool qdl_match_usb_serial(struct libusb_device_handle *handle, const char
 
 	ret = libusb_get_string_descriptor_ascii(handle, desc->iProduct, (unsigned char *)buf, sizeof(buf));
 	if (ret < 0) {
-		warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
+		WARN("failed to read iProduct descriptor: %s", libusb_strerror(ret));
 		return false;
 	}
 
@@ -67,7 +67,7 @@ static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *
 
 	ret = libusb_get_device_descriptor(dev, &desc);
 	if (ret < 0) {
-		warnx("failed to get USB device descriptor");
+		WARN("failed to get USB device descriptor");
 		return -1;
 	}
 
@@ -77,7 +77,7 @@ static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *
 
 	ret = libusb_get_active_config_descriptor(dev, &config);
 	if (ret < 0) {
-		warnx("failed to acquire USB device's active config descriptor");
+		WARN("failed to acquire USB device's active config descriptor");
 		return -1;
 	}
 
@@ -119,7 +119,7 @@ static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *
 
 		ret = libusb_open(dev, &handle);
 		if (ret < 0) {
-			warnx("unable to open USB device");
+			WARN("unable to open USB device");
 			continue;
 		}
 
@@ -132,7 +132,7 @@ static int qdl_try_open(libusb_device *dev, struct qdl_device *qdl, const char *
 
 		ret = libusb_claim_interface(handle, ifc->bInterfaceNumber);
 		if (ret < 0) {
-			warnx("failed to claim USB interface");
+			WARN("failed to claim USB interface");
 			libusb_close(handle);
 			continue;
 		}
@@ -200,7 +200,7 @@ int qdl_open(struct qdl_device *qdl, const char *serial)
 			wait_printed = true;
 		}
 
-		usleep(250000);
+		SLEEP(250);
 	}
 
 	return -1;
@@ -241,7 +241,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
 					   xfer, &actual, 1000);
 		if ((ret != 0 && ret != LIBUSB_ERROR_TIMEOUT) ||
 		    (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)) {
-			warnx("bulk write failed: %s", libusb_strerror(ret));
+			WARN("bulk write failed: %s", libusb_strerror(ret));
 			return -1;
 		}
 
