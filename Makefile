@@ -16,7 +16,7 @@ KS_OUT := ks
 KS_SRCS := ks.c sahara.c util.c ux.c
 KS_OBJS := $(KS_SRCS:.c=.o)
 
-default: versionfile $(QDL) $(RAMDUMP) $(KS_OUT)
+default: $(QDL) $(RAMDUMP) $(KS_OUT)
 
 $(QDL): $(QDL_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
@@ -30,11 +30,11 @@ $(KS_OUT): $(KS_OBJS)
 compile_commands.json: $(QDL_SRCS) $(KS_SRCS)
 	@echo -n $^ | jq -snR "[inputs|split(\" \")[]|{directory:\"$(PWD)\", command: \"$(CC) $(CFLAGS) -c \(.)\", file:.}]" > $@
 
-versionfile:
+version.h::
 	@echo "#define VERSION \"$(VERSION)\"" > .version.h
 	@cmp -s .version.h version.h || cp .version.h version.h
 
-util.o: versionfile
+util.o: version.h
 
 clean:
 	rm -f $(QDL) $(QDL_OBJS)
