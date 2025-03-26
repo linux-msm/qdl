@@ -279,7 +279,7 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 		for(i=5; i>0; i--) {
 			ux_info(".\a");
 			fflush(stdout); 
-			SLEEP(1);
+			SLEEP(1000);
 		}
 		ux_info("\n");
 	}

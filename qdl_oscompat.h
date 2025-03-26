@@ -25,7 +25,7 @@
     #define STRDUP _strdup
     #define STRTOK strtok_s
     #define SPRINTF sprintf_s
-    #define SLEEP Sleep
+    #define SLEEP(x) Sleep(x)
     #define WARN printf
     #define FSTAT64 _fstat64
     #define STAT64 _stat64
@@ -64,7 +64,7 @@
     #define STRDUP strdup
     #define STRTOK strtok_r
     #define SPRINTF sprintf
-    #define SLEEP sleep
+    #define SLEEP(x) usleep((x)*1000)
     #define WARN warn
     #define FSTAT64 fstat
     #define STAT64  stat
