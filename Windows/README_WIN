@@ -19,7 +19,8 @@ Tools: Using VS 2019.
 5. Build libxml2=2.13.5 https://github.com/kiyolee/libxml2-win-build/releases/tag/v2.13.5
 
 6. Copy the generated static libs to qdl\Windows\ThirdParty\x64 (Or other architecture desired) 
-7. Build QDL using VS 2019. 
+7. Copy the related header files from each project into the Windows folder. 
+8. Build QDL using VS 2019. 
 
 
 
