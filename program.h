@@ -13,6 +13,7 @@ struct program {
 	const char *label;
 	unsigned int num_sectors;
 	unsigned int partition;
+	bool sparse;
 	const char *start_sector;
 	unsigned int last_sector;
 
