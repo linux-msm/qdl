@@ -20,6 +20,9 @@ struct program {
 	bool is_nand;
 	bool is_erase;
 
+	unsigned int sparse_chunk_type;
+	unsigned int sparse_chunk_data;
+
 	struct program *next;
 };
 
