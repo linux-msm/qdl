@@ -164,7 +164,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 
 		node = firehose_response_parse(buf, n, &error);
 		if (!node) {
-			ux_err(stderr, "unable to parse response\n");
+			ux_err("unable to parse response\n");
 			return error;
 		}
 

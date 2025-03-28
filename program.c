@@ -176,7 +176,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 		filename = program->filename;
 		ux_info("program_execute to open %s \n", filename);
 		if (incdir) {
-			snprintf(tmp, PATH_MAX, "%s\/%s", incdir, filename);
+			snprintf(tmp, PATH_MAX, "%s/%s", incdir, filename);
 			if (ACCESS(tmp, F_OK) != -1)
 				filename = tmp;
 		}
