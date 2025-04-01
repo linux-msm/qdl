@@ -21,28 +21,17 @@ static struct qdl_device qdl;
 
 bool qdl_debug;
 
-int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
-{
-	return read(qdl->fd, buf, len);
-}
-
-int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
-{
-
-	return write(qdl->fd, buf, len);
-}
-
 static void print_usage(void)
 {
 	extern const char *__progname;
 	fprintf(stderr,
-		"%s -p <sahara dev_node> -s <id:file path> ...\n",
+		"%s [--debug] [--serial <NUM>] [--port <sahara dev_node>] -s <id:file path> ...\n",
 		__progname);
 	fprintf(stderr,
 		" -p                   --port                      Sahara device node to use\n"
 		" -s <id:file path>    --sahara <id:file path>     Sahara protocol file mapping\n"
 		"\n"
-		"One -p instance is required.  One or more -s instances are required.\n"
+		"One or more -s instances are required\n"
 		"\n"
 		"Example: \n"
 		"ks -p /dev/mhi0_QAIC_SAHARA -s 1:/opt/qti-aic/firmware/fw1.bin -s 2:/opt/qti-aic/firmware/fw2.bin\n");
@@ -52,6 +41,7 @@ int main(int argc, char **argv)
 {
 	bool found_mapping = false;
 	char *dev_node = NULL;
+	char *serial = NULL;
 	long file_id;
 	char *colon;
 	int opt;
@@ -62,6 +52,7 @@ int main(int argc, char **argv)
 		{"version", no_argument, 0, 'v'},
 		{"port", required_argument, 0, 'p'},
 		{"sahara", required_argument, 0, 's'},
+		{"serial", required_argument, 0, 'S'},
 		{0, 0, 0, 0}
 	};
 
@@ -80,24 +71,18 @@ int main(int argc, char **argv)
 		case 's':
 			found_mapping = true;
 			file_id = strtol(optarg, NULL, 10);
-			if (file_id < 0) {
-				print_usage();
-				return 1;
-			}
-			if (file_id >= MAPPING_SZ) {
-				fprintf(stderr,
-					"ID:%ld exceeds the max value of %d\n",
-					file_id,
-					MAPPING_SZ - 1);
-				return 1;
-			}
+			if (file_id < 0 || file_id >= MAPPING_SZ)
+				errx(1, "ID:%ld has to be in range of 0 - %d\n", file_id, MAPPING_SZ - 1);
+
 			colon = strchr(optarg, ':');
-			if (!colon) {
-				print_usage();
-				return 1;
-			}
+			if (!colon)
+				errx(1, "Sahara mapping requires ID and file path to be divided by a colon");
+
 			qdl.mappings[file_id] = &optarg[colon - optarg + 1];
 			printf("Created mapping ID:%ld File:%s\n", file_id, qdl.mappings[file_id]);
+			break;
+		case 'S':
+			serial = optarg;
 			break;
 		default:
 			print_usage();
@@ -105,8 +90,8 @@ int main(int argc, char **argv)
 		}
 	}
 
-	// -p and -s is required
-	if (!dev_node || !found_mapping) {
+	// -s is required
+	if (!found_mapping) {
 		print_usage();
 		return 1;
 	}
@@ -114,15 +99,32 @@ int main(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	qdl.fd = open(dev_node, O_RDWR);
-	if (qdl.fd < 0) {
-		fprintf(stderr, "Unable to open %s\n", dev_node);
-		return 1;
+	if (dev_node) {
+		qdl.fd = open(dev_node, O_RDWR);
+		if (qdl.fd < 0) {
+			ret = 0;
+			printf("Unable to open %s\n", dev_node);
+			goto out_cleanup;
+		}
 	}
+	else {
+		ret = qdl_open(&qdl, serial);
+		if (ret) {
+			printf("Failed to find edl device\n");
+			goto out_cleanup;
+		}
+	}
+
 
 	ret = sahara_run(&qdl, qdl.mappings, false, NULL, NULL);
 	if (ret < 0)
-		return 1;
+		goto out_cleanup;
 
-	return 0;
+out_cleanup:
+	if (dev_node)
+		close(qdl.fd);
+	else
+		qdl_close(&qdl);
+
+	return !!ret;
 }
