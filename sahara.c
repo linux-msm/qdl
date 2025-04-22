@@ -438,6 +438,13 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 	bool done = false;
 	int n;
 
+	/*
+	 * Don't need to do anything in simulation mode with Sahara,
+	 * we care only about Firehose protocol
+	 */
+	if (qdl->dev_type == QDL_DEVICE_SIM)
+		return 0;
+
 	if (ramdump_path) {
 		ramdump_dir = open(ramdump_path, O_DIRECTORY);
 		if (ramdump_dir < 0)

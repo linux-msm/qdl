@@ -13,6 +13,7 @@
 enum QDL_DEVICE_TYPE
 {
 	QDL_DEVICE_USB,
+        QDL_DEVICE_SIM,
 };
 
 struct qdl_device
@@ -44,6 +45,11 @@ struct qdl_device_usb
 	size_t out_chunk_size;
 };
 
+struct qdl_device_sim
+{
+	struct qdl_device base;
+};
+
 struct qdl_device *qdl_init(enum QDL_DEVICE_TYPE type);
 void qdl_deinit(struct qdl_device *qdl);
 int qdl_open(struct qdl_device *qdl, const char *serial);
@@ -53,6 +59,7 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len);
 void qdl_set_out_chunk_size(struct qdl_device *qdl, long size);
 
 struct qdl_device *usb_init(void);
+struct qdl_device *sim_init(void);
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage, bool allow_missing);
 int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
