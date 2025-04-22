@@ -18,7 +18,9 @@ static void print_usage(void)
 
 int main(int argc, char **argv)
 {
-	struct qdl_device qdl;
+	struct qdl_device_usb qdl;
+	qdl.base.dev_type = QDL_DEVICE_USB;
+
 	char *ramdump_path = ".";
 	char *filter = NULL;
 	char *serial = NULL;
@@ -61,11 +63,11 @@ int main(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	ret = qdl_open(&qdl, serial);
+	ret = qdl_open(&qdl.base, serial);
 	if (ret)
 		return 1;
 
-	ret = sahara_run(&qdl, NULL, true, ramdump_path, filter);
+	ret = sahara_run(&qdl.base, NULL, true, ramdump_path, filter);
 	if (ret < 0)
 		return 1;
 
