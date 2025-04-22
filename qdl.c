@@ -60,7 +60,6 @@ enum {
 };
 
 bool qdl_debug;
-static struct qdl_device qdl;
 
 static int detect_type(const char *xml_file)
 {
@@ -127,7 +126,9 @@ int main(int argc, char **argv)
 	bool qdl_finalize_provisioning = false;
 	bool allow_fusing = false;
 	bool allow_missing = false;
-	long out_chunk_size;
+	long out_chunk_size = 0;
+	struct qdl_device *qdl = NULL;
+	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
@@ -164,7 +165,6 @@ int main(int argc, char **argv)
 			break;
 		case OPT_OUT_CHUNK_SIZE:
 			out_chunk_size = strtol(optarg, NULL, 10);
-			qdl_set_out_chunk_size(&qdl, out_chunk_size);
 			break;
 		case 's':
 			storage = optarg;
@@ -183,6 +183,15 @@ int main(int argc, char **argv)
 		print_usage();
 		return 1;
 	}
+
+	qdl = qdl_init(qdl_dev_type);
+	if (!qdl) {
+		ret = -1;
+		goto out_cleanup;
+	}
+
+	if (out_chunk_size)
+		qdl_set_out_chunk_size(qdl, out_chunk_size);
 
 	ux_init();
 
@@ -227,23 +236,25 @@ int main(int argc, char **argv)
 		}
 	} while (++optind < argc);
 
-	ret = qdl_open(&qdl, serial);
+	ret = qdl_open(qdl, serial);
 	if (ret)
 		goto out_cleanup;
 
-	qdl.mappings[0] = prog_mbn;
-	ret = sahara_run(&qdl, qdl.mappings, true, NULL, NULL);
+	qdl->mappings[0] = prog_mbn;
+	ret = sahara_run(qdl, qdl->mappings, true, NULL, NULL);
 	if (ret < 0)
 		goto out_cleanup;
 
-	ret = firehose_run(&qdl, incdir, storage, allow_missing);
+	ret = firehose_run(qdl, incdir, storage, allow_missing);
 	if (ret < 0)
 		goto out_cleanup;
 
 out_cleanup:
-	qdl_close(&qdl);
+	qdl_close(qdl);
 	free_programs();
 	free_patches();
+
+	qdl_deinit(qdl);
 
 	return !!ret;
 }
