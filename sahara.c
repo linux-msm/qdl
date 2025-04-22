@@ -345,7 +345,10 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 				goto out;
 			}
 
-			write(fd, buf, n);
+			if (n != write(fd, buf, n)) {
+				warn("failed to write ramdump chunk to \"%s\"", region.filename);
+				goto out;
+			}
 			offset += n;
 		}
 
