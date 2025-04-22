@@ -278,6 +278,27 @@ int program_find_bootable_partition(bool *multiple_found)
 	return part;
 }
 
+/**
+ * program_is_sec_partition_flashed() - find if secdata partition is flashed
+ *
+ * Returns true if filename for secdata is set in program*.xml,
+ * or false otherwise.
+ */
+int program_is_sec_partition_flashed(void)
+{
+	struct program *program;
+
+	program = program_find_partition("secdata");
+	if (!program)
+		return false;
+
+	if (program->filename)
+		return true;
+
+	return false;
+}
+
+
 void free_programs(void)
 {
 	struct program *program = programes;
