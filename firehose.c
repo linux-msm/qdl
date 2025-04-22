@@ -146,6 +146,10 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 	gettimeofday(&now, NULL);
 	timeradd(&now, &delta, &timeout);
 
+	/* In simulation mode we don't expent to read and parse any responses */
+	if (qdl->dev_type == QDL_DEVICE_SIM)
+		return 0;
+
 	do {
 		n = qdl_read(qdl, buf, sizeof(buf), 100);
 		if (n <= 0) {
@@ -298,7 +302,12 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, co
 			return -1;
 		}
 
-		max_payload_size = size;
+		/*
+		 * Simulated target doesn't provide any valid payload size, so
+		 * for QDL_DEVICE_SIM dev type we keep old max_payload_size value
+		 */
+		if (qdl->dev_type != QDL_DEVICE_SIM)
+			max_payload_size = size;
 	}
 
 	ux_debug("accepted max payload size: %zu\n", max_payload_size);
