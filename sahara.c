@@ -469,6 +469,13 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 	bool done = false;
 	int n;
 
+	/*
+	 * Don't need to do anything in simulation mode with Sahara,
+	 * we care only about Firehose protocol
+	 */
+	if (qdl->dev_type == QDL_DEVICE_SIM)
+		return 0;
+
 	while (!done) {
 		n = qdl_read(qdl, buf, sizeof(buf), 1000);
 		if (n < 0)

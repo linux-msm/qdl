@@ -107,7 +107,7 @@ static void print_usage(void)
 {
 	extern const char *__progname;
 	fprintf(stderr,
-		"%s [--debug] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] <prog.mbn> [<program> <patch> ...]\n",
+		"%s [--debug] [--dry-run] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
 }
 
@@ -140,6 +140,7 @@ int main(int argc, char **argv)
 		{"storage", required_argument, 0, 's'},
 		{"allow-missing", no_argument, 0, 'f'},
 		{"allow-fusing", no_argument, 0, 'c'},
+		{"dry-run", no_argument, 0, 'n'},
 		{0, 0, 0, 0}
 	};
 
@@ -147,6 +148,9 @@ int main(int argc, char **argv)
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
+			break;
+		case 'n':
+			qdl_dev_type = QDL_DEVICE_SIM;
 			break;
 		case 'v':
 			print_version();
