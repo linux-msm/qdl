@@ -306,8 +306,9 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 {
 	struct sahara_pkt read_req;
 	uint64_t remain;
-	size_t offset;
+	size_t offset, buf_offset;
 	size_t chunk;
+	size_t written;
 	ssize_t n;
 	void *buf;
 	int fd;
@@ -318,7 +319,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 
 	char path[PATH_MAX];
 	snprintf(path, sizeof(path), "%s/%s", ramdump_path, region.filename);
-	
+
 	fd = open(path, O_WRONLY | O_CREAT | O_BINARY, 0644);
 	if (fd < 0) {
 		warn("failed to open \"%s\"", region.filename);
@@ -339,14 +340,23 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 
 		offset = 0;
 		while (offset < remain) {
+			buf_offset = 0;
 			n = qdl_read(qdl, buf, DEBUG_BLOCK_SIZE, 30000);
 			if (n < 0) {
 				warn("failed to read ramdump chunk");
 				goto out;
 			}
 
-			write(fd, buf, n);
-			offset += n;
+			while (buf_offset < n) {
+				written = write(fd, buf + buf_offset, n - buf_offset);
+				if (written <= 0) {
+					warn("failed to write ramdump chunk to \"%s\"", region.filename);
+					goto out;
+				}
+				buf_offset += written;
+			}
+
+			offset += buf_offset;
 		}
 
 		qdl_read(qdl, buf, DEBUG_BLOCK_SIZE, 10);
