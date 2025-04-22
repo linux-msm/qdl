@@ -10,27 +10,36 @@
 
 #define MAPPING_SZ 64
 
-struct libusb_device_handle;
-
-struct qdl_device {
-        struct libusb_device_handle *usb_handle;
-        int fd;
-
-        int in_ep;
-        int out_ep;
-
-        size_t in_maxpktsize;
-        size_t out_maxpktsize;
-        size_t out_chunk_size;
-
-        char *mappings[MAPPING_SZ]; // array index is the id from the device
+enum QDL_DEVICE_TYPE
+{
+	QDL_DEVICE_USB,
 };
 
+struct qdl_device
+{
+	enum QDL_DEVICE_TYPE dev_type;
+	int fd;
+
+	int (*open)(struct qdl_device *qdl, const char *serial);
+	int (*read)(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
+	int (*write)(struct qdl_device *qdl, const void *buf, size_t nbytes);
+	void (*close)(struct qdl_device *qdl);
+	void (*set_out_chunk_size)(struct qdl_device *qdl, long size);
+
+	char *mappings[MAPPING_SZ]; // array index is the id from the device
+};
+
+struct libusb_device_handle;
+
+struct qdl_device *qdl_init(enum QDL_DEVICE_TYPE type);
+void qdl_deinit(struct qdl_device *qdl);
 int qdl_open(struct qdl_device *qdl, const char *serial);
 void qdl_close(struct qdl_device *qdl);
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len);
 void qdl_set_out_chunk_size(struct qdl_device *qdl, long size);
+
+struct qdl_device *usb_init(void);
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage, bool allow_missing);
 int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,

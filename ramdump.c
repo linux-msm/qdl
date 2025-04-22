@@ -23,11 +23,16 @@ static void print_usage(void)
 
 int main(int argc, char **argv)
 {
-	struct qdl_device qdl;
+	struct qdl_device *qdl;
+
+	qdl = qdl_init(QDL_DEVICE_USB);
+	if (!qdl)
+		return 1;
+
 	char *ramdump_path = ".";
 	char *filter = NULL;
 	char *serial = NULL;
-	int ret;
+	int ret = 0;
 	int opt;
 
 	static struct option options[] = {
@@ -45,7 +50,8 @@ int main(int argc, char **argv)
 			break;
 		case 'v':
 			print_version();
-			return 0;
+			ret = 0;
+			goto out_cleanup;
 		case 'o':
 			ramdump_path = optarg;
 			break;
@@ -66,13 +72,21 @@ int main(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	ret = qdl_open(&qdl, serial);
-	if (ret)
-		return 1;
+	ret = qdl_open(qdl, serial);
+	if (ret) {
+		ret = 1;
+		goto out_cleanup;
+	}
 
-	ret = sahara_run(&qdl, NULL, true, ramdump_path, filter);
-	if (ret < 0)
-		return 1;
+	ret = sahara_run(qdl, NULL, true, ramdump_path, filter);
+	if (ret < 0) {
+		ret = 1;
+		goto out_cleanup;
+	}
 
-	return 0;
+out_cleanup:
+	qdl_close(qdl);
+	qdl_deinit(qdl);
+
+	return ret;
 }
