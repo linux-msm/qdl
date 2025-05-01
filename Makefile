@@ -13,7 +13,7 @@ RAMDUMP_SRCS := ramdump.c sahara.c usb.c util.c ux.c
 RAMDUMP_OBJS := $(RAMDUMP_SRCS:.c=.o)
 
 KS_OUT := ks
-KS_SRCS := ks.c sahara.c util.c ux.c
+KS_SRCS := ks.c sahara.c util.c ux.c usb.c
 KS_OBJS := $(KS_SRCS:.c=.o)
 
 default: $(QDL) $(RAMDUMP) $(KS_OUT)

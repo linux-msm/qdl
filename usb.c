@@ -217,6 +217,9 @@ int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout
 	int actual;
 	int ret;
 
+	if (qdl->fd != 0)
+		return read(qdl->fd, buf, len);
+
 	ret = libusb_bulk_transfer(qdl->usb_handle, qdl->in_ep, buf, len, &actual, timeout);
 	if ((ret != 0 && ret != LIBUSB_ERROR_TIMEOUT) ||
 	    (ret == LIBUSB_ERROR_TIMEOUT && actual == 0))
@@ -233,6 +236,9 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
 	int actual;
 	int xfer;
 	int ret;
+
+	if (qdl->fd != 0)
+		return write(qdl->fd, buf, len);
 
 	while (len > 0) {
 		xfer = (len > qdl->out_chunk_size) ? qdl->out_chunk_size : len;
