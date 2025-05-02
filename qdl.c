@@ -41,6 +41,7 @@
 
 #include "qdl.h"
 #include "patch.h"
+#include "program.h"
 #include "ufs.h"
 
 #define MAX_USBFS_BULK_SIZE	(16*1024)
@@ -120,6 +121,7 @@ int main(int argc, char **argv)
 	int ret;
 	int opt;
 	bool qdl_finalize_provisioning = false;
+	bool allow_fusing = false;
 	bool allow_missing = false;
 	long out_chunk_size;
 
@@ -132,6 +134,7 @@ int main(int argc, char **argv)
 		{"serial", required_argument, 0, 'S'},
 		{"storage", required_argument, 0, 's'},
 		{"allow-missing", no_argument, 0, 'f'},
+		{"allow-fusing", no_argument, 0, 'c'},
 		{0, 0, 0, 0}
 	};
 
@@ -151,6 +154,9 @@ int main(int argc, char **argv)
 			break;
 		case 'l':
 			qdl_finalize_provisioning = true;
+			break;
+		case 'c':
+			allow_fusing = true;
 			break;
 		case OPT_OUT_CHUNK_SIZE:
 			out_chunk_size = strtol(optarg, NULL, 10);
@@ -196,6 +202,10 @@ int main(int argc, char **argv)
 			ret = program_load(argv[optind], !strcmp(storage, "nand"));
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[optind]);
+
+			if (!allow_fusing && program_is_sec_partition_flashed())
+				errx(1, "secdata partition to be programmed, which can lead to irreversible"
+						" changes. Allow explicitly with --allow-fusing parameter");
 			break;
 		case QDL_FILE_READ:
 			ret = read_op_load(argv[optind]);
