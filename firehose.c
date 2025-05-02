@@ -448,11 +448,11 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	if (ret) {
 		ux_err("flashing of %s failed\n", program->label);
 	} else if (t) {
-		ux_err("flashed \"%s\" successfully at %lukB/s\n",
+		ux_info("flashed \"%s\" successfully at %lukB/s\n",
 			program->label,
 			(unsigned long)program->sector_size * num_sectors / t / 1024);
 	} else {
-		ux_err("flashed \"%s\" successfully\n",
+		ux_info("flashed \"%s\" successfully\n",
 			program->label);
 	}
 
@@ -546,11 +546,11 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 	t = time(NULL) - t0;
 
 	if (t) {
-		ux_err("read \"%s\" successfully at %ldkB/s\n",
+		ux_info("read \"%s\" successfully at %ldkB/s\n",
 			read_op->filename,
 			(unsigned long)read_op->sector_size * read_op->num_sectors / t / 1024);
 	} else {
-		ux_err("read \"%s\" successfully\n",
+		ux_info("read \"%s\" successfully\n",
 			read_op->filename);
 	}
 
