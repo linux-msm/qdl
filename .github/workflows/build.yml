@@ -12,8 +12,6 @@ jobs:
         include:
           - { arch: x64, os: 24, runner: ubuntu-24.04 }
           - { arch: x64, os: 22, runner: ubuntu-22.04 }
-          - { arch: arm64, os: 24, runner: ubuntu-24.04-arm64 }
-          - { arch: arm64, os: 22, runner: ubuntu-22.04-arm64 }
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -48,7 +46,6 @@ jobs:
       matrix:
         include:
           - { sys: macos-14, arch: arm64 }
-          - { sys: macos-14, arch: x64 }
     runs-on: ${{ matrix.sys }}
 
     steps:
