@@ -2,20 +2,22 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
 #include <unistd.h>
 
 #include "qdl.h"
+#include "oscompat.h"
+
+#ifdef _WIN32
+const char *__progname = "ks";
+#endif
 
 static struct qdl_device qdl;
 

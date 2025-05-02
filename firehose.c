@@ -36,22 +36,20 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include "qdl.h"
 #include "ufs.h"
+#include "oscompat.h"
 
 enum {
 	FIREHOSE_ACK = 0,
@@ -534,7 +532,10 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 		}
 
 		left -= chunk_size;
+#ifndef _WIN32
+		// on mac/linux, every other response is empty
 		expect_empty = true;
+#endif
 	}
 
 	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);

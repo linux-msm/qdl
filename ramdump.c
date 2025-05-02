@@ -5,6 +5,11 @@
 
 #include "qdl.h"
 
+#ifdef _WIN32
+const char *__progname = "ramdump";
+#endif
+
+
 bool qdl_debug;
 
 static void print_usage(void)

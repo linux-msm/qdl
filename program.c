@@ -28,6 +28,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#define _FILE_OFFSET_BITS 64
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
