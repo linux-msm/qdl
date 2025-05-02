@@ -2,6 +2,7 @@
 qdl
 qdl-ramdump
 ks
+*.exe
 compile_commands.json
 .cache
 .version.h
