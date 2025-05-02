@@ -150,7 +150,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 
 	do {
 		n = qdl_read(qdl, buf, sizeof(buf), 100);
-		if (n < 0) {
+		if (n <= 0) {
 			gettimeofday(&now, NULL);
 			if (timercmp(&now, &timeout, <))
 				continue;
