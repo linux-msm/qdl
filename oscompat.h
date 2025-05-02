@@ -5,6 +5,8 @@
 
 #include <err.h>
 
+#define O_BINARY 0
+
 #else // _WIN32
 
 #include <sys/time.h>

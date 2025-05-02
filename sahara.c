@@ -218,7 +218,7 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *im
 		return;
 	}
 
-	fd = open(img_arr[image], O_RDONLY);
+	fd = open(img_arr[image], O_RDONLY | O_BINARY);
 	if (fd < 0) {
 		ux_err("Can not open \"%s\": %s\n", img_arr[image], strerror(errno));
 		// Maybe this read was optional.  Notify device of error and let
@@ -255,7 +255,7 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *
 		sahara_send_reset(qdl);
 		return;
 	}
-	fd = open(img_arr[image], O_RDONLY);
+	fd = open(img_arr[image], O_RDONLY | O_BINARY);
 	if (fd < 0) {
 		ux_err("Can not open \"%s\": %s\n", img_arr[image], strerror(errno));
 		// Maybe this read was optional.  Notify device of error and let
@@ -319,7 +319,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 	char path[PATH_MAX];
 	snprintf(path, sizeof(path), "%s/%s", ramdump_path, region.filename);
 	
-	fd = open(path, O_WRONLY | O_CREAT, 0644);
+	fd = open(path, O_WRONLY | O_CREAT | O_BINARY, 0644);
 	if (fd < 0) {
 		warn("failed to open \"%s\"", region.filename);
 		return -1;
