@@ -323,10 +323,13 @@ static int firehose_erase(struct qdl_device *qdl, struct program *program)
 	xmlDocSetRootElement(doc, root);
 
 	node = xmlNewChild(root, NULL, (xmlChar*)"erase", NULL);
-	xml_setpropf(node, "PAGES_PER_BLOCK", "%d", program->pages_per_block);
 	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", program->sector_size);
 	xml_setpropf(node, "num_partition_sectors", "%d", program->num_sectors);
+	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
 	xml_setpropf(node, "start_sector", "%s", program->start_sector);
+	if (program->is_nand) {
+		xml_setpropf(node, "PAGES_PER_BLOCK", "%d", program->pages_per_block);
+	}
 
 	ret = firehose_write(qdl, doc);
 	if (ret < 0) {
