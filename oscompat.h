@@ -12,15 +12,12 @@
 #include <sys/time.h>
 #include <stdbool.h>
 
-// TODO: improve err functions
-
-#define err(code, ...) do { ux_err(__VA_ARGS__); exit(code); } while(false)
-#define errx(code, ...) do { ux_err(__VA_ARGS__); exit(code); } while(false)
-#define warn(...) ux_info(__VA_ARGS__)
-#define warnx(...) ux_info(__VA_ARGS__)
-
-
 void timeradd(const struct timeval *a, const struct timeval *b, struct timeval *result);
+
+void err(int eval, const char *fmt, ...);
+void errx(int eval, const char *fmt, ...);
+void warn(const char *fmt, ...);
+void warnx(const char *fmt, ...);
 
 #endif
 
