@@ -12,11 +12,15 @@ struct program {
 	const char *label;
 	unsigned num_sectors;
 	unsigned partition;
+	bool sparse;
 	const char *start_sector;
 	unsigned last_sector;
 
 	bool is_nand;
 	bool is_erase;
+
+	unsigned sparse_chunk_type;
+	unsigned sparse_chunk_data;
 
 	struct program *next;
 };

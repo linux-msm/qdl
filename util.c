@@ -29,6 +29,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <ctype.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -122,4 +123,20 @@ const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
 
 	xmlFree(value);
 	return ret;
+}
+
+bool attr_as_bool(xmlNode *node, const char *attr, int *errors)
+{
+	xmlChar *value;
+
+	if (!xmlHasProp(node, (xmlChar*)attr))
+		return false;
+
+	value = xmlGetProp(node, (xmlChar*)attr);
+	if (!value) {
+		(*errors)++;
+		return false;
+	}
+
+	return xmlStrcmp(value, (xmlChar*)"true") == 0;
 }
