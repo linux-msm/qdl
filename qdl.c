@@ -29,7 +29,6 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <err.h>
 #include <errno.h>
 #include <getopt.h>
 #include <stdbool.h>
@@ -42,6 +41,11 @@
 #include "qdl.h"
 #include "patch.h"
 #include "ufs.h"
+#include "oscompat.h"
+
+#ifdef _WIN32
+const char *__progname = "qdl";
+#endif
 
 #define MAX_USBFS_BULK_SIZE	(16*1024)
 

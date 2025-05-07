@@ -1,5 +1,9 @@
 #include <stdarg.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sys/ioctl.h>
+#endif
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -36,6 +40,22 @@ static void ux_clear_line(void)
 	ux_cur_line_length = 0;
 }
 
+#ifdef _WIN32
+
+void ux_init(void)
+{
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+	int columns;
+
+    HANDLE stdoutHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (GetConsoleScreenBufferInfo(stdoutHandle, &csbi)) {
+		columns = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+		ux_width = MIN(columns, UX_PROGRESS_SIZE_MAX);
+    }
+}
+
+#else
+
 void ux_init(void)
 {
 	struct winsize w;
@@ -45,6 +65,8 @@ void ux_init(void)
 	if (!ret)
 		ux_width = MIN(w.ws_col, UX_PROGRESS_SIZE_MAX);
 }
+
+#endif
 
 void ux_err(const char *fmt, ...)
 {

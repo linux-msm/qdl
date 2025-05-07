@@ -5,28 +5,141 @@ on:
   push:
 
 jobs:
-  build:
+  build-linux:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-24.04, ubuntu-22.04, macos-latest ]
-    runs-on: ${{ matrix.os }}
+        include:
+          - { arch: x64, os: 24, runner: ubuntu-24.04 }
+          - { arch: arm64, os: 24, runner: ubuntu-24.04-arm }
+          - { arch: x64, os: 22, runner: ubuntu-22.04 }
+          - { arch: arm64, os: 22, runner: ubuntu-22.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev
+
+      - name: Build
+        run: make
+
+      - name: Package
+        run: |
+          mkdir dist
+          cp `pkg-config --variable=libdir libusb-1.0`/libusb-1.0.so.0 dist
+          chmod 0644 dist/*
+          cp qdl dist
+          patchelf --set-rpath '$ORIGIN' dist/qdl
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qdl-binary-ubuntu-${{matrix.os}}-${{ matrix.arch }}
+          path: dist/*
+
+
+  build-mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { sys: macos-14, arch: arm64 }
+          - { sys: macos-13, arch: intel }
+    runs-on: ${{ matrix.sys }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Dependencies (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev
-
-      - name: Dependencies (macOS)
-        if: runner.os == 'macOS'
+      - name: Dependencies
         run: |
           brew install libxml2
-          brew install libusb
 
       - name: Build
         run: make
+
+      - name: Package
+        run: |
+          set -x
+          mkdir dist
+          cp `pkg-config --variable=libdir libusb-1.0`/libusb-1.0.0.dylib dist
+          cp `pkg-config --variable=libdir liblzma`/liblzma.5.dylib dist
+          chmod 0644 dist/*
+          cp qdl dist
+
+          if uname -a | grep -q arm64; then
+            LIBUSB_DIR=/opt/homebrew/opt/libusb/lib
+            LIBLZMA_DIR=/usr/lib
+          else
+            LIBUSB_DIR=/usr/local/opt/libusb/lib
+            LIBLZMA_DIR=/usr/local/opt/xz/lib
+          fi
+
+          install_name_tool -add_rpath @executable_path dist/qdl
+          install_name_tool -change $LIBUSB_DIR/libusb-1.0.0.dylib @rpath/libusb-1.0.0.dylib dist/qdl
+          install_name_tool -change $LIBLZMA_DIR/liblzma.5.dylib @rpath/liblzma.5.dylib dist/qdl
+          otool -L dist/qdl
+          dist/qdl || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qdl-binary-macos-${{ matrix.arch }}
+          path: dist/*
+
+  build-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { sys: windows-latest, arch: x64 }
+          - { sys: windows-11-arm, arch: arm64 }
+    runs-on: ${{ matrix.sys }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-libxml2
+            mingw-w64-x86_64-libusb
+
+      - name: Build
+        run: mingw32-make
+        shell: msys2 {0}
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $MSYS2_LOCATION = "${{ steps.msys2.outputs.msys2-location }}"
+          $BIN_DIR = Join-Path $MSYS2_LOCATION "mingw64\bin"
+          $DistDir = "dist"
+          New-Item -ItemType Directory -Path $DistDir | Out-Null
+
+          Copy-Item (Join-Path $BIN_DIR "zlib1.dll") $DistDir
+          Copy-Item (Join-Path $BIN_DIR "libxml2-2.dll") $DistDir
+          Copy-Item (Join-Path $BIN_DIR "libusb-1.0.dll") $DistDir
+          Copy-Item (Join-Path $BIN_DIR "liblzma-5.dll") $DistDir
+          Copy-Item (Join-Path $BIN_DIR "libiconv-2.dll") $DistDir
+
+          Copy-Item "qdl.exe" $DistDir
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qdl-binary-windows-${{ matrix.arch }}
+          path: dist/*
+

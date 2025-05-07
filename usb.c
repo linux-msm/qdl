@@ -1,12 +1,11 @@
-#include <sys/ioctl.h>
 #include <sys/types.h>
-#include <err.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <libusb.h>
+#include "oscompat.h"
 
 #include "qdl.h"
 

@@ -36,22 +36,20 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include "qdl.h"
 #include "ufs.h"
+#include "oscompat.h"
 
 enum {
 	FIREHOSE_ACK = 0,
@@ -150,7 +148,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 
 	do {
 		n = qdl_read(qdl, buf, sizeof(buf), 100);
-		if (n < 0) {
+		if (n <= 0) {
 			gettimeofday(&now, NULL);
 			if (timercmp(&now, &timeout, <))
 				continue;
@@ -448,11 +446,11 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	if (ret) {
 		ux_err("flashing of %s failed\n", program->label);
 	} else if (t) {
-		ux_err("flashed \"%s\" successfully at %lukB/s\n",
+		ux_info("flashed \"%s\" successfully at %lukB/s\n",
 			program->label,
 			(unsigned long)program->sector_size * num_sectors / t / 1024);
 	} else {
-		ux_err("flashed \"%s\" successfully\n",
+		ux_info("flashed \"%s\" successfully\n",
 			program->label);
 	}
 
@@ -534,7 +532,10 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 		}
 
 		left -= chunk_size;
+#ifndef _WIN32
+		// on mac/linux, every other response is empty
 		expect_empty = true;
+#endif
 	}
 
 	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
@@ -546,11 +547,11 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 	t = time(NULL) - t0;
 
 	if (t) {
-		ux_err("read \"%s\" successfully at %ldkB/s\n",
+		ux_info("read \"%s\" successfully at %ldkB/s\n",
 			read_op->filename,
 			(unsigned long)read_op->sector_size * read_op->num_sectors / t / 1024);
 	} else {
-		ux_err("read \"%s\" successfully\n",
+		ux_info("read \"%s\" successfully\n",
 			read_op->filename);
 	}
 

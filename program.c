@@ -28,6 +28,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#define _FILE_OFFSET_BITS 64
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
@@ -38,6 +39,7 @@
 
 #include "program.h"
 #include "qdl.h"
+#include "oscompat.h"
 
 static struct program *programes;
 static struct program *programes_last;
@@ -179,7 +181,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 				filename = tmp;
 		}
 
-		fd = open(filename, O_RDONLY);
+		fd = open(filename, O_RDONLY | O_BINARY);
 
 		if (fd < 0) {
 			ux_info("unable to open %s", program->filename);
