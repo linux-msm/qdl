@@ -221,6 +221,23 @@ int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 	return 0;
 }
 
+static struct program *program_find_partition(const char *partition)
+{
+	struct program *program;
+	const char *label;
+
+	for (program = programes; program; program = program->next) {
+		label = program->label;
+		if (!label)
+			continue;
+
+		if (!strcmp(label, partition))
+			return program;
+	}
+
+	return NULL;
+}
+
 /**
  * program_find_bootable_partition() - find one bootable partition
  *
@@ -234,29 +251,53 @@ int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 int program_find_bootable_partition(bool *multiple_found)
 {
 	struct program *program;
-	const char *label;
 	int part = -ENOENT;
 
 	*multiple_found = false;
 
-	for (program = programes; program; program = program->next) {
-		label = program->label;
-		if (!label)
-			continue;
+	program = program_find_partition("xbl");
+	if (program)
+		part = program->partition;
 
-		if (!strcmp(label, "xbl") || !strcmp(label, "xbl_a") ||
-		    !strcmp(label, "sbl1")) {
-			if (part != -ENOENT) {
-				*multiple_found = true;
-				continue;
-			}
-
+	program = program_find_partition("xbl_a");
+	if (program) {
+		if (part != -ENOENT)
+			*multiple_found = true;
+		else
 			part = program->partition;
-		}
+	}
+
+	program = program_find_partition("sbl1");
+	if (program) {
+		if (part != -ENOENT)
+			*multiple_found = true;
+		else
+			part = program->partition;
 	}
 
 	return part;
 }
+
+/**
+ * program_is_sec_partition_flashed() - find if secdata partition is flashed
+ *
+ * Returns true if filename for secdata is set in program*.xml,
+ * or false otherwise.
+ */
+int program_is_sec_partition_flashed(void)
+{
+	struct program *program;
+
+	program = program_find_partition("secdata");
+	if (!program)
+		return false;
+
+	if (program->filename)
+		return true;
+
+	return false;
+}
+
 
 void free_programs(void)
 {
