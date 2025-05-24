@@ -50,6 +50,7 @@
 #include "qdl.h"
 #include "ufs.h"
 #include "oscompat.h"
+#include "vip.h"
 
 enum {
 	FIREHOSE_ACK = 0,
@@ -183,9 +184,11 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 
 	xmlDocDumpMemory(doc, &s, &len);
 
+	vip_gen_chunk_init(qdl);
+
 	for (;;) {
 		ux_debug("FIREHOSE WRITE: %s\n", s);
-
+		vip_gen_chunk_update(qdl, s, len);
 		ret = qdl_write(qdl, s, len);
 		saved_errno = errno;
 
@@ -202,6 +205,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 		}
 	}
 	xmlFree(s);
+	vip_gen_chunk_store(qdl);
 	return ret < 0 ? -saved_errno : 0;
 }
 
@@ -428,6 +432,11 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		 program->filename, program->sector_size * num_sectors);
 
 	while (left > 0) {
+		/*
+		 * We should calculate hash for every raw packet sent,
+		 * not for the whole binary.
+		 */
+		vip_gen_chunk_init(qdl);
 		chunk_size = MIN(max_payload_size / program->sector_size, left);
 
 		n = read(fd, buf, chunk_size * program->sector_size);
@@ -439,6 +448,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		if (n < max_payload_size)
 			memset(buf + n, 0, max_payload_size - n);
 
+		vip_gen_chunk_update(qdl, buf, chunk_size * program->sector_size);
 		n = qdl_write(qdl, buf, chunk_size * program->sector_size);
 		if (n < 0) {
 			ux_err("USB write failed for data chunk\n");
@@ -452,6 +462,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		}
 
 		left -= chunk_size;
+		vip_gen_chunk_store(qdl);
 
 		ux_progress("%s", num_sectors - left, num_sectors, program->label);
 	}
