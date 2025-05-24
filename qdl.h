@@ -13,7 +13,7 @@
 enum QDL_DEVICE_TYPE
 {
 	QDL_DEVICE_USB,
-        QDL_DEVICE_SIM,
+	QDL_DEVICE_SIM,
 };
 
 struct qdl_device
