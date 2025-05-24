@@ -27,52 +27,27 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <stdlib.h>
-#include <string.h>
+#ifndef __VIP_H__
+#define __VIP_H__
 
-#include "sim.h"
+#include "sha2.h"
 
-static int sim_open(struct qdl_device *qdl, const char *serial)
+struct vip_table_generator
 {
-	ux_info("This is a dry-run execution of QDL. No actual flashing has been performed\n");
+	unsigned char hash[SHA256_DIGEST_LENGTH];
 
-	return 0;
-}
+	SHA2_CTX ctx;
 
-static void sim_close(struct qdl_device *qdl)
-{
-	return;
-}
+	FILE *digest_table_fd;
+	size_t digest_num_written;
 
-static int sim_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
-{
-	return len;
-}
+	const char *path;
+};
 
-static int sim_write(struct qdl_device *qdl, const void *buf, size_t len)
-{
-	return len;
-}
+int vip_gen_init(struct qdl_device *qdl, const char *path);
+void vip_gen_chunk_init(struct qdl_device *qdl);
+void vip_gen_chunk_update(struct qdl_device *qdl, const void *buf, size_t len);
+void vip_gen_chunk_store(struct qdl_device *qdl);
+void vip_gen_finalize(struct qdl_device *qdl);
 
-static void sim_set_out_chunk_size(struct qdl_device *qdl, long size)
-{
-	return;
-}
-
-struct qdl_device *sim_init(void)
-{
-	struct qdl_device *qdl = malloc(sizeof(struct qdl_device_sim));
-	if (!qdl)
-		return NULL;
-
-	memset(qdl, 0, sizeof(struct qdl_device_sim));
-
-	qdl->dev_type = QDL_DEVICE_SIM;
-	qdl->open = sim_open;
-	qdl->read = sim_read;
-	qdl->write = sim_write;
-	qdl->close = sim_close;
-	qdl->set_out_chunk_size = sim_set_out_chunk_size;
-
-	return qdl;
-}
+#endif /* __VIP_H__ */
