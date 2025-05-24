@@ -423,6 +423,10 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	lseek(fd, (off_t) program->file_offset * program->sector_size, SEEK_SET);
 	left = num_sectors;
+
+	ux_debug("FIREHOSE RAW BINARY WRITE: %s, %d bytes\n",
+		 program->filename, program->sector_size * num_sectors);
+
 	while (left > 0) {
 		chunk_size = MIN(max_payload_size / program->sector_size, left);
 
