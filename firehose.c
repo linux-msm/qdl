@@ -183,9 +183,11 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 
 	xmlDocDumpMemory(doc, &s, &len);
 
+	vip_gen_chunk_init(qdl);
+
 	for (;;) {
 		ux_debug("FIREHOSE WRITE: %s\n", s);
-
+		vip_gen_chunk_update(qdl, s, len);
 		ret = qdl_write(qdl, s, len);
 		saved_errno = errno;
 
@@ -202,6 +204,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 		}
 	}
 	xmlFree(s);
+	vip_gen_chunk_store(qdl);
 	return ret < 0 ? -saved_errno : 0;
 }
 
@@ -423,6 +426,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	lseek(fd, (off_t) program->file_offset * program->sector_size, SEEK_SET);
 	left = num_sectors;
+	vip_gen_chunk_init(qdl);
 	while (left > 0) {
 		chunk_size = MIN(max_payload_size / program->sector_size, left);
 
@@ -435,6 +439,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		if (n < max_payload_size)
 			memset(buf + n, 0, max_payload_size - n);
 
+		vip_gen_chunk_update(qdl, buf, chunk_size * program->sector_size);
 		n = qdl_write(qdl, buf, chunk_size * program->sector_size);
 		if (n < 0) {
 			ux_err("USB write failed for data chunk\n");
@@ -453,6 +458,8 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	}
 	ux_debug("FIREHOSE RAW BINARY WRITE: %s, %d bytes\n",
 		 program->filename, program->sector_size * num_sectors);
+
+	vip_gen_chunk_store(qdl);
 
 	t = time(NULL) - t0;
 

@@ -126,6 +126,7 @@ int main(int argc, char **argv)
 	bool qdl_finalize_provisioning = false;
 	bool allow_fusing = false;
 	bool allow_missing = false;
+	bool create_digests = false;
 	long out_chunk_size = 0;
 	struct qdl_device *qdl = NULL;
 	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
@@ -141,6 +142,7 @@ int main(int argc, char **argv)
 		{"allow-missing", no_argument, 0, 'f'},
 		{"allow-fusing", no_argument, 0, 'c'},
 		{"dry-run", no_argument, 0, 'n'},
+		{"createdigests", no_argument, 0, 't'},
 		{0, 0, 0, 0}
 	};
 
@@ -150,6 +152,11 @@ int main(int argc, char **argv)
 			qdl_debug = true;
 			break;
 		case 'n':
+			qdl_dev_type = QDL_DEVICE_SIM;
+			break;
+		case 't':
+			create_digests = true;
+			/* we also enforce dry-run mode */
 			qdl_dev_type = QDL_DEVICE_SIM;
 			break;
 		case 'v':
@@ -196,6 +203,9 @@ int main(int argc, char **argv)
 
 	if (out_chunk_size)
 		qdl_set_out_chunk_size(qdl, out_chunk_size);
+
+	if (create_digests)
+		vip_gen_init(qdl);
 
 	ux_init();
 
@@ -254,6 +264,9 @@ int main(int argc, char **argv)
 		goto out_cleanup;
 
 out_cleanup:
+	if (create_digests)
+		vip_gen_finalize(qdl);
+
 	qdl_close(qdl);
 	free_programs();
 	free_patches();

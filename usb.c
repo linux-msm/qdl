@@ -9,10 +9,6 @@
 
 #include "qdl.h"
 
-#define container_of(ptr, typecast, member) ({                  \
-	void *_ptr = (void *)(ptr);		                \
-	((typecast *)(_ptr - offsetof(typecast, member))); })
-
 #define DEFAULT_OUT_CHUNK_SIZE (1024 * 1024)
 
 struct qdl_device_usb
