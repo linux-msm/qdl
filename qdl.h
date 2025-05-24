@@ -8,12 +8,16 @@
 #include "read.h"
 #include <libxml/tree.h>
 
+#define container_of(ptr, typecast, member) ({                  \
+	void *_ptr = (void *)(ptr);		                \
+	((typecast *)(_ptr - offsetof(typecast, member))); })
+
 #define MAPPING_SZ 64
 
 enum QDL_DEVICE_TYPE
 {
 	QDL_DEVICE_USB,
-        QDL_DEVICE_SIM,
+	QDL_DEVICE_SIM,
 };
 
 struct qdl_device
@@ -42,6 +46,12 @@ void qdl_set_out_chunk_size(struct qdl_device *qdl, long size);
 
 struct qdl_device *usb_init(void);
 struct qdl_device *sim_init(void);
+
+void vip_gen_init(struct qdl_device *qdl);
+void vip_gen_chunk_init(struct qdl_device *qdl);
+void vip_gen_chunk_update(struct qdl_device *qdl, const void *buf, size_t len);
+void vip_gen_chunk_store(struct qdl_device *qdl);
+void vip_gen_finalize(struct qdl_device *qdl);
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage, bool allow_missing);
 int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
