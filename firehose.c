@@ -451,6 +451,8 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 		ux_progress("%s", num_sectors - left, num_sectors, program->label);
 	}
+	ux_debug("FIREHOSE RAW BINARY WRITE: %s, %d bytes\n",
+		 program->filename, program->sector_size * num_sectors);
 
 	t = time(NULL) - t0;
 
