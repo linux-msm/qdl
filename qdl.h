@@ -8,12 +8,16 @@
 #include "read.h"
 #include <libxml/tree.h>
 
+#define container_of(ptr, typecast, member) ({                  \
+	void *_ptr = (void *)(ptr);		                \
+	((typecast *)(_ptr - offsetof(typecast, member))); })
+
 #define MAPPING_SZ 64
 
 enum QDL_DEVICE_TYPE
 {
 	QDL_DEVICE_USB,
-        QDL_DEVICE_SIM,
+	QDL_DEVICE_SIM,
 };
 
 struct qdl_device
