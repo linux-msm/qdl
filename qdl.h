@@ -7,12 +7,16 @@
 #include "program.h"
 #include "read.h"
 #include <libxml/tree.h>
+#include "vip.h"
 
 #define container_of(ptr, typecast, member) ({                  \
 	void *_ptr = (void *)(ptr);		                \
 	((typecast *)(_ptr - offsetof(typecast, member))); })
 
 #define MAPPING_SZ 64
+
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
 
 enum QDL_DEVICE_TYPE {
 	QDL_DEVICE_USB,
@@ -22,14 +26,19 @@ enum QDL_DEVICE_TYPE {
 struct qdl_device {
 	enum QDL_DEVICE_TYPE dev_type;
 	int fd;
+	size_t max_payload_size;
 
 	int (*open)(struct qdl_device *qdl, const char *serial);
 	int (*read)(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
 	int (*write)(struct qdl_device *qdl, const void *buf, size_t nbytes);
 	void (*close)(struct qdl_device *qdl);
 	void (*set_out_chunk_size)(struct qdl_device *qdl, long size);
+	void (*set_vip_transfer)(struct qdl_device *qdl, const char *signed_table,
+				 const char *chained_table);
 
 	char *mappings[MAPPING_SZ]; // array index is the id from the device
+
+	struct vip_transfer_data vip_data;
 };
 
 struct libusb_device_handle;
@@ -41,6 +50,7 @@ void qdl_close(struct qdl_device *qdl);
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len);
 void qdl_set_out_chunk_size(struct qdl_device *qdl, long size);
+int qdl_vip_transfer_enable(struct qdl_device *qdl, const char *vip_table_path);
 
 struct qdl_device *usb_init(void);
 struct qdl_device *sim_init(void);

@@ -2,10 +2,13 @@
 /*
  * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
+#include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "sim.h"
@@ -14,6 +17,7 @@
 #define CHAINED_TABLE_FILE_PREF			"ChainedTableOfDigests"
 #define CHAINED_TABLE_FILE_MAX_NAME		64
 #define DIGEST_TABLE_TO_SIGN_FILE		"DigestsToSign.bin"
+#define DIGEST_TABLE_TO_SIGN_FILE_MBN		(DIGEST_TABLE_TO_SIGN_FILE ".mbn")
 #define MAX_DIGESTS_PER_SIGNED_FILE		54
 #define MAX_DIGESTS_PER_SIGNED_TABLE		(MAX_DIGESTS_PER_SIGNED_FILE - 1)
 #define MAX_DIGESTS_PER_CHAINED_FILE		256
@@ -345,4 +349,153 @@ void vip_gen_finalize(struct qdl_device *qdl)
 
 	free(vip_gen);
 	sim_set_digest_generation(false, qdl, NULL);
+}
+
+int vip_transfer_init(struct qdl_device *qdl, const char *vip_table_path)
+{
+	char fullpath[PATH_MAX];
+
+	snprintf(fullpath, sizeof(fullpath), "%s/%s",
+		 vip_table_path, DIGEST_TABLE_TO_SIGN_FILE_MBN);
+	qdl->vip_data.signed_table_fd = open(fullpath, O_RDONLY);
+	if (!qdl->vip_data.signed_table_fd) {
+		ux_err("Can't open signed table %s\n", fullpath);
+		return -1;
+	}
+
+	qdl->vip_data.chained_num = 0;
+
+	for (int i = 0; i < MAX_CHAINED_FILES; ++i) {
+		snprintf(fullpath, sizeof(fullpath), "%s/%s%d%s",
+			 vip_table_path, CHAINED_TABLE_FILE_PREF, i, ".bin");
+
+		int fd = open(fullpath, O_RDONLY);
+
+		if (fd == -1) {
+			if (errno == ENOENT)
+				break;
+
+			ux_err("Can't open signed table %s\n", fullpath);
+			goto out_cleanup;
+		}
+
+		qdl->vip_data.chained_fds[qdl->vip_data.chained_num++] = fd;
+	}
+
+	qdl->vip_data.state = VIP_INIT;
+	qdl->vip_data.chained_cur = 0;
+
+	return 0;
+
+out_cleanup:
+	close(qdl->vip_data.signed_table_fd);
+	for (int i = 0; i < qdl->vip_data.chained_num - 1; ++i)
+		close(qdl->vip_data.chained_fds[i]);
+	return -1;
+}
+
+void vip_transfer_deinit(struct qdl_device *qdl)
+{
+	close(qdl->vip_data.signed_table_fd);
+	for (int i = 0; i < qdl->vip_data.chained_num - 1; ++i)
+		close(qdl->vip_data.chained_fds[i]);
+}
+
+static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
+{
+	struct stat sb;
+	int ret;
+	void *buf;
+	size_t n;
+
+	ret = fstat(table_fd, &sb);
+	if (ret < 0) {
+		ux_err("Failed to stat digest table file\n");
+		return -1;
+	}
+
+	buf = malloc(sb.st_size);
+	if (!buf) {
+		ux_err("Failed to allocate transfer buffer\n");
+		return -1;
+	}
+
+	n = read(table_fd, buf, sb.st_size);
+	if (n < 0) {
+		ux_err("failed to read binary\n");
+		ret = -1;
+		goto out;
+	}
+
+	n = qdl_write(qdl, buf, sb.st_size);
+	if (n < 0) {
+		ux_err("USB write failed for data chunk\n");
+		ret = -1;
+		goto out;
+	}
+
+out:
+	free(buf);
+
+	return ret;
+}
+
+int vip_transfer_handle_tables(struct qdl_device *qdl)
+{
+	struct vip_transfer_data *vip_data = &qdl->vip_data;
+	int ret = 0;
+
+	if (vip_data->state == VIP_DISABLED)
+		return 0;
+
+	if (vip_data->state == VIP_INIT) {
+		/* Send initial signed table */
+		ret = vip_transfer_send_raw(qdl, vip_data->signed_table_fd);
+		if (ret) {
+			ux_err("VIP: failed to send the Signed VIP table\n");
+			return ret;
+		}
+		ux_debug("VIP: successfully sent the Initial VIP table\n");
+
+		vip_data->state = VIP_SEND_DATA;
+		vip_data->frames_sent = 0;
+		vip_data->frames_left = MAX_DIGESTS_PER_SIGNED_TABLE;
+		vip_data->fh_parse_status = true;
+	}
+	if (vip_data->state == VIP_SEND_NEXT_TABLE) {
+		if (vip_data->chained_cur >= vip_data->chained_num) {
+			ux_err("VIP: the required quantity of chained tables is missing\n");
+			return -1;
+		}
+		ret = vip_transfer_send_raw(qdl, vip_data->chained_fds[vip_data->chained_cur]);
+		if (ret) {
+			ux_err("VIP: failed to send the chained VIP table\n");
+			return ret;
+		}
+
+		ux_debug("VIP: successfully sent " CHAINED_TABLE_FILE_PREF "%lu.bin\n",
+			 vip_data->chained_cur);
+
+		vip_data->state = VIP_SEND_DATA;
+		vip_data->frames_sent = 0;
+		vip_data->frames_left = MAX_DIGESTS_PER_CHAINED_TABLE;
+		vip_data->fh_parse_status = true;
+		vip_data->chained_cur++;
+	}
+
+	vip_data->frames_sent++;
+	if (vip_data->frames_sent >= vip_data->frames_left)
+		vip_data->state = VIP_SEND_NEXT_TABLE;
+
+	return 0;
+}
+
+bool vip_transfer_status_check_needed(struct qdl_device *qdl)
+{
+	return qdl->vip_data.fh_parse_status;
+}
+
+void vip_transfer_clear_status(struct qdl_device *qdl)
+{
+	qdl->vip_data.fh_parse_status = false;
 }
