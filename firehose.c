@@ -430,6 +430,10 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		n = qdl_write(qdl, buf, chunk_size * program->sector_size);
 		if (n < 0) {
 			ux_err("USB write failed for data chunk\n");
+			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+			if (ret)
+				ux_err("flashing of chunk failed\n");
+
 			goto out;
 		}
 
