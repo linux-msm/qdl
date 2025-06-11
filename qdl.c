@@ -84,7 +84,7 @@ static void print_usage(void)
 	extern const char *__progname;
 
 	fprintf(stderr,
-		"%s [--debug] [--dry-run] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] [--create-digests <PATH>] <prog.mbn> [<program> <patch> ...]\n",
+		"%s [--debug] [--dry-run] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] [--create-digests <PATH>] [--vip_table_path <PATH>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
 }
 
@@ -98,6 +98,7 @@ int main(int argc, char **argv)
 	char *incdir = NULL;
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
+	const char *vip_table_path = NULL;
 	int type;
 	int ret;
 	int opt;
@@ -115,6 +116,7 @@ int main(int argc, char **argv)
 		{"finalize-provisioning", no_argument, 0, 'l'},
 		{"out-chunk-size", required_argument, 0, OPT_OUT_CHUNK_SIZE },
 		{"serial", required_argument, 0, 'S'},
+		{"vip-table-path", required_argument, 0, 'D'},
 		{"storage", required_argument, 0, 's'},
 		{"allow-missing", no_argument, 0, 'f'},
 		{"allow-fusing", no_argument, 0, 'c'},
@@ -160,6 +162,9 @@ int main(int argc, char **argv)
 		case 'S':
 			serial = optarg;
 			break;
+		case 'D':
+			vip_table_path = optarg;
+			break;
 		default:
 			print_usage();
 			return 1;
@@ -176,6 +181,14 @@ int main(int argc, char **argv)
 	if (!qdl) {
 		ret = -1;
 		goto out_cleanup;
+	}
+
+	if (vip_table_path) {
+		if (vip_generate_dir)
+			errx(1, "VIP mode and VIP table generation can't be enabled together\n");
+		ret = vip_transfer_init(qdl, vip_table_path);
+		if (ret)
+			errx(1, "VIP initialization failed\n");
 	}
 
 	if (out_chunk_size)
@@ -250,6 +263,9 @@ out_cleanup:
 	qdl_close(qdl);
 	free_programs();
 	free_patches();
+
+	if (qdl->vip_data.state != VIP_DISABLED)
+		vip_transfer_deinit(qdl);
 
 	qdl_deinit(qdl);
 

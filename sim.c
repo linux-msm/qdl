@@ -55,6 +55,7 @@ struct qdl_device *sim_init(void)
 	qdl->write = sim_write;
 	qdl->close = sim_close;
 	qdl->set_out_chunk_size = sim_set_out_chunk_size;
+	qdl->max_payload_size = 1048576;
 
 	return qdl;
 }

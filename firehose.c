@@ -159,6 +159,23 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 
 	xmlDocDumpMemory(doc, &s, &len);
 
+	ret = vip_transfer_handle_tables(qdl);
+	if (ret) {
+		ux_err("VIP: error occurred during VIP table transmission\n");
+		return -1;
+	}
+	if (vip_transfer_status_check_needed(qdl)) {
+		ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+		if (ret) {
+			ux_err("VIP: sending of digest table failed\n");
+			return -1;
+		}
+
+		ux_info("VIP: digest table has been sent successfully\n");
+
+		vip_transfer_clear_status(qdl);
+	}
+
 	vip_gen_chunk_init(qdl);
 
 	for (;;) {
@@ -183,8 +200,6 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 	vip_gen_chunk_store(qdl);
 	return ret < 0 ? -saved_errno : 0;
 }
-
-static size_t max_payload_size = 1048576;
 
 /**
  * firehose_configure_response_parser() - parse a configure response
@@ -270,7 +285,8 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init,
 	size_t size = 0;
 	int ret;
 
-	ret = firehose_send_configure(qdl, max_payload_size, skip_storage_init, storage, &size);
+	ret = firehose_send_configure(qdl, qdl->max_payload_size, skip_storage_init,
+				      storage, &size);
 	if (ret < 0) {
 		ux_err("configure request failed\n");
 		return -1;
@@ -284,23 +300,20 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init,
 		return 0;
 
 	/* Retry if remote proposed different size */
-	if (size != max_payload_size) {
+	if (size != qdl->max_payload_size) {
 		ret = firehose_send_configure(qdl, size, skip_storage_init, storage, &size);
 		if (ret != FIREHOSE_ACK) {
 			ux_err("configure request with updated payload size failed\n");
 			return -1;
 		}
 
-		max_payload_size = size;
+		qdl->max_payload_size = size;
 	}
 
-	ux_debug("accepted max payload size: %zu\n", max_payload_size);
+	ux_debug("accepted max payload size: %zu\n", qdl->max_payload_size);
 
 	return 0;
 }
-
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-#define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
 
 static int firehose_erase(struct qdl_device *qdl, struct program *program)
 {
@@ -370,7 +383,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		num_sectors = program->num_sectors;
 	}
 
-	buf = malloc(max_payload_size);
+	buf = malloc(qdl->max_payload_size);
 	if (!buf)
 		err(1, "failed to allocate sector buffer");
 
@@ -417,7 +430,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		 * not for the whole binary.
 		 */
 		vip_gen_chunk_init(qdl);
-		chunk_size = MIN(max_payload_size / program->sector_size, left);
+		chunk_size = MIN(qdl->max_payload_size / program->sector_size, left);
 
 		n = read(fd, buf, chunk_size * program->sector_size);
 		if (n < 0) {
@@ -425,10 +438,27 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 			goto out;
 		}
 
-		if (n < max_payload_size)
-			memset(buf + n, 0, max_payload_size - n);
+		if (n < qdl->max_payload_size)
+			memset(buf + n, 0, qdl->max_payload_size - n);
 
 		vip_gen_chunk_update(qdl, buf, chunk_size * program->sector_size);
+
+		ret = vip_transfer_handle_tables(qdl);
+		if (ret) {
+			ux_err("VIP: error occurred during VIP table transmission\n");
+			return -1;
+		}
+		if (vip_transfer_status_check_needed(qdl)) {
+			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+			if (ret) {
+				ux_err("VIP: sending of digest table failed\n");
+				return -1;
+			}
+
+			ux_info("VIP: digest table has been sent successfully\n");
+
+			vip_transfer_clear_status(qdl);
+		}
 		n = qdl_write(qdl, buf, chunk_size * program->sector_size);
 		if (n < 0) {
 			ux_err("USB write failed for data chunk\n");
@@ -486,7 +516,7 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 	int n;
 	bool expect_empty;
 
-	buf = malloc(max_payload_size);
+	buf = malloc(qdl->max_payload_size);
 	if (!buf)
 		err(1, "failed to allocate sector buffer");
 
@@ -519,7 +549,7 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 	left = read_op->num_sectors;
 	expect_empty = false;
 	while (left > 0 || expect_empty) {
-		chunk_size = MIN(max_payload_size / read_op->sector_size, left);
+		chunk_size = MIN(qdl->max_payload_size / read_op->sector_size, left);
 
 		n = qdl_read(qdl, buf, chunk_size * read_op->sector_size, 30000);
 		if (n < 0) {
