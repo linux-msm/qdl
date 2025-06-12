@@ -82,14 +82,23 @@ static int detect_type(const char *xml_file)
 static void print_usage(void)
 {
 	extern const char *__progname;
-	fprintf(stderr,
-		"%s [--debug] [--dry-run] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] [--create-digests <PATH>] [--vip_table_path <PATH>] <prog.mbn> [<program> <patch> ...]\n",
-		__progname);
-}
 
-enum {
-	OPT_OUT_CHUNK_SIZE = 1000,
-};
+	fprintf(stderr, "Usage: %s [options] <prog.mbn> [<program> <patch> ...]\n", __progname);
+	fprintf(stderr, " -d, --debug\t\t\tPrint detailed debug info\n");
+	fprintf(stderr, " -v, --version\t\t\tPrint the current version and exit\n");
+	fprintf(stderr, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
+	fprintf(stderr, " -f, --allow-missing\t\tAllow skipping of missing files during the flashing procedure\n");
+	fprintf(stderr, " -s, --storage=T\t\tSet the target storage type T, supported values <emmc|nand|ufs>\n");
+	fprintf(stderr, " -l, --finalize-provisioning\tProvision the target storage\n");
+	fprintf(stderr, " -i, --include=T\t\tSet a specific optional folder T to search for files\n");
+	fprintf(stderr, " -S, --serial=T\t\t\tSelect target by serial number T (e.g. <0AA94EFD>)\n");
+	fprintf(stderr, " -u, --out-chunk-size=T\t\tOverride the chunk size used for the transaction with T\n");
+	fprintf(stderr, " -t, --create-digests=T\t\tGenerate table of digests and store to the T folder\n");
+	fprintf(stderr, " -D, --vip-table-path=T\t\tUse the digest tables stored in the T folder for VIP programming\n");
+	fprintf(stderr, " -h, --help\t\t\tPrint this usage info\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "Example: %s --debug prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
+}
 
 int main(int argc, char **argv)
 {
@@ -113,7 +122,7 @@ int main(int argc, char **argv)
 		{"version", no_argument, 0, 'v'},
 		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
-		{"out-chunk-size", required_argument, 0, OPT_OUT_CHUNK_SIZE },
+		{"out-chunk-size", required_argument, 0, 'u' },
 		{"serial", required_argument, 0, 'S'},
 		{"vip-table-path", required_argument, 0, 'D'},
 		{"storage", required_argument, 0, 's'},
@@ -121,10 +130,11 @@ int main(int argc, char **argv)
 		{"allow-fusing", no_argument, 0, 'c'},
 		{"dry-run", no_argument, 0, 'n'},
 		{"create-digests", required_argument, 0, 't'},
+		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvfi:S:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvi:lS:D:s:fcnt:h", options, NULL )) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -152,7 +162,7 @@ int main(int argc, char **argv)
 		case 'c':
 			allow_fusing = true;
 			break;
-		case OPT_OUT_CHUNK_SIZE:
+		case 'u':
 			out_chunk_size = strtol(optarg, NULL, 10);
 			break;
 		case 's':
