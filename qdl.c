@@ -43,6 +43,7 @@
 #include "program.h"
 #include "ufs.h"
 #include "oscompat.h"
+#include "vip.h"
 
 #ifdef _WIN32
 const char *__progname = "qdl";
@@ -107,7 +108,7 @@ static void print_usage(void)
 {
 	extern const char *__progname;
 	fprintf(stderr,
-		"%s [--debug] [--dry-run] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] <prog.mbn> [<program> <patch> ...]\n",
+		"%s [--debug] [--dry-run] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] [--create-digests <PATH>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
 }
 
@@ -120,6 +121,7 @@ int main(int argc, char **argv)
 	char *prog_mbn, *storage="ufs";
 	char *incdir = NULL;
 	char *serial = NULL;
+	const char *vip_generate_dir= NULL;
 	int type;
 	int ret;
 	int opt;
@@ -141,6 +143,7 @@ int main(int argc, char **argv)
 		{"allow-missing", no_argument, 0, 'f'},
 		{"allow-fusing", no_argument, 0, 'c'},
 		{"dry-run", no_argument, 0, 'n'},
+		{"create-digests", required_argument, 0, 't'},
 		{0, 0, 0, 0}
 	};
 
@@ -150,6 +153,11 @@ int main(int argc, char **argv)
 			qdl_debug = true;
 			break;
 		case 'n':
+			qdl_dev_type = QDL_DEVICE_SIM;
+			break;
+		case 't':
+			vip_generate_dir = optarg;
+			/* we also enforce dry-run mode */
 			qdl_dev_type = QDL_DEVICE_SIM;
 			break;
 		case 'v':
@@ -196,6 +204,12 @@ int main(int argc, char **argv)
 
 	if (out_chunk_size)
 		qdl_set_out_chunk_size(qdl, out_chunk_size);
+
+	if (vip_generate_dir) {
+		ret = vip_gen_init(qdl, vip_generate_dir);
+		if (ret)
+			goto out_cleanup;
+	}
 
 	ux_init();
 
@@ -254,6 +268,9 @@ int main(int argc, char **argv)
 		goto out_cleanup;
 
 out_cleanup:
+	if (vip_generate_dir)
+		vip_gen_finalize(qdl);
+
 	qdl_close(qdl);
 	free_programs();
 	free_patches();
