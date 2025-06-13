@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 #include "qdl.h"
+#include "vip.h"
 
 struct qdl_device *qdl_init(enum QDL_DEVICE_TYPE type)
 {
@@ -17,8 +18,16 @@ struct qdl_device *qdl_init(enum QDL_DEVICE_TYPE type)
 	return NULL;
 }
 
+int qdl_vip_transfer_enable(struct qdl_device *qdl, const char *vip_table_path)
+{
+	return vip_transfer_init(qdl, vip_table_path);
+}
+
 void qdl_deinit(struct qdl_device *qdl)
 {
+	if (qdl->vip_transfer.state != VIP_DISABLED)
+		vip_transfer_deinit(qdl);
+
 	if (qdl)
 		free(qdl);
 }

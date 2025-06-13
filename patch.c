@@ -12,7 +12,7 @@
 
 #include "patch.h"
 #include "qdl.h"
-		
+
 static struct patch *patches;
 static struct patch *patches_last;
 
@@ -72,7 +72,7 @@ int patch_load(const char *patch_file)
 
 	return 0;
 }
-	
+
 int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch))
 {
 	struct patch *patch;
