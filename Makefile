@@ -46,3 +46,7 @@ clean:
 install: $(QDL) $(RAMDUMP) $(KS_OUT)
 	install -d $(DESTDIR)$(prefix)/bin
 	install -m 755 $^ $(DESTDIR)$(prefix)/bin
+
+tests: default
+tests:
+	@./tests/run_tests.sh
