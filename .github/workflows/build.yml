@@ -27,6 +27,9 @@ jobs:
       - name: Build
         run: make
 
+      - name: Run tests
+        run: make tests
+
       - name: Package
         run: |
           mkdir dist
@@ -61,6 +64,9 @@ jobs:
 
       - name: Build
         run: make
+
+      - name: Run tests
+        run: make tests
 
       - name: Package
         run: |
