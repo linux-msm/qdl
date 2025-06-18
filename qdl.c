@@ -88,9 +88,6 @@ static void print_usage(void)
 		__progname);
 }
 
-enum {
-	OPT_OUT_CHUNK_SIZE = 1000,
-};
 
 int main(int argc, char **argv)
 {
@@ -114,7 +111,7 @@ int main(int argc, char **argv)
 		{"version", no_argument, 0, 'v'},
 		{"include", required_argument, 0, 'i'},
 		{"finalize-provisioning", no_argument, 0, 'l'},
-		{"out-chunk-size", required_argument, 0, OPT_OUT_CHUNK_SIZE },
+		{"out-chunk-size", required_argument, 0, 'u' },
 		{"serial", required_argument, 0, 'S'},
 		{"vip-table-path", required_argument, 0, 'D'},
 		{"storage", required_argument, 0, 's'},
@@ -153,7 +150,7 @@ int main(int argc, char **argv)
 		case 'c':
 			allow_fusing = true;
 			break;
-		case OPT_OUT_CHUNK_SIZE:
+		case 'u':
 			out_chunk_size = strtol(optarg, NULL, 10);
 			break;
 		case 's':
