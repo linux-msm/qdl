@@ -79,15 +79,26 @@ static int detect_type(const char *xml_file)
 	return type;
 }
 
-static void print_usage(void)
+static void print_usage(FILE *out)
 {
 	extern const char *__progname;
 
-	fprintf(stderr,
-		"%s [--debug] [--dry-run] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] [--create-digests <PATH>] [--vip_table_path <PATH>] <prog.mbn> [<program> <patch> ...]\n",
-		__progname);
+	fprintf(out, "Usage: %s [options] <prog.mbn> [<program> <patch> ...]\n", __progname);
+	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
+	fprintf(out, " -v, --version\t\t\tPrint the current version and exit\n");
+	fprintf(out, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
+	fprintf(out, " -f, --allow-missing\t\tAllow skipping of missing files during flashing\n");
+	fprintf(out, " -s, --storage=T\t\tSet target storage type T: <emmc|nand|ufs>\n");
+	fprintf(out, " -l, --finalize-provisioning\tProvision the target storage\n");
+	fprintf(out, " -i, --include=T\t\tSet an optional folder T to search for files\n");
+	fprintf(out, " -S, --serial=T\t\t\tSelect target by serial number T (e.g. <0AA94EFD>)\n");
+	fprintf(out, " -u, --out-chunk-size=T\t\tOverride chunk size for transaction with T\n");
+	fprintf(out, " -t, --create-digests=T\t\tGenerate table of digests in the T folder\n");
+	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
+	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
+	fprintf(out, "\n");
+	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
 }
-
 
 int main(int argc, char **argv)
 {
@@ -119,6 +130,7 @@ int main(int argc, char **argv)
 		{"allow-fusing", no_argument, 0, 'c'},
 		{"dry-run", no_argument, 0, 'n'},
 		{"create-digests", required_argument, 0, 't'},
+		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
 
@@ -162,15 +174,18 @@ int main(int argc, char **argv)
 		case 'D':
 			vip_table_path = optarg;
 			break;
+		case 'h':
+			print_usage(stdout);
+			return 0;
 		default:
-			print_usage();
+			print_usage(stderr);
 			return 1;
 		}
 	}
 
 	/* at least 2 non optional args required */
 	if ((optind + 2) > argc) {
-		print_usage();
+		print_usage(stderr);
 		return 1;
 	}
 
