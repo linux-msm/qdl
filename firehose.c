@@ -38,8 +38,8 @@ static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	vsnprintf((char*)buf, sizeof(buf), fmt, ap);
-	xmlSetProp(node, (xmlChar*)attr, buf);
+	vsnprintf((char *)buf, sizeof(buf), fmt, ap);
+	xmlSetProp(node, (xmlChar *)attr, buf);
 	va_end(ap);
 }
 
@@ -60,7 +60,7 @@ static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 	for (node = root; node; node = node->next) {
 		if (node->type != XML_ELEMENT_NODE)
 			continue;
-		if (xmlStrcmp(node->name, (xmlChar*)"data") == 0)
+		if (xmlStrcmp(node->name, (xmlChar *)"data") == 0)
 			break;
 	}
 
@@ -87,16 +87,16 @@ static int firehose_generic_parser(xmlNode *node, void *data)
 	xmlChar *value;
 	int ret = -EINVAL;
 
-	value = xmlGetProp(node, (xmlChar*)"value");
+	value = xmlGetProp(node, (xmlChar *)"value");
 	if (!value)
 		return -EINVAL;
 
-	if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
+	if (xmlStrcmp(node->name, (xmlChar *)"log") == 0) {
 		ux_log("LOG: %s\n", value);
 		ret = -EAGAIN;
-	} else if (xmlStrcmp(value, (xmlChar*)"ACK") == 0) {
+	} else if (xmlStrcmp(value, (xmlChar *)"ACK") == 0) {
 		ret = FIREHOSE_ACK;
-	} else if (xmlStrcmp(value, (xmlChar*)"NAK") == 0) {
+	} else if (xmlStrcmp(value, (xmlChar *)"NAK") == 0) {
 		ret = FIREHOSE_NAK;
 	}
 
@@ -198,56 +198,58 @@ static int firehose_configure_response_parser(xmlNode *node, void *data)
 	xmlChar *value;
 	size_t max_size;
 
-	value = xmlGetProp(node, (xmlChar*)"value");
+	value = xmlGetProp(node, (xmlChar *)"value");
 	if (!value)
 		return -EINVAL;
 
-	if (xmlStrcmp(node->name, (xmlChar*)"log") == 0) {
+	if (xmlStrcmp(node->name, (xmlChar *)"log") == 0) {
 		ux_log("LOG: %s\n", value);
 		xmlFree(value);
 		return -EAGAIN;
 	}
 
-	payload = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytes");
+	payload = xmlGetProp(node, (xmlChar *)"MaxPayloadSizeToTargetInBytes");
 	if (!payload) {
 		xmlFree(value);
 		return -EINVAL;
 	}
 
-	max_size = strtoul((char*)payload, NULL, 10);
+	max_size = strtoul((char *)payload, NULL, 10);
 	xmlFree(payload);
 
 	/*
 	 * When receiving an ACK the remote may indicate that we should attempt
 	 * a larger payload size
 	 */
-	if (!xmlStrcmp(value, (xmlChar*)"ACK")) {
-		payload = xmlGetProp(node, (xmlChar*)"MaxPayloadSizeToTargetInBytesSupported");
+	if (!xmlStrcmp(value, (xmlChar *)"ACK")) {
+		payload = xmlGetProp(node, (xmlChar *)"MaxPayloadSizeToTargetInBytesSupported");
 		if (!payload)
 			return -EINVAL;
 
-		max_size = strtoul((char*)payload, NULL, 10);
+		max_size = strtoul((char *)payload, NULL, 10);
 		xmlFree(payload);
 	}
 
-	*(size_t*)data = max_size;
+	*(size_t *)data = max_size;
 	xmlFree(value);
 
 	return FIREHOSE_ACK;
 }
 
-static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, bool skip_storage_init, const char *storage, size_t *max_payload_size)
+static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size,
+				   bool skip_storage_init, const char *storage,
+				   size_t *max_payload_size)
 {
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
 	int ret;
 
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
-	node = xmlNewChild(root, NULL, (xmlChar*)"configure", NULL);
+	node = xmlNewChild(root, NULL, (xmlChar *)"configure", NULL);
 	xml_setpropf(node, "MemoryName", storage);
 	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%lu", payload_size);
 	xml_setpropf(node, "verbose", "%d", 0);
@@ -262,7 +264,8 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size, 
 	return firehose_read(qdl, 5000, firehose_configure_response_parser, max_payload_size);
 }
 
-static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init, const char *storage)
+static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init,
+			      const char *storage)
 {
 	size_t size = 0;
 	int ret;
@@ -304,11 +307,11 @@ static int firehose_erase(struct qdl_device *qdl, struct program *program)
 	xmlDoc *doc;
 	int ret;
 
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
-	node = xmlNewChild(root, NULL, (xmlChar*)"erase", NULL);
+	node = xmlNewChild(root, NULL, (xmlChar *)"erase", NULL);
 	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", program->sector_size);
 	xml_setpropf(node, "num_partition_sectors", "%d", program->num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
@@ -336,7 +339,7 @@ out:
 
 static int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
 {
-	unsigned num_sectors;
+	unsigned int num_sectors;
 	struct stat sb;
 	size_t chunk_size;
 	xmlNode *root;
@@ -359,7 +362,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	if (program->num_sectors && num_sectors > program->num_sectors) {
 		ux_err("%s to big for %s truncated to %d\n",
-			program->filename,
+		       program->filename,
 			program->label,
 			program->num_sectors * program->sector_size);
 		num_sectors = program->num_sectors;
@@ -369,11 +372,11 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	if (!buf)
 		err(1, "failed to allocate sector buffer");
 
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
-	node = xmlNewChild(root, NULL, (xmlChar*)"program", NULL);
+	node = xmlNewChild(root, NULL, (xmlChar *)"program", NULL);
 	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", program->sector_size);
 	xml_setpropf(node, "num_partition_sectors", "%d", num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
@@ -400,7 +403,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t0 = time(NULL);
 
-	lseek(fd, (off_t) program->file_offset * program->sector_size, SEEK_SET);
+	lseek(fd, (off_t)program->file_offset * program->sector_size, SEEK_SET);
 	left = num_sectors;
 
 	ux_debug("FIREHOSE RAW BINARY WRITE: %s, %d bytes\n",
@@ -481,11 +484,11 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 	if (!buf)
 		err(1, "failed to allocate sector buffer");
 
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
-	node = xmlNewChild(root, NULL, (xmlChar*)"read", NULL);
+	node = xmlNewChild(root, NULL, (xmlChar *)"read", NULL);
 	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", read_op->sector_size);
 	xml_setpropf(node, "num_partition_sectors", "%d", read_op->num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", read_op->partition);
@@ -523,7 +526,7 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 			continue;
 		} else if (expect_empty) {
 			err(1, "expected empty transfer but received non-empty transfer during read");
-		} else if (n != chunk_size * read_op->sector_size){
+		} else if (n != chunk_size * read_op->sector_size) {
 			err(1, "failed to read full sector");
 		}
 
@@ -572,11 +575,11 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 
 	ux_debug("applying patch \"%s\"\n", patch->what);
 
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
-	node = xmlNewChild(root, NULL, (xmlChar*)"patch", NULL);
+	node = xmlNewChild(root, NULL, (xmlChar *)"patch", NULL);
 	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", patch->sector_size);
 	xml_setpropf(node, "byte_offset", "%d", patch->byte_offset);
 	xml_setpropf(node, "filename", "%s", patch->filename);
@@ -598,29 +601,30 @@ out:
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
-static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node){
-        xmlNode *root;
-        xmlDoc *doc;
-        int ret;
+static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node)
+{
+	xmlNode *root;
+	xmlDoc *doc;
+	int ret;
 
-        doc = xmlNewDoc((xmlChar*)"1.0");
-        root = xmlNewNode(NULL, (xmlChar*)"data");
-        xmlDocSetRootElement(doc, root);
-        xmlAddChild(root, node);
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
+	xmlDocSetRootElement(doc, root);
+	xmlAddChild(root, node);
 
-        ret = firehose_write(qdl, doc);
-        if (ret < 0)
-                goto out;
+	ret = firehose_write(qdl, doc);
+	if (ret < 0)
+		goto out;
 
-        ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
-        if (ret) {
-                ux_err("ufs request failed\n");
-                ret = -EINVAL;
-        }
+	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+	if (ret) {
+		ux_err("ufs request failed\n");
+		ret = -EINVAL;
+	}
 
 out:
-        xmlFreeDoc(doc);
-        return ret;
+	xmlFreeDoc(doc);
+	return ret;
 }
 
 int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs)
@@ -628,7 +632,7 @@ int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs)
 	xmlNode *node_to_send;
 	int ret;
 
-	node_to_send = xmlNewNode (NULL, (xmlChar*)"ufs");
+	node_to_send = xmlNewNode(NULL, (xmlChar *)"ufs");
 
 	xml_setpropf(node_to_send, "bNumberLU", "%d", ufs->bNumberLU);
 	xml_setpropf(node_to_send, "bBootEnable", "%d", ufs->bBootEnable);
@@ -658,7 +662,7 @@ int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
 	xmlNode *node_to_send;
 	int ret;
 
-	node_to_send = xmlNewNode (NULL, (xmlChar*)"ufs");
+	node_to_send = xmlNewNode(NULL, (xmlChar *)"ufs");
 
 	xml_setpropf(node_to_send, "LUNum", "%d", ufs->LUNum);
 	xml_setpropf(node_to_send, "bLUEnable", "%d", ufs->bLUEnable);
@@ -670,7 +674,7 @@ int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
 	xml_setpropf(node_to_send, "bLogicalBlockSize", "%d", ufs->bLogicalBlockSize);
 	xml_setpropf(node_to_send, "bProvisioningType", "%d", ufs->bProvisioningType);
 	xml_setpropf(node_to_send, "wContextCapabilities", "%d", ufs->wContextCapabilities);
-	if(ufs->desc)
+	if (ufs->desc)
 		xml_setpropf(node_to_send, "desc", "%s", ufs->desc);
 
 	ret = firehose_send_single_tag(qdl, node_to_send);
@@ -681,12 +685,12 @@ int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
 }
 
 int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs,
-	bool commit)
+				bool commit)
 {
 	xmlNode *node_to_send;
 	int ret;
 
-	node_to_send = xmlNewNode (NULL, (xmlChar*)"ufs");
+	node_to_send = xmlNewNode(NULL, (xmlChar *)"ufs");
 
 	xml_setpropf(node_to_send, "LUNtoGrow", "%d", ufs->LUNtoGrow);
 	xml_setpropf(node_to_send, "commit", "%d", commit);
@@ -705,11 +709,11 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	xmlDoc *doc;
 	int ret;
 
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
-	node = xmlNewChild(root, NULL, (xmlChar*)"setbootablestoragedrive", NULL);
+	node = xmlNewChild(root, NULL, (xmlChar *)"setbootablestoragedrive", NULL);
 	xml_setpropf(node, "value", "%d", part);
 
 	ret = firehose_write(qdl, doc);
@@ -734,11 +738,11 @@ static int firehose_reset(struct qdl_device *qdl)
 	xmlDoc *doc;
 	int ret;
 
-	doc = xmlNewDoc((xmlChar*)"1.0");
-	root = xmlNewNode(NULL, (xmlChar*)"data");
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
-	node = xmlNewChild(root, NULL, (xmlChar*)"power", NULL);
+	node = xmlNewChild(root, NULL, (xmlChar *)"power", NULL);
 	xml_setpropf(node, "value", "reset");
 
 	ret = firehose_write(qdl, doc);
@@ -756,7 +760,8 @@ static int firehose_reset(struct qdl_device *qdl)
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
-int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage, bool allow_missing)
+int firehose_run(struct qdl_device *qdl, const char *incdir,
+		 const char *storage, bool allow_missing)
 {
 	bool multiple;
 	int bootable;
@@ -766,12 +771,13 @@ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage
 
 	firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 
-	if(ufs_need_provisioning()) {
+	if (ufs_need_provisioning()) {
 		ret = firehose_configure(qdl, true, storage);
 		if (ret)
 			return ret;
 		ret = ufs_provisioning_execute(qdl, firehose_apply_ufs_common,
-			firehose_apply_ufs_body, firehose_apply_ufs_epilogue);
+					       firehose_apply_ufs_body,
+					       firehose_apply_ufs_epilogue);
 		if (!ret)
 			ux_info("UFS provisioning succeeded\n");
 		else

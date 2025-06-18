@@ -7,8 +7,7 @@
 
 #include "sim.h"
 
-struct qdl_device_sim
-{
+struct qdl_device_sim {
 	struct qdl_device base;
 	struct vip_table_generator *vip_gen;
 	bool create_digests;
@@ -44,6 +43,7 @@ static void sim_set_out_chunk_size(struct qdl_device *qdl, long size)
 struct qdl_device *sim_init(void)
 {
 	struct qdl_device *qdl = malloc(sizeof(struct qdl_device_sim));
+
 	if (!qdl)
 		return NULL;
 

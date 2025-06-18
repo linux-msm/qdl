@@ -30,13 +30,13 @@ int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout
 
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
 {
-
 	return write(qdl->fd, buf, len);
 }
 
 static void print_usage(void)
 {
 	extern const char *__progname;
+
 	fprintf(stderr,
 		"%s -p <sahara dev_node> -s <id:file path> ...\n",
 		__progname);
@@ -46,7 +46,7 @@ static void print_usage(void)
 		"\n"
 		"One -p instance is required.  One or more -s instances are required.\n"
 		"\n"
-		"Example: \n"
+		"Example:\n"
 		"ks -p /dev/mhi0_QAIC_SAHARA -s 1:/opt/qti-aic/firmware/fw1.bin -s 2:/opt/qti-aic/firmware/fw2.bin\n");
 }
 
@@ -67,7 +67,7 @@ int main(int argc, char **argv)
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvp:s:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvp:s:", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
