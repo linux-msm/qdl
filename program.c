@@ -180,7 +180,6 @@ int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 	struct program *program;
 	int ret;
 
-
 	for (program = programes; program; program = program->next) {
 		if (!program->is_erase)
 			continue;
@@ -269,7 +268,6 @@ int program_is_sec_partition_flashed(void)
 
 	return false;
 }
-
 
 void free_programs(void)
 {

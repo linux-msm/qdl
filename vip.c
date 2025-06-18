@@ -20,8 +20,7 @@
 #define MAX_DIGESTS_PER_CHAINED_TABLE		(MAX_DIGESTS_PER_CHAINED_FILE - 1)
 #define MAX_DIGESTS_PER_BUF			16
 
-struct vip_table_generator
-{
+struct vip_table_generator {
 	unsigned char hash[SHA256_DIGEST_LENGTH];
 
 	SHA2_CTX ctx;
@@ -165,6 +164,7 @@ static int calculate_hash_of_file(const char *filename, unsigned char *hash)
 	SHA2_CTX ctx;
 
 	FILE *fp = fopen(filename, "rb");
+
 	if (!fp) {
 		ux_err("Failed to open file for hashing\n");
 		return -1;
@@ -173,6 +173,7 @@ static int calculate_hash_of_file(const char *filename, unsigned char *hash)
 	SHA256Init(&ctx);
 
 	size_t bytes;
+
 	while ((bytes = fread(buf, 1, sizeof(buf), fp)) > 0) {
 		SHA256Update(&ctx, (uint8_t *)buf, bytes);
 	}
@@ -192,6 +193,7 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 	int ret;
 
 	int fd = open(src_table, O_RDONLY);
+
 	if (fd < 0) {
 		ux_err("Failed to open %s for reading\n", src_table);
 		return -1;
@@ -199,6 +201,7 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 
 	/* Seek to offset of start_digest */
 	size_t offset = elem_size * start_digest;
+
 	if (lseek(fd, offset, SEEK_SET) != offset) {
 		ux_err("Failed to seek in %s\n", src_table);
 		goto out_cleanup;
@@ -206,11 +209,13 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 
 	while (written < (count * elem_size)) {
 		size_t to_read = count * elem_size - written;
+
 		if (to_read > sizeof(buf))
 			to_read = sizeof(buf);
 
 		size_t bytes = read(fd, buf, to_read);
-		if (bytes < 0 || (size_t) bytes != to_read) {
+
+		if (bytes < 0 || (size_t)bytes != to_read) {
 			ux_err("Failed to read from %s\n", src_table);
 			goto out_cleanup;
 		}
@@ -336,7 +341,7 @@ void vip_gen_finalize(struct qdl_device *qdl)
 	ux_debug("VIP TABLE DIGESTS: %lu\n", vip_gen->digest_num_written);
 
 	if (create_chained_tables(vip_gen) < 0)
-		ux_err("Error occured when creating table of digests\n");
+		ux_err("Error occurred when creating table of digests\n");
 
 	free(vip_gen);
 	sim_set_digest_generation(false, qdl, NULL);

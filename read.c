@@ -37,7 +37,7 @@ int read_op_load(const char *read_op_file)
 		if (node->type != XML_ELEMENT_NODE)
 			continue;
 
-		if (xmlStrcmp(node->name, (xmlChar*)"read")) {
+		if (xmlStrcmp(node->name, (xmlChar *)"read")) {
 			ux_err("unrecognized tag \"%s\" in read-type file \"%s\", ignoring\n",
 			       node->name, read_op_file);
 			continue;
@@ -74,7 +74,7 @@ int read_op_load(const char *read_op_file)
 }
 
 int read_op_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct read_op *read_op, int fd),
-				    const char *incdir)
+		    const char *incdir)
 {
 	struct read_op *read_op;
 	const char *filename;
@@ -90,7 +90,7 @@ int read_op_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 				filename = tmp;
 		}
 
-		fd = open(filename, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, 0644);
+		fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 
 		if (fd < 0) {
 			ux_info("unable to open %s...\n", read_op->filename);

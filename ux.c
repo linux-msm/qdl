@@ -48,6 +48,7 @@ void ux_init(void)
 	int columns;
 
     HANDLE stdoutHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+
     if (GetConsoleScreenBufferInfo(stdoutHandle, &csbi)) {
 		columns = csbi.srWindow.Right - csbi.srWindow.Left + 1;
 		ux_width = MIN(columns, UX_PROGRESS_SIZE_MAX);
@@ -158,7 +159,7 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 	dashes = bar_length - bars;
 
 	printf("%-20.20s [%.*s%.*s] %1.2f%%%n\r", task_name,
-			bars, progress_hashes,
+	       bars, progress_hashes,
 			dashes, progress_dashes,
 			percent * 100,
 			&ux_cur_line_length);

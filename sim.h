@@ -10,6 +10,6 @@
 
 struct vip_table_generator *sim_get_vip_generator(struct qdl_device *qdl);
 bool sim_set_digest_generation(bool create_digests, struct qdl_device *qdl,
-                               struct vip_table_generator *vip_gen);
+			       struct vip_table_generator *vip_gen);
 
 #endif /* __SIM_H__ */
