@@ -60,7 +60,7 @@
 #define SAHARA_DONE_RESP_LENGTH		0xc
 #define SAHARA_RESET_LENGTH		0x8
 
-#define DEBUG_BLOCK_SIZE (512*1024)
+#define DEBUG_BLOCK_SIZE (512 * 1024)
 
 struct sahara_pkt {
 	uint32_t cmd;
@@ -293,6 +293,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 		return -1;
 
 	char path[PATH_MAX];
+
 	snprintf(path, sizeof(path), "%s/%s", ramdump_path, region.filename);
 
 	fd = open(path, O_WRONLY | O_CREAT | O_BINARY, 0644);
@@ -347,24 +348,22 @@ out:
 }
 
 // simple pattern matching function supporting * and ?
-bool pattern_match(const char *pattern, const char *string) {
-    if (*pattern == '\0' && *string == '\0')
-        return true;
+bool pattern_match(const char *pattern, const char *string)
+{
+	if (*pattern == '\0' && *string == '\0')
+		return true;
 
-    if (*pattern == '*') {
-        return pattern_match(pattern + 1, string) ||
-               (*string != '\0' && pattern_match(pattern, string + 1));
-    }
+	if (*pattern == '*')
+		return pattern_match(pattern + 1, string) ||
+		       (*string != '\0' && pattern_match(pattern, string + 1));
 
-    if (*pattern == '?') {
-        return (*string != '\0') && pattern_match(pattern + 1, string + 1);
-    }
+	if (*pattern == '?')
+		return (*string != '\0') && pattern_match(pattern + 1, string + 1);
 
-    if (*pattern == *string) {
-        return pattern_match(pattern + 1, string + 1);
-    }
+	if (*pattern == *string)
+		return pattern_match(pattern + 1, string + 1);
 
-    return false;
+	return false;
 }
 
 static bool sahara_debug64_filter(const char *filename, const char *filter)
@@ -390,7 +389,7 @@ static bool sahara_debug64_filter(const char *filename, const char *filter)
 }
 
 static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
-			  const char *ramdump_path, const char *filter)
+			   const char *ramdump_path, const char *filter)
 {
 	struct sahara_debug_region64 *table;
 	struct sahara_pkt read_req;
@@ -424,7 +423,6 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		ux_debug("%-2d: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%" PRIx64 " region: %s filename: %s\n",
 			 i, table[i].type, table[i].addr, table[i].length, table[i].region, table[i].filename);
 
-
 		n = sahara_debug64_one(qdl, table[i], ramdump_path);
 		if (n < 0)
 			break;
@@ -456,7 +454,7 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 		if (n < 0)
 			break;
 
-		pkt = (struct sahara_pkt*)buf;
+		pkt = (struct sahara_pkt *)buf;
 		if (n != pkt->length) {
 			ux_err("request length not matching received request\n");
 			return -EINVAL;

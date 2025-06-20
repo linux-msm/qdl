@@ -4,11 +4,11 @@
 struct qdl_device;
 
 struct patch {
-	unsigned sector_size;
-	unsigned byte_offset;
+	unsigned int sector_size;
+	unsigned int byte_offset;
 	const char *filename;
-	unsigned partition;
-	unsigned size_in_bytes;
+	unsigned int partition;
+	unsigned int size_in_bytes;
 	const char *start_sector;
 	const char *value;
 	const char *what;

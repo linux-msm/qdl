@@ -24,7 +24,7 @@
 const char *__progname = "qdl";
 #endif
 
-#define MAX_USBFS_BULK_SIZE	(16*1024)
+#define MAX_USBFS_BULK_SIZE	(16 * 1024)
 
 enum {
 	QDL_FILE_UNKNOWN,
@@ -51,26 +51,26 @@ static int detect_type(const char *xml_file)
 	}
 
 	root = xmlDocGetRootElement(doc);
-	if (!xmlStrcmp(root->name, (xmlChar*)"patches")) {
+	if (!xmlStrcmp(root->name, (xmlChar *)"patches")) {
 		type = QDL_FILE_PATCH;
-	} else if (!xmlStrcmp(root->name, (xmlChar*)"data")) {
+	} else if (!xmlStrcmp(root->name, (xmlChar *)"data")) {
 		for (node = root->children; node ; node = node->next) {
 			if (node->type != XML_ELEMENT_NODE)
 				continue;
-			if (!xmlStrcmp(node->name, (xmlChar*)"program")) {
+			if (!xmlStrcmp(node->name, (xmlChar *)"program")) {
 				type = QDL_FILE_PROGRAM;
 				break;
 			}
-			if (!xmlStrcmp(node->name, (xmlChar*)"read")) {
+			if (!xmlStrcmp(node->name, (xmlChar *)"read")) {
 				type = QDL_FILE_READ;
 				break;
 			}
-			if (!xmlStrcmp(node->name, (xmlChar*)"ufs")) {
+			if (!xmlStrcmp(node->name, (xmlChar *)"ufs")) {
 				type = QDL_FILE_UFS;
 				break;
 			}
 		}
-	} else if (!xmlStrcmp(root->name, (xmlChar*)"contents")) {
+	} else if (!xmlStrcmp(root->name, (xmlChar *)"contents")) {
 		type = QDL_FILE_CONTENTS;
 	}
 
@@ -82,6 +82,7 @@ static int detect_type(const char *xml_file)
 static void print_usage(void)
 {
 	extern const char *__progname;
+
 	fprintf(stderr,
 		"%s [--debug] [--dry-run] [--version] [--allow-missing] [--storage <emmc|nand|ufs>] [--finalize-provisioning] [--include <PATH>] [--serial <NUM>] [--out-chunk-size <SIZE>] [--create-digests <PATH>] <prog.mbn> [<program> <patch> ...]\n",
 		__progname);
@@ -93,10 +94,10 @@ enum {
 
 int main(int argc, char **argv)
 {
-	char *prog_mbn, *storage="ufs";
+	char *prog_mbn, *storage = "ufs";
 	char *incdir = NULL;
 	char *serial = NULL;
-	const char *vip_generate_dir= NULL;
+	const char *vip_generate_dir = NULL;
 	int type;
 	int ret;
 	int opt;
@@ -122,7 +123,7 @@ int main(int argc, char **argv)
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvfi:S:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvfi:S:", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -211,7 +212,7 @@ int main(int argc, char **argv)
 
 			if (!allow_fusing && program_is_sec_partition_flashed())
 				errx(1, "secdata partition to be programmed, which can lead to irreversible"
-						" changes. Allow explicitly with --allow-fusing parameter");
+					" changes. Allow explicitly with --allow-fusing parameter");
 			break;
 		case QDL_FILE_READ:
 			ret = read_op_load(argv[optind]);
@@ -219,7 +220,7 @@ int main(int argc, char **argv)
 				errx(1, "read_op_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_UFS:
-			ret = ufs_load(argv[optind],qdl_finalize_provisioning);
+			ret = ufs_load(argv[optind], qdl_finalize_provisioning);
 			if (ret < 0)
 				errx(1, "ufs_load %s failed", argv[optind]);
 			break;

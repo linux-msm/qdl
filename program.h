@@ -5,15 +5,15 @@
 #include "qdl.h"
 
 struct program {
-	unsigned pages_per_block;
-	unsigned sector_size;
-	unsigned file_offset;
+	unsigned int pages_per_block;
+	unsigned int sector_size;
+	unsigned int file_offset;
 	const char *filename;
 	const char *label;
-	unsigned num_sectors;
-	unsigned partition;
+	unsigned int num_sectors;
+	unsigned int partition;
 	const char *start_sector;
-	unsigned last_sector;
+	unsigned int last_sector;
 
 	bool is_nand;
 	bool is_erase;

@@ -6,10 +6,10 @@
 struct qdl_device;
 
 struct read_op {
-	unsigned sector_size;
+	unsigned int sector_size;
 	const char *filename;
-	unsigned partition;
-	unsigned num_sectors;
+	unsigned int partition;
+	unsigned int num_sectors;
 	const char *start_sector;
 	struct read_op *next;
 };

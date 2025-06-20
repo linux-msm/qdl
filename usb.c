@@ -12,8 +12,7 @@
 
 #define DEFAULT_OUT_CHUNK_SIZE (1024 * 1024)
 
-struct qdl_device_usb
-{
+struct qdl_device_usb {
 	struct qdl_device base;
 	struct libusb_device_handle *usb_handle;
 
@@ -160,7 +159,7 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
 
 		if (qdl->out_chunk_size && qdl->out_chunk_size % out_size) {
 			ux_err("WARNING: requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld\n",
-				out_size, out_size);
+			       out_size, out_size);
 			qdl->out_chunk_size = out_size;
 		} else if (!qdl->out_chunk_size) {
 			qdl->out_chunk_size = DEFAULT_OUT_CHUNK_SIZE;
@@ -246,7 +245,7 @@ static int usb_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int 
 
 static int usb_write(struct qdl_device *qdl, const void *buf, size_t len)
 {
-	unsigned char *data = (unsigned char*) buf;
+	unsigned char *data = (unsigned char *)buf;
 	struct qdl_device_usb *qdl_usb = container_of(qdl, struct qdl_device_usb, base);
 	unsigned int count = 0;
 	size_t len_orig = len;
@@ -290,6 +289,7 @@ static void usb_set_out_chunk_size(struct qdl_device *qdl, long size)
 struct qdl_device *usb_init(void)
 {
 	struct qdl_device *qdl = malloc(sizeof(struct qdl_device_usb));
+
 	if (!qdl)
 		return NULL;
 

@@ -9,39 +9,39 @@
 struct qdl_device;
 
 struct ufs_common {
-	unsigned	bNumberLU;
+	unsigned int bNumberLU;
 	bool		bBootEnable;
 	bool		bDescrAccessEn;
-	unsigned	bInitPowerMode;
-	unsigned	bHighPriorityLUN;
-	unsigned	bSecureRemovalType;
-	unsigned	bInitActiveICCLevel;
-	unsigned	wPeriodicRTCUpdate;
+	unsigned int bInitPowerMode;
+	unsigned int bHighPriorityLUN;
+	unsigned int bSecureRemovalType;
+	unsigned int bInitActiveICCLevel;
+	unsigned int wPeriodicRTCUpdate;
 	bool		bConfigDescrLock;
 	bool            wb;
 	bool            bWriteBoosterBufferPreserveUserSpaceEn;
 	bool            bWriteBoosterBufferType;
-	unsigned        shared_wb_buffer_size_in_kb;
+	unsigned int shared_wb_buffer_size_in_kb;
 };
 
 struct ufs_body {
-	unsigned	LUNum;
+	unsigned int LUNum;
 	bool		bLUEnable;
-	unsigned	bBootLunID;
-	unsigned	size_in_kb;
-	unsigned	bDataReliability;
-	unsigned	bLUWriteProtect;
-	unsigned	bMemoryType;
-	unsigned	bLogicalBlockSize;
-	unsigned	bProvisioningType;
-	unsigned	wContextCapabilities;
+	unsigned int bBootLunID;
+	unsigned int size_in_kb;
+	unsigned int bDataReliability;
+	unsigned int bLUWriteProtect;
+	unsigned int bMemoryType;
+	unsigned int bLogicalBlockSize;
+	unsigned int bProvisioningType;
+	unsigned int wContextCapabilities;
 	const char	*desc;
 
 	struct		ufs_body *next;
 };
 
 struct ufs_epilogue {
-	unsigned	LUNtoGrow;
+	unsigned int LUNtoGrow;
 	bool		commit;
 };
 

@@ -12,7 +12,7 @@
 
 #include "patch.h"
 #include "qdl.h"
-		
+
 static struct patch *patches;
 static struct patch *patches_last;
 
@@ -35,7 +35,7 @@ int patch_load(const char *patch_file)
 		if (node->type != XML_ELEMENT_NODE)
 			continue;
 
-		if (xmlStrcmp(node->name, (xmlChar*)"patch")) {
+		if (xmlStrcmp(node->name, (xmlChar *)"patch")) {
 			ux_err("unrecognized tag \"%s\" in patch-type file, ignoring\n", node->name);
 			continue;
 		}
@@ -72,7 +72,7 @@ int patch_load(const char *patch_file)
 
 	return 0;
 }
-	
+
 int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch))
 {
 	struct patch *patch;

@@ -9,12 +9,12 @@
 const char *__progname = "ramdump";
 #endif
 
-
 bool qdl_debug;
 
 static void print_usage(void)
 {
 	extern const char *__progname;
+
 	fprintf(stderr,
 		"%s [--debug] [-o <ramdump-path>] [segment-filter,...]\n",
 		__progname);
@@ -43,7 +43,7 @@ int main(int argc, char **argv)
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvo:S:", options, NULL )) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvo:S:", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;

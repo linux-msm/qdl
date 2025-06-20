@@ -24,6 +24,7 @@ static uint8_t to_hex(uint8_t ch)
 void print_version(void)
 {
 	extern const char *__progname;
+
 	fprintf(stdout, "%s version %s\n", __progname, VERSION);
 }
 
@@ -65,18 +66,18 @@ void print_hex_dump(const char *prefix, const void *buf, size_t len)
 	}
 }
 
-unsigned attr_as_unsigned(xmlNode *node, const char *attr, int *errors)
+unsigned int attr_as_unsigned(xmlNode *node, const char *attr, int *errors)
 {
 	unsigned int ret;
 	xmlChar *value;
 
-	value = xmlGetProp(node, (xmlChar*)attr);
+	value = xmlGetProp(node, (xmlChar *)attr);
 	if (!value) {
 		(*errors)++;
 		return 0;
 	}
 
-	ret = (unsigned int) strtoul((char*)value, NULL, 0);
+	ret = (unsigned int)strtoul((char *)value, NULL, 0);
 	xmlFree(value);
 	return ret;
 }
@@ -86,14 +87,14 @@ const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
 	xmlChar *value;
 	char *ret = NULL;
 
-	value = xmlGetProp(node, (xmlChar*)attr);
+	value = xmlGetProp(node, (xmlChar *)attr);
 	if (!value) {
 		(*errors)++;
 		return NULL;
 	}
 
 	if (value[0] != '\0')
-		ret = strdup((char*)value);
+		ret = strdup((char *)value);
 
 	xmlFree(value);
 	return ret;
