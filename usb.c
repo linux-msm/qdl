@@ -293,12 +293,15 @@ struct qdl_device *usb_init(void)
 	if (!qdl)
 		return NULL;
 
+	memset(qdl, 0, sizeof(struct qdl_device_usb));
+
 	qdl->dev_type = QDL_DEVICE_USB;
 	qdl->open = usb_open;
 	qdl->read = usb_read;
 	qdl->write = usb_write;
 	qdl->close = usb_close;
 	qdl->set_out_chunk_size = usb_set_out_chunk_size;
+	qdl->max_payload_size = 1048576;
 
 	return qdl;
 }
