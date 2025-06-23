@@ -276,6 +276,13 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init,
 		return -1;
 	}
 
+	/*
+	 * In simulateion mode "remote" target can't propose different size, so
+	 * for QDL_DEVICE_SIM we just don't re-send configure packet
+	 */
+	if (qdl->dev_type == QDL_DEVICE_SIM)
+		return 0;
+
 	/* Retry if remote proposed different size */
 	if (size != max_payload_size) {
 		ret = firehose_send_configure(qdl, size, skip_storage_init, storage, &size);
@@ -284,12 +291,7 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init,
 			return -1;
 		}
 
-		/*
-		 * Simulated target doesn't provide any valid payload size, so
-		 * for QDL_DEVICE_SIM dev type we keep old max_payload_size value
-		 */
-		if (qdl->dev_type != QDL_DEVICE_SIM)
-			max_payload_size = size;
+		max_payload_size = size;
 	}
 
 	ux_debug("accepted max payload size: %zu\n", max_payload_size);
