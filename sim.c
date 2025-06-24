@@ -20,10 +20,7 @@ static int sim_open(struct qdl_device *qdl, const char *serial)
 	return 0;
 }
 
-static void sim_close(struct qdl_device *qdl)
-{
-	return;
-}
+static void sim_close(struct qdl_device *qdl) {}
 
 static int sim_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
 {
@@ -35,10 +32,7 @@ static int sim_write(struct qdl_device *qdl, const void *buf, size_t len)
 	return len;
 }
 
-static void sim_set_out_chunk_size(struct qdl_device *qdl, long size)
-{
-	return;
-}
+static void sim_set_out_chunk_size(struct qdl_device *qdl, long size) {}
 
 struct qdl_device *sim_init(void)
 {

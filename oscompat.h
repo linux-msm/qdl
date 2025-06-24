@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 #ifndef __OSCOMPAT_H__
 #define __OSCOMPAT_H__
 

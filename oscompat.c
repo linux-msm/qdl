@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-3-Clause
 #ifdef _WIN32
 
 #include <stdio.h>

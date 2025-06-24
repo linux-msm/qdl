@@ -31,7 +31,6 @@ static const char notice_bconfigdescrlock[] = "\n"
 "	and don't use command line parameter --finalize-provisioning.\n\n"
 "In case of mismatch between CL and XML provisioning is not performed.\n\n";
 
-
 bool ufs_need_provisioning(void)
 {
 	return !!ufs_epilogue_p;
@@ -63,7 +62,9 @@ struct ufs_common *ufs_parse_common_params(xmlNode *node, bool finalize_provisio
 
 	/* These parameters are optional */
 	errors = 0;
-	result->bWriteBoosterBufferPreserveUserSpaceEn = !!attr_as_unsigned(node, "bWriteBoosterBufferPreserveUserSpaceEn", &errors);
+	result->bWriteBoosterBufferPreserveUserSpaceEn = !!attr_as_unsigned(node,
+									    "bWriteBoosterBufferPreserveUserSpaceEn",
+									    &errors);
 	result->bWriteBoosterBufferType = !!attr_as_unsigned(node, "bWriteBoosterBufferType", &errors);
 	result->shared_wb_buffer_size_in_kb = attr_as_unsigned(node, "shared_wb_buffer_size_in_kb", &errors);
 	result->wb = !errors;

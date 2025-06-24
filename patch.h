@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 #ifndef __PATCH_H__
 #define __PATCH_H__
 

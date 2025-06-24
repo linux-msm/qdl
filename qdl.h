@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 #ifndef __QDL_H__
 #define __QDL_H__
 
@@ -11,12 +12,21 @@
 
 #define container_of(ptr, typecast, member) ({                  \
 	void *_ptr = (void *)(ptr);		                \
-	((typecast *)(_ptr - offsetof(typecast, member))); })
+	((typeof(typecast) *)(_ptr - offsetof(typecast, member))); })
+
+#define MIN(x, y) ({		\
+	__typeof__(x) _x = (x);	\
+	__typeof__(y) _y = (y);	\
+	_x < _y ? _x : _y;	\
+})
+
+#define ROUND_UP(x, a) ({		\
+	__typeof__(x) _x = (x);		\
+	__typeof__(a) _a = (a);		\
+	(_x + _a - 1) & ~(_a - 1);	\
+})
 
 #define MAPPING_SZ 64
-
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-#define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
 
 enum QDL_DEVICE_TYPE {
 	QDL_DEVICE_USB,

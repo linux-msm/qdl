@@ -11,9 +11,8 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
+#include "qdl.h"
 #include "version.h"
-
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
 
 static uint8_t to_hex(uint8_t ch)
 {
