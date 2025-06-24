@@ -19,7 +19,11 @@
 #include "qdl.h"
 #include "oscompat.h"
 
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MIN(x, y) ({		\
+	__typeof__(x) _x = (x);	\
+	__typeof__(y) _y = (y);	\
+	_x < _y ? _x : _y;	\
+})
 
 #define SAHARA_HELLO_CMD		0x1  /* Min protocol version 1.0 */
 #define SAHARA_HELLO_RESP_CMD		0x2  /* Min protocol version 1.0 */
@@ -420,8 +424,10 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		if (sahara_debug64_filter(table[i].filename, filter))
 			continue;
 
-		ux_debug("%-2d: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%" PRIx64 " region: %s filename: %s\n",
-			 i, table[i].type, table[i].addr, table[i].length, table[i].region, table[i].filename);
+		ux_debug("%-2d: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%"
+			 PRIx64 " region: %s filename: %s\n",
+			 i, table[i].type, table[i].addr, table[i].length,
+			 table[i].region, table[i].filename);
 
 		n = sahara_debug64_one(qdl, table[i], ramdump_path);
 		if (n < 0)
