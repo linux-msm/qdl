@@ -26,6 +26,7 @@ MSYS2 MinGW64 terminal (located at `<msys2-installation-path>\mingw64.exe`) and
 install additional packages needed for QDL compilation using the `pacman` tool:
 
 ```bash
+pacman -S base-devel --needed
 pacman -S mingw-w64-x86_64-gcc
 pacman -S mingw-w64-x86_64-make
 pacman -S mingw-w64-x86_64-pkg-config
@@ -36,7 +37,7 @@ pacman -S mingw-w64-x86_64-libxml2
 Then use the `mingw32-make` tool to build QDL:
 
 ```bash
-mingw32-make
+make
 ```
 
 ## Use QDL
