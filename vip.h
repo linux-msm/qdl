@@ -16,6 +16,7 @@ enum vip_state {
 	VIP_SEND_DATA,
 	VIP_MAX,
 };
+
 #define MAX_CHAINED_FILES 32
 
 struct vip_transfer_data {
