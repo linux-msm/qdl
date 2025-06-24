@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-3-Clause
 #include <sys/types.h>
 #include <assert.h>
 #include <ctype.h>

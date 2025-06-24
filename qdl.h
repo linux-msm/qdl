@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 #ifndef __QDL_H__
 #define __QDL_H__
 
