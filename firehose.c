@@ -681,7 +681,8 @@ int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs)
 	xml_setpropf(node_to_send, "bConfigDescrLock", "%d", ufs->bConfigDescrLock);
 
 	if (ufs->wb) {
-		xml_setpropf(node_to_send, "bWriteBoosterBufferPreserveUserSpaceEn", "%d", ufs->bWriteBoosterBufferPreserveUserSpaceEn);
+		xml_setpropf(node_to_send, "bWriteBoosterBufferPreserveUserSpaceEn",
+			     "%d", ufs->bWriteBoosterBufferPreserveUserSpaceEn);
 		xml_setpropf(node_to_send, "bWriteBoosterBufferType", "%d", ufs->bWriteBoosterBufferType);
 		xml_setpropf(node_to_send, "shared_wb_buffer_size_in_kb", "%d", ufs->shared_wb_buffer_size_in_kb);
 	}
