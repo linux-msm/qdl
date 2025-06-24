@@ -20,6 +20,11 @@
 #define MAX_DIGESTS_PER_CHAINED_TABLE		(MAX_DIGESTS_PER_CHAINED_FILE - 1)
 #define MAX_DIGESTS_PER_BUF			16
 
+#ifndef O_BINARY
+#define O_BINARY  0
+#define O_TEXT    0
+#endif
+
 struct vip_table_generator {
 	unsigned char hash[SHA256_DIGEST_LENGTH];
 
@@ -192,7 +197,7 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 	size_t written = 0;
 	int ret;
 
-	int fd = open(src_table, O_RDONLY);
+	int fd = open(src_table, O_RDONLY | O_BINARY);
 
 	if (fd < 0) {
 		ux_err("Failed to open %s for reading\n", src_table);
@@ -213,7 +218,7 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 		if (to_read > sizeof(buf))
 			to_read = sizeof(buf);
 
-		size_t bytes = read(fd, buf, to_read);
+		ssize_t bytes = read(fd, buf, to_read);
 
 		if (bytes < 0 || (size_t)bytes != to_read) {
 			ux_err("Failed to read from %s\n", src_table);
