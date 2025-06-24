@@ -11,7 +11,7 @@
 
 #define container_of(ptr, typecast, member) ({                  \
 	void *_ptr = (void *)(ptr);		                \
-	((typecast *)(_ptr - offsetof(typecast, member))); })
+	((typeof(typecast) *)(_ptr - offsetof(typecast, member))); })
 
 #define MAPPING_SZ 64
 
