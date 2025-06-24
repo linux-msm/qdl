@@ -72,7 +72,7 @@ static int load_program_tag(xmlNode *node, bool is_nand)
 
 	if (is_nand) {
 		program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
-		if (NULL != xmlGetProp(node, (xmlChar *)"last_sector")) {
+		if (xmlGetProp(node, (xmlChar *)"last_sector")) {
 			program->last_sector = attr_as_unsigned(node, "last_sector", &errors);
 		}
 	} else {
