@@ -19,12 +19,6 @@
 #include "qdl.h"
 #include "oscompat.h"
 
-#define MIN(x, y) ({		\
-	__typeof__(x) _x = (x);	\
-	__typeof__(y) _y = (y);	\
-	_x < _y ? _x : _y;	\
-})
-
 #define SAHARA_HELLO_CMD		0x1  /* Min protocol version 1.0 */
 #define SAHARA_HELLO_RESP_CMD		0x2  /* Min protocol version 1.0 */
 #define SAHARA_READ_DATA_CMD		0x3  /* Min protocol version 1.0 */

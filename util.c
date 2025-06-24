@@ -11,13 +11,8 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
+#include "qdl.h"
 #include "version.h"
-
-#define MIN(x, y) ({		\
-	__typeof__(x) _x = (x);	\
-	__typeof__(y) _y = (y);	\
-	_x < _y ? _x : _y;	\
-})
 
 static uint8_t to_hex(uint8_t ch)
 {

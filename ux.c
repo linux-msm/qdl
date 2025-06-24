@@ -10,12 +10,6 @@
 
 #include "qdl.h"
 
-#define MIN(x, y) ({		\
-	__typeof__(x) _x = (x);	\
-	__typeof__(y) _y = (y);	\
-	_x < _y ? _x : _y;	\
-})
-
 #define UX_PROGRESS_REFRESH_RATE	10
 #define UX_PROGRESS_SIZE_MAX		80
 

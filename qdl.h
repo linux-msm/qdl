@@ -14,10 +14,19 @@
 	void *_ptr = (void *)(ptr);		                \
 	((typeof(typecast) *)(_ptr - offsetof(typecast, member))); })
 
-#define MAPPING_SZ 64
+#define MIN(x, y) ({		\
+	__typeof__(x) _x = (x);	\
+	__typeof__(y) _y = (y);	\
+	_x < _y ? _x : _y;	\
+})
 
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-#define ROUND_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
+#define ROUND_UP(x, a) ({		\
+	__typeof__(x) _x = (x);		\
+	__typeof__(a) _a = (a);		\
+	(_x + _a - 1) & ~(_a - 1);	\
+})
+
+#define MAPPING_SZ 64
 
 enum QDL_DEVICE_TYPE {
 	QDL_DEVICE_USB,
