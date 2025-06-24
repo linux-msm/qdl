@@ -116,15 +116,19 @@ jobs:
         with:
           msystem: MINGW64
           install: >
+            base-devel
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-make
-            mingw-w64-x86_64-cmake
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-libxml2
             mingw-w64-x86_64-libusb
 
       - name: Build
-        run: mingw32-make
+        run: make
+        shell: msys2 {0}
+
+      - name: Run tests
+        run: make tests
         shell: msys2 {0}
 
       - name: Package
