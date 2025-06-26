@@ -26,6 +26,7 @@
 #include "ufs.h"
 #include "oscompat.h"
 #include "vip.h"
+#include "sparse.h"
 
 enum {
 	FIREHOSE_ACK = 0,
@@ -366,6 +367,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	int left;
 	int ret;
 	int n;
+	uint32_t fill_value;
 
 	num_sectors = program->num_sectors;
 
@@ -373,14 +375,16 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	if (ret < 0)
 		err(1, "failed to stat \"%s\"\n", program->filename);
 
-	num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
+	if (!program->sparse) {
+		num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
 
-	if (program->num_sectors && num_sectors > program->num_sectors) {
-		ux_err("%s to big for %s truncated to %d\n",
-		       program->filename,
-			program->label,
-			program->num_sectors * program->sector_size);
-		num_sectors = program->num_sectors;
+		if (program->num_sectors && num_sectors > program->num_sectors) {
+			ux_err("%s to big for %s truncated to %d\n",
+			       program->filename,
+			       program->label,
+			       program->num_sectors * program->sector_size);
+			num_sectors = program->num_sectors;
+		}
 	}
 
 	buf = malloc(qdl->max_payload_size);
@@ -418,7 +422,24 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t0 = time(NULL);
 
-	lseek(fd, (off_t)program->file_offset * program->sector_size, SEEK_SET);
+	if (!program->sparse) {
+		lseek(fd, (off_t)program->file_offset * program->sector_size, SEEK_SET);
+	} else {
+		switch (program->sparse_chunk_type) {
+		case CHUNK_TYPE_RAW:
+			lseek(fd, (off_t)program->sparse_chunk_data, SEEK_SET);
+			break;
+		case CHUNK_TYPE_FILL:
+			fill_value = (uint32_t)program->sparse_chunk_data;
+			for (n = 0; n < qdl->max_payload_size; n += sizeof(fill_value))
+				memcpy(buf + n, &fill_value, sizeof(fill_value));
+			break;
+		default:
+			ux_err("[SPARSE] invalid chunk type\n");
+			goto out;
+		}
+	}
+
 	left = num_sectors;
 
 	ux_debug("FIREHOSE RAW BINARY WRITE: %s, %d bytes\n",
@@ -432,14 +453,16 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		vip_gen_chunk_init(qdl);
 		chunk_size = MIN(qdl->max_payload_size / program->sector_size, left);
 
-		n = read(fd, buf, chunk_size * program->sector_size);
-		if (n < 0) {
-			ux_err("failed to read %s\n", program->filename);
-			goto out;
-		}
+		if (!program->sparse || program->sparse_chunk_type != CHUNK_TYPE_FILL) {
+			n = read(fd, buf, chunk_size * program->sector_size);
+			if (n < 0) {
+				ux_err("failed to read %s\n", program->filename);
+				goto out;
+			}
 
-		if (n < qdl->max_payload_size)
-			memset(buf + n, 0, qdl->max_payload_size - n);
+			if (n < qdl->max_payload_size)
+				memset(buf + n, 0, qdl->max_payload_size - n);
+		}
 
 		vip_gen_chunk_update(qdl, buf, chunk_size * program->sector_size);
 
