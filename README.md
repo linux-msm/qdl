@@ -1,5 +1,8 @@
 # Qualcomm Download
 
+[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![Build on push](https://github.com/linux-msm/qdl/actions/workflows/build.yml/badge.svg)](https://github.com/linux-msm/qdl/actions/workflows/build.yml/badge.svg)
+
 This tool communicates with USB devices of id `05c6:9008` to upload a flash
 loader and use this to flash images.
 
@@ -34,7 +37,7 @@ pacman -S mingw-w64-x86_64-libusb
 pacman -S mingw-w64-x86_64-libxml2
 ```
 
-Then use the `mingw32-make` tool to build QDL:
+Then use the `make` tool to build QDL:
 
 ```bash
 make
@@ -116,3 +119,52 @@ table of digests are stored using `--vip-table-path` param:
 ```bash
 qdl --vip-table-path=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
+
+## Run tests
+
+To run the integration test suite for QDL, use the `make tests` target:
+
+```bash
+make tests
+```
+
+## Contributing
+
+Please submit any patches to the qdl (`master` branch) by using the GitHub pull
+request feature. Fork the repo, create a branch, do the work, rebase with upstream,
+and submit the pull request.
+
+The preferred coding style for this tool is [Linux kernel coding style](https://www.kernel.org/doc/html/v6.15/process/coding-style.html).
+
+Before creating a commit, please ensure that your changes adhere to the coding style
+by using the `make check-cached` target, for example:
+
+```bash
+$ git status
+On branch improvements
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+  modified:   qdl.c
+  modified:   qdl.h
+
+$ make check-cached
+Running checkpatch on staged changes...
+ERROR: trailing whitespace
+#28: FILE: qdl.h:32:
++^IQDL_DEVICE_USB,   $
+
+total: 1 errors, 0 warnings, 0 checks, 27 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+NOTE: Whitespace errors detected.
+      You may wish to use scripts/cleanpatch or scripts/cleanfile
+
+Your patch has style problems, please review.
+```
+
+## License
+
+This tool is licensed under the BSD 3-Clause licensed. Check out [LICENSE](LICENSE)
+for more detais.

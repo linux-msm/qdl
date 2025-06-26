@@ -80,8 +80,4 @@ check: $(CHECKPATCH)
 
 check-cached: $(CHECKPATCH)
 	@echo "Running checkpatch on staged changes..."
-	@git diff --cached --name-only --diff-filter=ACMRT | grep -E '\.(c|h)$$' | while read file; do \
-		if [ -f "$$file" ]; then \
-			git show :$$file | perl $(CHECKPATCH) --no-tree -; \
-		fi \
-	done
+	@git diff --cached -- . | perl $(CHECKPATCH) --no-tree -
