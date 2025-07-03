@@ -11,7 +11,7 @@ loader and use this to flash images.
 ### Linux
 
 ```bash
-sudo apt install libxml2 libusb
+sudo apt install libxml2 libusb-1.0-0-dev
 make
 ```
 
