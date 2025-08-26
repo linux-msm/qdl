@@ -60,7 +60,7 @@ int sparse_header_parse(int fd, sparse_header_t *sparse_header);
  * Returns the chunk type on success, or an error code otherwise.
  */
 int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
-			      unsigned int *chunk_size,
+			      uint64_t *chunk_size,
 			      uint32_t *value, off_t *offset);
 
 #endif

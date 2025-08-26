@@ -52,7 +52,7 @@ int sparse_header_parse(int fd, sparse_header_t *sparse_header)
 }
 
 int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
-			      unsigned int *chunk_size,
+			      uint64_t *chunk_size,
 			      uint32_t *value,
 			      off_t *offset)
 {
@@ -70,9 +70,9 @@ int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
 	if (sparse_header->chunk_hdr_sz > sizeof(chunk_header_t))
 		lseek(fd, sparse_header->chunk_hdr_sz - sizeof(chunk_header_t), SEEK_CUR);
 
-	if (ntohs(chunk_header.chunk_type) == ntohs(CHUNK_TYPE_RAW)) {
-		*chunk_size = chunk_header.chunk_sz * sparse_header->blk_sz;
+	*chunk_size = (uint64_t)chunk_header.chunk_sz * sparse_header->blk_sz;
 
+	if (ntohs(chunk_header.chunk_type) == ntohs(CHUNK_TYPE_RAW)) {
 		if (chunk_header.total_sz != (sparse_header->chunk_hdr_sz + *chunk_size)) {
 			ux_err("[SPARSE] Bogus chunk size, type Raw\n");
 			return -EINVAL;
@@ -87,8 +87,6 @@ int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
 		return CHUNK_TYPE_RAW;
 
 	} else if (ntohs(chunk_header.chunk_type) == ntohs(CHUNK_TYPE_DONT_CARE)) {
-		*chunk_size = chunk_header.chunk_sz * sparse_header->blk_sz;
-
 		if (chunk_header.total_sz != sparse_header->chunk_hdr_sz) {
 			ux_err("[SPARSE] Bogus chunk size, type Don't Care\n");
 			return -EINVAL;
@@ -97,8 +95,6 @@ int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
 		return CHUNK_TYPE_DONT_CARE;
 
 	} else if (ntohs(chunk_header.chunk_type) == ntohs(CHUNK_TYPE_FILL)) {
-		*chunk_size = chunk_header.chunk_sz * sparse_header->blk_sz;
-
 		if (chunk_header.total_sz != (sparse_header->chunk_hdr_sz + sizeof(fill_value))) {
 			ux_err("[SPARSE] Bogus chunk size, type Fill\n");
 			return -EINVAL;
