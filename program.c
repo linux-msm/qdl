@@ -63,7 +63,9 @@ static struct program *program_load_sparse(struct program *program, int fd)
 	char tmp[PATH_MAX];
 
 	sparse_header_t sparse_header;
-	unsigned int start_sector, chunk_size, chunk_type, chunk_data;
+	unsigned int start_sector, chunk_size, chunk_type;
+	uint32_t sparse_fill_value;
+	off_t sparse_offset;
 
 	if (sparse_header_parse(fd, &sparse_header)) {
 		/*
@@ -89,7 +91,9 @@ static struct program *program_load_sparse(struct program *program, int fd)
 
 	for (uint32_t i = 0; i < sparse_header.total_chunks; ++i) {
 		chunk_type = sparse_chunk_header_parse(fd, &sparse_header,
-						       &chunk_size, &chunk_data);
+						       &chunk_size,
+						       &sparse_fill_value,
+						       &sparse_offset);
 
 		switch (chunk_type) {
 		case CHUNK_TYPE_RAW:
@@ -113,6 +117,24 @@ static struct program *program_load_sparse(struct program *program, int fd)
 
 		switch (chunk_type) {
 		case CHUNK_TYPE_RAW:
+			program_sparse = calloc(1, sizeof(struct program));
+			memcpy(program_sparse, program, sizeof(struct program));
+
+			program_sparse->next = NULL;
+			program_sparse->num_sectors = chunk_size / program->sector_size;
+
+			program_sparse->sparse_chunk_type = CHUNK_TYPE_RAW;
+			program_sparse->sparse_offset = sparse_offset;
+
+			if (programes_sparse) {
+				programes_sparse_last->next = program_sparse;
+				programes_sparse_last = program_sparse;
+			} else {
+				programes_sparse = program_sparse;
+				programes_sparse_last = program_sparse;
+			}
+
+			break;
 		case CHUNK_TYPE_FILL:
 
 			program_sparse = calloc(1, sizeof(struct program));
@@ -121,8 +143,8 @@ static struct program *program_load_sparse(struct program *program, int fd)
 			program_sparse->next = NULL;
 			program_sparse->num_sectors = chunk_size / program->sector_size;
 
-			program_sparse->sparse_chunk_type = chunk_type;
-			program_sparse->sparse_chunk_data = chunk_data;
+			program_sparse->sparse_chunk_type = CHUNK_TYPE_FILL;
+			program_sparse->sparse_fill_value = sparse_fill_value;
 
 			if (programes_sparse) {
 				programes_sparse_last->next = program_sparse;

@@ -2,7 +2,9 @@
 #ifndef __PROGRAM_H__
 #define __PROGRAM_H__
 
+#include <sys/types.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include "qdl.h"
 
 struct program {
@@ -21,7 +23,8 @@ struct program {
 	bool is_erase;
 
 	unsigned int sparse_chunk_type;
-	unsigned int sparse_chunk_data;
+	uint32_t sparse_fill_value;
+	off_t sparse_offset;
 
 	struct program *next;
 };

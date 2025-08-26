@@ -52,7 +52,9 @@ int sparse_header_parse(int fd, sparse_header_t *sparse_header)
 }
 
 int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
-			      unsigned int *chunk_size, unsigned int *value)
+			      unsigned int *chunk_size,
+			      uint32_t *value,
+			      off_t *offset)
 {
 	chunk_header_t chunk_header;
 	uint32_t fill_value = 0;
@@ -77,7 +79,7 @@ int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
 		}
 
 		/* Save the current file offset in the 'value' variable */
-		*value = lseek(fd, 0, SEEK_CUR);
+		*offset = lseek(fd, 0, SEEK_CUR);
 
 		/* Move the file cursor forward by the size of the chunk */
 		lseek(fd, *chunk_size, SEEK_CUR);
