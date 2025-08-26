@@ -6,6 +6,8 @@
 #define _FILE_OFFSET_BITS 64
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <limits.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -63,8 +65,9 @@ static struct program *program_load_sparse(struct program *program, int fd)
 	char tmp[PATH_MAX];
 
 	sparse_header_t sparse_header;
-	unsigned int start_sector, chunk_size, chunk_type;
+	unsigned int start_sector, chunk_type;
 	uint32_t sparse_fill_value;
+	uint64_t chunk_size;
 	off_t sparse_offset;
 
 	if (sparse_header_parse(fd, &sparse_header)) {
@@ -110,7 +113,17 @@ static struct program *program_load_sparse(struct program *program, int fd)
 			continue;
 
 		if (chunk_size % program->sector_size != 0) {
-			ux_err("[SPARSE] File chunk #%u size %u is not a sector-multiple\n",
+			ux_err("[SPARSE] File chunk #%u size %" PRIu64 " is not a sector-multiple\n",
+			       i, chunk_size);
+			return NULL;
+		}
+
+		if (chunk_size / program->sector_size >= UINT_MAX) {
+			/*
+			 * Perhaps the programmer can handle larger "num_sectors"?
+			 * Let's cap it for now, it's big enough for now...
+			 */
+			ux_err("[SPARSE] File chunk #%u size %" PRIu64 " is too large\n",
 			       i, chunk_size);
 			return NULL;
 		}
