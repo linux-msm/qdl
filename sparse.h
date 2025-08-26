@@ -6,6 +6,7 @@
 #define __SPARSE_H__
 
 #include <stdint.h>
+#include <stdio.h>
 
 typedef struct __attribute__((__packed__)) sparse_header {
 	/* 0xed26ff3a */
@@ -55,10 +56,11 @@ int sparse_header_parse(int fd, sparse_header_t *sparse_header);
 
 /*
  * Parses the sparse image chunk header from the file descriptor.
- * Sets the chunk size and value based on the parsed data.
+ * Sets the chunk size, and value or offset based on the parsed data.
  * Returns the chunk type on success, or an error code otherwise.
  */
 int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
-			      unsigned int *chunk_size, unsigned int *value);
+			      unsigned int *chunk_size,
+			      uint32_t *value, off_t *offset);
 
 #endif

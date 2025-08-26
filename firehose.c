@@ -427,10 +427,10 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	} else {
 		switch (program->sparse_chunk_type) {
 		case CHUNK_TYPE_RAW:
-			lseek(fd, (off_t)program->sparse_chunk_data, SEEK_SET);
+			lseek(fd, program->sparse_offset, SEEK_SET);
 			break;
 		case CHUNK_TYPE_FILL:
-			fill_value = (uint32_t)program->sparse_chunk_data;
+			fill_value = program->sparse_fill_value;
 			for (n = 0; n < qdl->max_payload_size; n += sizeof(fill_value))
 				memcpy(buf + n, &fill_value, sizeof(fill_value));
 			break;
