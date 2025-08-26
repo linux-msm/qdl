@@ -65,10 +65,11 @@ static struct program *program_load_sparse(struct program *program, int fd)
 	char tmp[PATH_MAX];
 
 	sparse_header_t sparse_header;
-	unsigned int start_sector, chunk_type;
+	unsigned int start_sector;
 	uint32_t sparse_fill_value;
 	uint64_t chunk_size;
 	off_t sparse_offset;
+	int chunk_type;
 
 	if (sparse_header_parse(fd, &sparse_header)) {
 		/*
@@ -97,13 +98,7 @@ static struct program *program_load_sparse(struct program *program, int fd)
 						       &chunk_size,
 						       &sparse_fill_value,
 						       &sparse_offset);
-
-		switch (chunk_type) {
-		case CHUNK_TYPE_RAW:
-		case CHUNK_TYPE_FILL:
-		case CHUNK_TYPE_DONT_CARE:
-			break;
-		default:
+		if (chunk_type < 0) {
 			ux_err("[PROGRAM] Unable to parse sparse chunk %i at %s...failed\n",
 			       i, program->filename);
 			return NULL;
