@@ -804,6 +804,7 @@ static int firehose_reset(struct qdl_device *qdl)
 
 	node = xmlNewChild(root, NULL, (xmlChar *)"power", NULL);
 	xml_setpropf(node, "value", "reset");
+	xml_setpropf(node, "DelayInSeconds", "10"); // Add a delay to prevent reboot fail
 
 	ret = firehose_write(qdl, doc);
 	xmlFreeDoc(doc);

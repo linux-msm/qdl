@@ -40,9 +40,9 @@ $(KS_OUT): $(KS_OBJS)
 compile_commands.json: $(QDL_SRCS) $(KS_SRCS)
 	@echo -n $^ | jq -snR "[inputs|split(\" \")[]|{directory:\"$(PWD)\", command: \"$(CC) $(CFLAGS) -c \(.)\", file:.}]" > $@
 
-version.h::
-	@echo "#define VERSION \"$(VERSION)\"" > .version.h
-	@cmp -s .version.h version.h || cp .version.h version.h
+# version.h::
+# 	@echo "#define VERSION \"$(VERSION)\"" > .version.h
+# 	@cmp -s .version.h version.h || cp .version.h version.h
 
 util.o: version.h
 

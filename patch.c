@@ -81,11 +81,20 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 	int ret;
 
 	for (patch = patches; patch; patch = patch->next) {
+		if(!patch->filename){
+			continue;
+		}
+
 		if (!strcmp(patch->filename, "DISK"))
 			count++;
 	}
 
 	for (patch = patches; patch; patch = patch->next) {
+
+		if(!patch->filename){
+			continue;
+		}
+		
 		if (strcmp(patch->filename, "DISK"))
 			continue;
 
