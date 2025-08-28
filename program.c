@@ -177,9 +177,10 @@ static struct program *program_load_sparse(struct program *program, int fd)
 	return programes_sparse;
 }
 
-static int load_program_tag(xmlNode *node, bool is_nand)
+static int load_program_tag(xmlNode *node, bool is_nand, const char *incdir)
 {
 	struct program *program;
+	char tmp[PATH_MAX];
 	int errors = 0;
 
 	program = calloc(1, sizeof(struct program));
@@ -209,6 +210,14 @@ static int load_program_tag(xmlNode *node, bool is_nand)
 		return -EINVAL;
 	}
 
+	if (incdir) {
+		snprintf(tmp, PATH_MAX, "%s/%s", incdir, program->filename);
+		if (access(tmp, F_OK) != -1) {
+			free((void *)program->filename);
+			program->filename = strdup(tmp);
+		}
+	}
+
 	if (programes) {
 		programes_last->next = program;
 		programes_last = program;
@@ -220,7 +229,7 @@ static int load_program_tag(xmlNode *node, bool is_nand)
 	return 0;
 }
 
-int program_load(const char *program_file, bool is_nand)
+int program_load(const char *program_file, bool is_nand, const char *incdir)
 {
 	xmlNode *node;
 	xmlNode *root;
@@ -241,7 +250,7 @@ int program_load(const char *program_file, bool is_nand)
 		if (!xmlStrcmp(node->name, (xmlChar *)"erase"))
 			errors = load_erase_tag(node, is_nand);
 		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
-			errors = load_program_tag(node, is_nand);
+			errors = load_program_tag(node, is_nand, incdir);
 		else {
 			ux_err("unrecognized tag \"%s\" in program-type file \"%s\"\n", node->name, program_file);
 			errors = -EINVAL;
@@ -258,12 +267,10 @@ out:
 }
 
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
-		    const char *incdir, bool allow_missing)
+		    bool allow_missing)
 {
 	struct program *program;
 	struct program *program_sparse;
-	const char *filename;
-	char tmp[PATH_MAX];
 	int ret;
 	int fd;
 
@@ -271,14 +278,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 		if (program->is_erase || !program->filename)
 			continue;
 
-		filename = program->filename;
-		if (incdir) {
-			snprintf(tmp, PATH_MAX, "%s/%s", incdir, filename);
-			if (access(tmp, F_OK) != -1)
-				filename = tmp;
-		}
-
-		fd = open(filename, O_RDONLY | O_BINARY);
+		fd = open(program->filename, O_RDONLY | O_BINARY);
 
 		if (fd < 0) {
 			ux_info("unable to open %s", program->filename);

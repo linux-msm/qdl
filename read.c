@@ -19,13 +19,14 @@
 static struct read_op *read_ops;
 static struct read_op *read_ops_last;
 
-int read_op_load(const char *read_op_file)
+int read_op_load(const char *read_op_file, const char *incdir)
 {
 	struct read_op *read_op;
 	xmlNode *node;
 	xmlNode *root;
 	xmlDoc *doc;
 	int errors;
+	char tmp[PATH_MAX];
 
 	doc = xmlReadFile(read_op_file, NULL, 0);
 	if (!doc) {
@@ -60,6 +61,12 @@ int read_op_load(const char *read_op_file)
 			continue;
 		}
 
+		if (incdir) {
+			snprintf(tmp, PATH_MAX, "%s/%s", incdir, read_op->filename);
+			if (access(tmp, F_OK) != -1)
+				read_op->filename = strdup(tmp);
+		}
+
 		if (read_ops) {
 			read_ops_last->next = read_op;
 			read_ops_last = read_op;
@@ -74,25 +81,14 @@ int read_op_load(const char *read_op_file)
 	return 0;
 }
 
-int read_op_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct read_op *read_op, int fd),
-		    const char *incdir)
+int read_op_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct read_op *read_op, int fd))
 {
 	struct read_op *read_op;
-	const char *filename;
-	char tmp[PATH_MAX];
 	int ret;
 	int fd;
 
 	for (read_op = read_ops; read_op; read_op = read_op->next) {
-		filename = read_op->filename;
-		if (incdir) {
-			snprintf(tmp, PATH_MAX, "%s/%s", incdir, filename);
-			if (access(tmp, F_OK) != -1)
-				filename = tmp;
-		}
-
-		fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
-
+		fd = open(read_op->filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 		if (fd < 0) {
 			ux_info("unable to open %s...\n", read_op->filename);
 			return ret;
