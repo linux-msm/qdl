@@ -58,11 +58,9 @@ static int load_erase_tag(xmlNode *node, bool is_nand)
 	return 0;
 }
 
-static struct program *program_load_sparse(struct program *program, int fd)
+static int program_load_sparse(struct program *program, int fd)
 {
 	struct program *program_sparse = NULL;
-	struct program *programes_sparse = NULL;
-	struct program *programes_sparse_last = NULL;
 	char tmp[PATH_MAX];
 
 	sparse_header_t sparse_header;
@@ -78,20 +76,25 @@ static struct program *program_load_sparse(struct program *program, int fd)
 		 * for a partition node but lacks a sparse header,
 		 * it will be validated against the defined partition size.
 		 * If the sizes match, it is likely that the 'sparse="true"' attribute
-		 * was set by mistake.
+		 * was set by mistake, fix the sparse flag and add the
+		 * program entry to the list.
 		 */
 		if ((off_t)program->sector_size * program->num_sectors ==
 		    lseek(fd, 0, SEEK_END)) {
-			program_sparse = calloc(1, sizeof(struct program));
-			memcpy(program_sparse, program, sizeof(struct program));
-			program_sparse->sparse = false;
-			program_sparse->next = NULL;
-			return program_sparse;
+			program->sparse = false;
+
+			if (programes) {
+				programes_last->next = program;
+				programes_last = program;
+			} else {
+				programes = program;
+				programes_last = program;
+			}
 		}
 
 		ux_err("[PROGRAM] Unable to parse sparse header at %s...failed\n",
 		       program->filename);
-		return NULL;
+		return -1;
 	}
 
 	for (uint32_t i = 0; i < sparse_header.total_chunks; ++i) {
@@ -102,7 +105,7 @@ static struct program *program_load_sparse(struct program *program, int fd)
 		if (chunk_type < 0) {
 			ux_err("[PROGRAM] Unable to parse sparse chunk %i at %s...failed\n",
 			       i, program->filename);
-			return NULL;
+			return -1;
 		}
 
 		if (chunk_size == 0)
@@ -111,7 +114,7 @@ static struct program *program_load_sparse(struct program *program, int fd)
 		if (chunk_size % program->sector_size != 0) {
 			ux_err("[SPARSE] File chunk #%u size %" PRIu64 " is not a sector-multiple\n",
 			       i, chunk_size);
-			return NULL;
+			return -1;
 		}
 
 		if (chunk_size / program->sector_size >= UINT_MAX) {
@@ -121,51 +124,39 @@ static struct program *program_load_sparse(struct program *program, int fd)
 			 */
 			ux_err("[SPARSE] File chunk #%u size %" PRIu64 " is too large\n",
 			       i, chunk_size);
-			return NULL;
+			return -1;
 		}
 
-		switch (chunk_type) {
-		case CHUNK_TYPE_RAW:
+		if (chunk_type == CHUNK_TYPE_RAW || chunk_type == CHUNK_TYPE_FILL) {
 			program_sparse = calloc(1, sizeof(struct program));
-			memcpy(program_sparse, program, sizeof(struct program));
+			program_sparse->pages_per_block = program->pages_per_block;
+			program_sparse->sector_size = program->sector_size;
+			program_sparse->file_offset = program->file_offset;
+			program_sparse->filename = strdup(program->filename);
+			program_sparse->label = strdup(program->label);
+			program_sparse->partition = program->partition;
+			program_sparse->sparse = program->sparse;
+			program_sparse->start_sector = strdup(program->start_sector);
+			program_sparse->last_sector = program->last_sector;
+			program_sparse->is_nand = program->is_nand;
+			program_sparse->is_erase = false;
 
-			program_sparse->next = NULL;
+			program_sparse->sparse_chunk_type = chunk_type;
 			program_sparse->num_sectors = chunk_size / program->sector_size;
 
-			program_sparse->sparse_chunk_type = CHUNK_TYPE_RAW;
-			program_sparse->sparse_offset = sparse_offset;
-
-			if (programes_sparse) {
-				programes_sparse_last->next = program_sparse;
-				programes_sparse_last = program_sparse;
-			} else {
-				programes_sparse = program_sparse;
-				programes_sparse_last = program_sparse;
-			}
-
-			break;
-		case CHUNK_TYPE_FILL:
-
-			program_sparse = calloc(1, sizeof(struct program));
-			memcpy(program_sparse, program, sizeof(struct program));
+			if (chunk_type == CHUNK_TYPE_RAW)
+				program_sparse->sparse_offset = sparse_offset;
+			else
+				program_sparse->sparse_fill_value = sparse_fill_value;
 
 			program_sparse->next = NULL;
-			program_sparse->num_sectors = chunk_size / program->sector_size;
-
-			program_sparse->sparse_chunk_type = CHUNK_TYPE_FILL;
-			program_sparse->sparse_fill_value = sparse_fill_value;
-
-			if (programes_sparse) {
-				programes_sparse_last->next = program_sparse;
-				programes_sparse_last = program_sparse;
+			if (programes) {
+				programes_last->next = program_sparse;
+				programes_last = program_sparse;
 			} else {
-				programes_sparse = program_sparse;
-				programes_sparse_last = program_sparse;
+				programes = program_sparse;
+				programes_last = program_sparse;
 			}
-
-			break;
-		default:
-			break;
 		}
 
 		start_sector = (unsigned int)strtoul(program->start_sector, NULL, 0);
@@ -174,7 +165,7 @@ static struct program *program_load_sparse(struct program *program, int fd)
 		program->start_sector = strdup(tmp);
 	}
 
-	return programes_sparse;
+	return 0;
 }
 
 static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, const char *incdir)
@@ -182,7 +173,8 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 	struct program *program;
 	char tmp[PATH_MAX];
 	int errors = 0;
-	int fd;
+	int ret;
+	int fd = -1;
 
 	program = calloc(1, sizeof(struct program));
 
@@ -232,7 +224,19 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 			free((void *)program->filename);
 			program->filename = NULL;
 		}
-		close(fd);
+	}
+
+	if (fd >= 0 && program->sparse) {
+		ret = program_load_sparse(program, fd);
+		if (ret < 0)
+			return -1;
+
+		/*
+		 * Chunks were added to the program list, drop the filename of
+		 * the parent, to prevent this from being written to the device
+		 */
+		free((void *)program->filename);
+		program->filename = NULL;
 	}
 
 	if (programes) {
@@ -242,6 +246,9 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 		programes = program;
 		programes_last = program;
 	}
+
+	if (fd >= 0)
+		close(fd);
 
 	return 0;
 }
@@ -286,7 +293,6 @@ out:
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd))
 {
 	struct program *program;
-	struct program *program_sparse;
 	int ret;
 	int fd;
 
@@ -301,22 +307,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 			return -1;
 		}
 
-		if (!program->sparse) {
-			ret = apply(qdl, program, fd);
-		} else {
-			program_sparse = program_load_sparse(program, fd);
-			if (!program_sparse) {
-				ux_err("[PROGRAM] load sparse failed\n");
-				return -EINVAL;
-			}
-
-			for (; program_sparse; program_sparse = program_sparse->next) {
-				ret = apply(qdl, program_sparse, fd);
-				if (ret)
-					break;
-			}
-		}
-
+		ret = apply(qdl, program, fd);
 		close(fd);
 		if (ret)
 			return ret;
