@@ -177,11 +177,12 @@ static struct program *program_load_sparse(struct program *program, int fd)
 	return programes_sparse;
 }
 
-static int load_program_tag(xmlNode *node, bool is_nand, const char *incdir)
+static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, const char *incdir)
 {
 	struct program *program;
 	char tmp[PATH_MAX];
 	int errors = 0;
+	int fd;
 
 	program = calloc(1, sizeof(struct program));
 
@@ -210,12 +211,28 @@ static int load_program_tag(xmlNode *node, bool is_nand, const char *incdir)
 		return -EINVAL;
 	}
 
-	if (incdir) {
-		snprintf(tmp, PATH_MAX, "%s/%s", incdir, program->filename);
-		if (access(tmp, F_OK) != -1) {
-			free((void *)program->filename);
-			program->filename = strdup(tmp);
+	if (program->filename) {
+		if (incdir) {
+			snprintf(tmp, PATH_MAX, "%s/%s", incdir, program->filename);
+			if (access(tmp, F_OK) != -1) {
+				free((void *)program->filename);
+				program->filename = strdup(tmp);
+			}
 		}
+
+		fd = open(program->filename, O_RDONLY | O_BINARY);
+		if (fd < 0) {
+			ux_info("unable to open %s", program->filename);
+			if (!allow_missing) {
+				ux_info("...failing\n");
+				return -1;
+			}
+			ux_info("...ignoring\n");
+
+			free((void *)program->filename);
+			program->filename = NULL;
+		}
+		close(fd);
 	}
 
 	if (programes) {
@@ -229,7 +246,7 @@ static int load_program_tag(xmlNode *node, bool is_nand, const char *incdir)
 	return 0;
 }
 
-int program_load(const char *program_file, bool is_nand, const char *incdir)
+int program_load(const char *program_file, bool is_nand, bool allow_missing, const char *incdir)
 {
 	xmlNode *node;
 	xmlNode *root;
@@ -250,7 +267,7 @@ int program_load(const char *program_file, bool is_nand, const char *incdir)
 		if (!xmlStrcmp(node->name, (xmlChar *)"erase"))
 			errors = load_erase_tag(node, is_nand);
 		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
-			errors = load_program_tag(node, is_nand, incdir);
+			errors = load_program_tag(node, is_nand, allow_missing, incdir);
 		else {
 			ux_err("unrecognized tag \"%s\" in program-type file \"%s\"\n", node->name, program_file);
 			errors = -EINVAL;
@@ -266,8 +283,7 @@ out:
 	return errors;
 }
 
-int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd),
-		    bool allow_missing)
+int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd))
 {
 	struct program *program;
 	struct program *program_sparse;
@@ -281,13 +297,8 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 		fd = open(program->filename, O_RDONLY | O_BINARY);
 
 		if (fd < 0) {
-			ux_info("unable to open %s", program->filename);
-			if (!allow_missing) {
-				ux_info("...failing\n");
-				return -1;
-			}
-			ux_info("...ignoring\n");
-			continue;
+			ux_err("unable to open %s\n", program->filename);
+			return -1;
 		}
 
 		if (!program->sparse) {
