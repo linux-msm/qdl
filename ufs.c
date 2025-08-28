@@ -15,12 +15,12 @@
 
 #include "ufs.h"
 #include "qdl.h"
+#include "list.h"
 #include "patch.h"
 
 struct ufs_common *ufs_common_p;
 struct ufs_epilogue *ufs_epilogue_p;
-struct ufs_body *ufs_body_p;
-struct ufs_body *ufs_body_last;
+static struct list_head ufs_bodies = LIST_INIT(ufs_bodies);
 
 static const char notice_bconfigdescrlock[] = "\n"
 "Please pay attention that UFS provisioning is irreversible (OTP) operation unless parameter bConfigDescrLock = 0.\n"
@@ -124,6 +124,7 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 	xmlDoc *doc;
 	int retval = 0;
 	struct ufs_body *ufs_body_tmp;
+	struct ufs_body *ufs_body;
 
 	if (ufs_common_p) {
 		ux_err("Only one UFS provisioning XML allowed, \"%s\" ignored\n",
@@ -169,13 +170,7 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 		} else if (xmlGetProp(node, (xmlChar *)"LUNum")) {
 			ufs_body_tmp = ufs_parse_body(node);
 			if (ufs_body_tmp) {
-				if (ufs_body_p) {
-					ufs_body_last->next = ufs_body_tmp;
-					ufs_body_last = ufs_body_tmp;
-				} else {
-					ufs_body_p = ufs_body_tmp;
-					ufs_body_last = ufs_body_tmp;
-				}
+				list_add(&ufs_bodies, &ufs_body_tmp->node);
 			} else {
 				ux_err("invalid UFS body tag found in \"%s\"\n",
 				       ufs_file);
@@ -210,7 +205,7 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 
 	xmlFreeDoc(doc);
 
-	if (!retval && (!ufs_common_p || !ufs_body_p || !ufs_epilogue_p)) {
+	if (!retval && (!ufs_common_p || list_empty(&ufs_bodies) || !ufs_epilogue_p)) {
 		ux_err("incomplete UFS provisioning information in \"%s\"\n", ufs_file);
 		retval = -EINVAL;
 	}
@@ -219,8 +214,8 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 		if (ufs_common_p) {
 			free(ufs_common_p);
 		}
-		if (ufs_body_p) {
-			free(ufs_body_p);
+		list_for_each_entry_safe(ufs_body, ufs_body_tmp, &ufs_bodies, node) {
+			free(ufs_body);
 		}
 		if (ufs_epilogue_p) {
 			free(ufs_epilogue_p);
@@ -260,7 +255,7 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 	ret = apply_ufs_common(qdl, ufs_common_p);
 	if (ret)
 		return ret;
-	for (body = ufs_body_p; body; body = body->next) {
+	list_for_each_entry(body, &ufs_bodies, node) {
 		ret = apply_ufs_body(qdl, body);
 		if (ret)
 			return ret;
@@ -275,7 +270,7 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 	ret = apply_ufs_common(qdl, ufs_common_p);
 	if (ret)
 		return ret;
-	for (body = ufs_body_p; body; body = body->next) {
+	list_for_each_entry(body, &ufs_bodies, node) {
 		ret = apply_ufs_body(qdl, body);
 		if (ret)
 			return ret;

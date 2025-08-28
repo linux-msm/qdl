@@ -2,6 +2,8 @@
 #ifndef __PATCH_H__
 #define __PATCH_H__
 
+#include "list.h"
+
 struct qdl_device;
 
 struct patch {
@@ -14,7 +16,7 @@ struct patch {
 	const char *value;
 	const char *what;
 
-	struct patch *next;
+	struct list_head node;
 };
 
 int patch_load(const char *patch_file);

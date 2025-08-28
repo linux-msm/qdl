@@ -6,6 +6,8 @@
 #define __UFS_H__
 #include <stdbool.h>
 
+#include "list.h"
+
 struct qdl_device;
 
 struct ufs_common {
@@ -37,7 +39,7 @@ struct ufs_body {
 	unsigned int wContextCapabilities;
 	const char	*desc;
 
-	struct		ufs_body *next;
+	struct list_head node;
 };
 
 struct ufs_epilogue {

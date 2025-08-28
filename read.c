@@ -11,13 +11,13 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
+#include "list.h"
 #include "read.h"
 #include "qdl.h"
 #include "oscompat.h"
 #include "gpt.h"
 
-static struct read_op *read_ops;
-static struct read_op *read_ops_last;
+static struct list_head read_ops = LIST_INIT(read_ops);
 
 int read_op_load(const char *read_op_file, const char *incdir)
 {
@@ -67,13 +67,7 @@ int read_op_load(const char *read_op_file, const char *incdir)
 				read_op->filename = strdup(tmp);
 		}
 
-		if (read_ops) {
-			read_ops_last->next = read_op;
-			read_ops_last = read_op;
-		} else {
-			read_ops = read_op;
-			read_ops_last = read_op;
-		}
+		list_add(&read_ops, &read_op->node);
 	}
 
 	xmlFreeDoc(doc);
@@ -87,7 +81,7 @@ int read_op_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 	int ret;
 	int fd;
 
-	for (read_op = read_ops; read_op; read_op = read_op->next) {
+	list_for_each_entry(read_op, &read_ops, node) {
 		fd = open(read_op->filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 		if (fd < 0) {
 			ux_info("unable to open %s...\n", read_op->filename);
@@ -133,13 +127,7 @@ int read_cmd_add(const char *address, const char *filename)
 	read_op->start_sector = strdup(buf);
 	read_op->gpt_partition = gpt_partition;
 
-	if (read_ops) {
-		read_ops_last->next = read_op;
-		read_ops_last = read_op;
-	} else {
-		read_ops = read_op;
-		read_ops_last = read_op;
-	}
+	list_add(&read_ops, &read_op->node);
 
 	return 0;
 }
@@ -151,7 +139,7 @@ int read_resolve_gpt_deferrals(struct qdl_device *qdl)
 	char buf[20];
 	int ret;
 
-	for (read_op = read_ops; read_op; read_op = read_op->next) {
+	list_for_each_entry(read_op, &read_ops, node) {
 		if (!read_op->gpt_partition)
 			continue;
 

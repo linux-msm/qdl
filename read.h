@@ -4,6 +4,8 @@
 
 #include <stdbool.h>
 
+#include "list.h"
+
 struct qdl_device;
 
 struct read_op {
@@ -13,7 +15,8 @@ struct read_op {
 	unsigned int num_sectors;
 	const char *start_sector;
 	const char *gpt_partition;
-	struct read_op *next;
+
+	struct list_head node;
 };
 
 int read_op_load(const char *read_op_file, const char *incdir);

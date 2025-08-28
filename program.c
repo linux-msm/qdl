@@ -20,8 +20,7 @@
 #include "sparse.h"
 #include "gpt.h"
 
-static struct program *programes;
-static struct program *programes_last;
+static struct list_head programs = LIST_INIT(programs);
 
 static int load_erase_tag(xmlNode *node, bool is_nand)
 {
@@ -47,13 +46,7 @@ static int load_erase_tag(xmlNode *node, bool is_nand)
 		return -EINVAL;
 	}
 
-	if (programes) {
-		programes_last->next = program;
-		programes_last = program;
-	} else {
-		programes = program;
-		programes_last = program;
-	}
+	list_add(&programs, &program->node);
 
 	return 0;
 }
@@ -82,14 +75,8 @@ static int program_load_sparse(struct program *program, int fd)
 		if ((off_t)program->sector_size * program->num_sectors ==
 		    lseek(fd, 0, SEEK_END)) {
 			program->sparse = false;
-
-			if (programes) {
-				programes_last->next = program;
-				programes_last = program;
-			} else {
-				programes = program;
-				programes_last = program;
-			}
+			list_add(&programs, &program->node);
+			return 0;
 		}
 
 		ux_err("[PROGRAM] Unable to parse sparse header at %s...failed\n",
@@ -149,14 +136,7 @@ static int program_load_sparse(struct program *program, int fd)
 			else
 				program_sparse->sparse_fill_value = sparse_fill_value;
 
-			program_sparse->next = NULL;
-			if (programes) {
-				programes_last->next = program_sparse;
-				programes_last = program_sparse;
-			} else {
-				programes = program_sparse;
-				programes_last = program_sparse;
-			}
+			list_add(&programs, &program_sparse->node);
 		}
 
 		start_sector = (unsigned int)strtoul(program->start_sector, NULL, 0);
@@ -239,13 +219,7 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 		program->filename = NULL;
 	}
 
-	if (programes) {
-		programes_last->next = program;
-		programes_last = program;
-	} else {
-		programes = program;
-		programes_last = program;
-	}
+	list_add(&programs, &program->node);
 
 	if (fd >= 0)
 		close(fd);
@@ -296,7 +270,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 	int ret;
 	int fd;
 
-	for (program = programes; program; program = program->next) {
+	list_for_each_entry(program, &programs, node) {
 		if (program->is_erase || !program->filename)
 			continue;
 
@@ -321,7 +295,7 @@ int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 	struct program *program;
 	int ret;
 
-	for (program = programes; program; program = program->next) {
+	list_for_each_entry(program, &programs, node) {
 		if (!program->is_erase)
 			continue;
 
@@ -338,7 +312,7 @@ static struct program *program_find_partition(const char *partition)
 	struct program *program;
 	const char *label;
 
-	for (program = programes; program; program = program->next) {
+	list_for_each_entry(program, &programs, node) {
 		label = program->label;
 		if (!label)
 			continue;
@@ -412,11 +386,10 @@ int program_is_sec_partition_flashed(void)
 
 void free_programs(void)
 {
-	struct program *program = programes;
+	struct program *program;
 	struct program *next;
 
-	for (program = programes; program; program = next) {
-		next = program->next;
+	list_for_each_entry_safe(program, next, &programs, node) {
 		free((void *)program->filename);
 		free((void *)program->label);
 		free((void *)program->start_sector);
@@ -424,7 +397,7 @@ void free_programs(void)
 		free(program);
 	}
 
-	programes = NULL;
+	list_init(&programs);
 }
 
 int program_cmd_add(const char *address, const char *filename)
@@ -457,13 +430,7 @@ int program_cmd_add(const char *address, const char *filename)
 	program->is_erase = false;
 	program->gpt_partition = gpt_partition;
 
-	if (programes) {
-		programes_last->next = program;
-		programes_last = program;
-	} else {
-		programes = program;
-		programes_last = program;
-	}
+	list_add(&programs, &program->node);
 
 	return 0;
 }
@@ -475,7 +442,7 @@ int program_resolve_gpt_deferrals(struct qdl_device *qdl)
 	char buf[20];
 	int ret;
 
-	for (program = programes; program; program = program->next) {
+	list_for_each_entry(program, &programs, node) {
 		if (!program->gpt_partition)
 			continue;
 
