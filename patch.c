@@ -13,8 +13,7 @@
 #include "patch.h"
 #include "qdl.h"
 
-static struct patch *patches;
-static struct patch *patches_last;
+static struct list_head patches = LIST_INIT(patches);
 
 int patch_load(const char *patch_file)
 {
@@ -59,13 +58,7 @@ int patch_load(const char *patch_file)
 			continue;
 		}
 
-		if (patches) {
-			patches_last->next = patch;
-			patches_last = patch;
-		} else {
-			patches = patch;
-			patches_last = patch;
-		}
+		list_add(&patches, &patch->node);
 	}
 
 	xmlFreeDoc(doc);
@@ -80,12 +73,12 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 	unsigned int idx = 0;
 	int ret;
 
-	for (patch = patches; patch; patch = patch->next) {
+	list_for_each_entry(patch, &patches, node) {
 		if (!strcmp(patch->filename, "DISK"))
 			count++;
 	}
 
-	for (patch = patches; patch; patch = patch->next) {
+	list_for_each_entry(patch, &patches, node) {
 		if (strcmp(patch->filename, "DISK"))
 			continue;
 
@@ -103,11 +96,10 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 
 void free_patches(void)
 {
-	struct patch *patch = patches;
+	struct patch *patch;
 	struct patch *next;
 
-	for (patch = patches; patch; patch = next) {
-		next = patch->next;
+	list_for_each_entry_safe(patch, next, &patches, node) {
 		free((void *)patch->filename);
 		free((void *)patch->start_sector);
 		free((void *)patch->value);
@@ -115,5 +107,5 @@ void free_patches(void)
 		free(patch);
 	}
 
-	patches = NULL;
+	list_init(&patches);
 }

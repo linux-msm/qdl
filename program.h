@@ -5,7 +5,7 @@
 #include <sys/types.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "qdl.h"
+#include "list.h"
 
 struct program {
 	unsigned int pages_per_block;
@@ -28,8 +28,10 @@ struct program {
 
 	const char *gpt_partition;
 
-	struct program *next;
+	struct list_head node;
 };
+
+struct qdl_device;
 
 int program_load(const char *program_file, bool is_nand, bool allow_missing, const char *incdir);
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd));
