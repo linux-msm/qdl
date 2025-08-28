@@ -68,7 +68,7 @@ int qdl_vip_transfer_enable(struct qdl_device *qdl, const char *vip_table_path);
 struct qdl_device *usb_init(void);
 struct qdl_device *sim_init(void);
 
-int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage, bool allow_missing);
+int firehose_run(struct qdl_device *qdl, const char *storage, bool allow_missing);
 int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);
 int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 	       const char *ramdump_path, const char *ramdump_filter);

@@ -251,7 +251,7 @@ int main(int argc, char **argv)
 				errx(1, "patch_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_PROGRAM:
-			ret = program_load(argv[optind], !strcmp(storage, "nand"));
+			ret = program_load(argv[optind], !strcmp(storage, "nand"), incdir);
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[optind]);
 
@@ -260,7 +260,7 @@ int main(int argc, char **argv)
 					" changes. Allow explicitly with --allow-fusing parameter");
 			break;
 		case QDL_FILE_READ:
-			ret = read_op_load(argv[optind]);
+			ret = read_op_load(argv[optind], incdir);
 			if (ret < 0)
 				errx(1, "read_op_load %s failed", argv[optind]);
 			break;
@@ -300,7 +300,7 @@ int main(int argc, char **argv)
 	if (ret < 0)
 		goto out_cleanup;
 
-	ret = firehose_run(qdl, incdir, storage, allow_missing);
+	ret = firehose_run(qdl, storage, allow_missing);
 	if (ret < 0)
 		goto out_cleanup;
 

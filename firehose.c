@@ -883,8 +883,7 @@ static int firehose_reset(struct qdl_device *qdl)
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
-int firehose_run(struct qdl_device *qdl, const char *incdir,
-		 const char *storage, bool allow_missing)
+int firehose_run(struct qdl_device *qdl, const char *storage, bool allow_missing)
 {
 	bool multiple;
 	int bootable;
@@ -927,7 +926,7 @@ int firehose_run(struct qdl_device *qdl, const char *incdir,
 	if (ret)
 		return ret;
 
-	ret = program_execute(qdl, firehose_program, incdir, allow_missing);
+	ret = program_execute(qdl, firehose_program, allow_missing);
 	if (ret)
 		return ret;
 
@@ -935,7 +934,7 @@ int firehose_run(struct qdl_device *qdl, const char *incdir,
 	if (ret)
 		return ret;
 
-	ret = read_op_execute(qdl, firehose_read_op, incdir);
+	ret = read_op_execute(qdl, firehose_read_op);
 	if (ret)
 		return ret;
 
