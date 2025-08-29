@@ -238,6 +238,8 @@ int main(int argc, char **argv)
 		print_version();
 
 	prog_mbn = argv[optind++];
+	if (access(prog_mbn, F_OK))
+		errx(1, "unable to load programmer \"%s\"", prog_mbn);
 
 	do {
 		type = detect_type(argv[optind]);
