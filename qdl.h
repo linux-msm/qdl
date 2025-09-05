@@ -7,6 +7,7 @@
 #include "patch.h"
 #include "program.h"
 #include "read.h"
+#include "raw.h"
 #include <libxml/tree.h>
 #include "vip.h"
 

@@ -660,6 +660,22 @@ out:
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
+static int firehose_raw_op(struct qdl_device *qdl, struct raw_op *raw_op)
+{
+	int ret;
+
+	ret = firehose_write(qdl, raw_op->doc);
+	if (ret < 0)
+		goto out;
+
+	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+	if (ret)
+		ux_err("raw xml application failed\n");
+
+out:
+	return ret == FIREHOSE_ACK ? 0 : -1;
+}
+
 static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node)
 {
 	xmlNode *root;
@@ -865,6 +881,10 @@ int firehose_run(struct qdl_device *qdl, const char *incdir,
 		return ret;
 
 	ret = read_op_execute(qdl, firehose_read_op, incdir);
+	if (ret)
+		return ret;
+
+	ret = raw_op_execute(qdl, firehose_raw_op);
 	if (ret)
 		return ret;
 

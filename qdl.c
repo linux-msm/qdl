@@ -31,6 +31,7 @@ enum {
 	QDL_FILE_PATCH,
 	QDL_FILE_PROGRAM,
 	QDL_FILE_READ,
+	QDL_FILE_RAW,
 	QDL_FILE_UFS,
 	QDL_FILE_CONTENTS,
 };
@@ -95,6 +96,7 @@ static void print_usage(FILE *out)
 	fprintf(out, " -u, --out-chunk-size=T\t\tOverride chunk size for transaction with T\n");
 	fprintf(out, " -t, --create-digests=T\t\tGenerate table of digests in the T folder\n");
 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
+	fprintf(out, " -r, --raw-mode\t\t\tRaw XML mode execution\n");
 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
 	fprintf(out, "\n");
 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
@@ -113,6 +115,7 @@ int main(int argc, char **argv)
 	bool qdl_finalize_provisioning = false;
 	bool allow_fusing = false;
 	bool allow_missing = false;
+	bool raw_mode = false;
 	long out_chunk_size = 0;
 	struct qdl_device *qdl = NULL;
 	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
@@ -130,11 +133,12 @@ int main(int argc, char **argv)
 		{"allow-fusing", no_argument, 0, 'c'},
 		{"dry-run", no_argument, 0, 'n'},
 		{"create-digests", required_argument, 0, 't'},
+		{"raw-mode", no_argument, 0, 'r'},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:h", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:rh", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -173,6 +177,9 @@ int main(int argc, char **argv)
 			break;
 		case 'D':
 			vip_table_path = optarg;
+			break;
+		case 'r':
+			raw_mode = true;
 			break;
 		case 'h':
 			print_usage(stdout);
@@ -220,7 +227,7 @@ int main(int argc, char **argv)
 	prog_mbn = argv[optind++];
 
 	do {
-		type = detect_type(argv[optind]);
+		type = raw_mode ? QDL_FILE_RAW : detect_type(argv[optind]);
 		if (type < 0 || type == QDL_FILE_UNKNOWN)
 			errx(1, "failed to detect file type of %s\n", argv[optind]);
 
@@ -243,6 +250,11 @@ int main(int argc, char **argv)
 			ret = read_op_load(argv[optind]);
 			if (ret < 0)
 				errx(1, "read_op_load %s failed", argv[optind]);
+			break;
+		case QDL_FILE_RAW:
+			ret = raw_op_load(argv[optind]);
+			if (ret < 0)
+				errx(1, "raw_op_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_UFS:
 			ret = ufs_load(argv[optind], qdl_finalize_provisioning);
