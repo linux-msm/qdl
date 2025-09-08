@@ -72,6 +72,37 @@ the board to flash through `--serial` param:
 qdl --serial=0AA94EFD prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
 
+### Reading and writing raw binaries
+
+In addition to flashing builds using their XML-based descriptions, QDL supports
+reading and writing binaries directly.
+
+```bash
+qdl prog_firehose_ddr.elf [read | write] [address specifier] <binary>...
+```
+
+Multiple read and write commands can be specified at once. The ***address
+specifier*** can take the forms:
+
+- N - single number, specifies the physical partition number N to write the
+  ***binary** into, starting at sector 0 (currently reading a whole physical
+  partition is not supported).
+
+- N/S - two numbers, specifies the physical partition number N, and the start
+  sector S, to write the ***binary*** into (reading with an offset is not
+  supported)
+
+- N/S+L - three numbers, specified the physical partition number N, the start
+  sector S and the number of sectors L, that ***binary*** should be written to,
+  or which should be read into ***binary***.
+
+- partition name - a string, will match against partition names across the GPT
+  partition tables on all physical partitions.
+
+- N/partition_name - single number, followed by string - will match against
+  partition names of the GPT partition table in the specified physical
+  partition N.
+
 ### Validated Image Programming (VIP)
 
 QDL now supports **Validated Image Programming (VIP)** mode , which is activated
