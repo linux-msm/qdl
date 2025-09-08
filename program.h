@@ -14,7 +14,7 @@ struct program {
 	const char *filename;
 	const char *label;
 	unsigned int num_sectors;
-	unsigned int partition;
+	int partition;
 	bool sparse;
 	const char *start_sector;
 	unsigned int last_sector;
@@ -26,6 +26,8 @@ struct program {
 	uint32_t sparse_fill_value;
 	off_t sparse_offset;
 
+	const char *gpt_partition;
+
 	struct program *next;
 };
 
@@ -36,6 +38,7 @@ int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 int program_find_bootable_partition(bool *multiple_found);
 int program_is_sec_partition_flashed(void);
 int program_cmd_add(const char *address, const char *filename);
+int program_resolve_gpt_deferrals(struct qdl_device *qdl);
 
 void free_programs(void);
 

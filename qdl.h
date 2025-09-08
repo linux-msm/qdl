@@ -69,6 +69,7 @@ struct qdl_device *usb_init(void);
 struct qdl_device *sim_init(void);
 
 int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage, bool allow_missing);
+int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);
 int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 	       const char *ramdump_path, const char *ramdump_filter);
 void print_hex_dump(const char *prefix, const void *buf, size_t len);
@@ -85,8 +86,9 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int size, ...);
 
 void print_version(void);
 
-int parse_storage_address(const char *address, int *_partition,
-			  unsigned int *_sector, unsigned int *_length);
+int parse_storage_address(const char *address, int *physical_partition,
+			  unsigned int *start_sector, unsigned int *num_sectors,
+			  char **gpt_partition);
 
 extern bool qdl_debug;
 

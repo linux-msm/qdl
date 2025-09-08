@@ -123,6 +123,7 @@ bool attr_as_bool(xmlNode *node, const char *attr, int *errors)
  * @physical_partition: physical partition
  * @start_sector: start_sector
  * @num_sectors: number of sectors
+ * @gpt_partition: GPT name
  *
  * This function parses the provided address specifier and detects the
  * following patterns:
@@ -130,22 +131,33 @@ bool attr_as_bool(xmlNode *node, const char *attr, int *errors)
  * N => physical partition N, sector 0
  * N/S => physical partition N, sector S
  * N/S+L => physical partition N, L sectors at sector S
+ * name => GPT partition name match across all physical partitions
+ * N/name => GPT partition name match within physical partition N
+ *
+ * @physical_partition is either the requested physical partition, or -1 if
+ * none is specified. Either @start_sector and @num_sectors, or @gpt_partition
+ * will represent the equested address, the other(s) will be zeroed.
  *
  * Returns: 0 on success, -1 on failure
  */
 int parse_storage_address(const char *address, int *physical_partition,
-			  unsigned int *start_sector, unsigned int *num_sectors)
+			  unsigned int *start_sector, unsigned int *num_sectors,
+			  char **gpt_partition)
 {
 	unsigned long length = 0;
 	const char *ptr = address;
 	unsigned long sector = 0;
 	long partition;
 	char *end;
+	char *gpt = NULL;
 
 	errno = 0;
 	partition = strtol(ptr, &end, 10);
-	if (end == ptr)
-		return -1;
+	if (end == ptr) {
+		partition = -1;
+		gpt = strdup(ptr);
+		goto done;
+	}
 	if ((errno == ERANGE && partition == LONG_MAX) || partition < 0)
 		return -1;
 
@@ -158,8 +170,10 @@ int parse_storage_address(const char *address, int *physical_partition,
 
 	errno = 0;
 	sector = strtoul(ptr, &end, 10);
-	if (end == ptr)
-		return -1;
+	if (end == ptr) {
+		gpt = strdup(ptr);
+		goto done;
+	}
 	if (errno == ERANGE && sector == ULONG_MAX)
 		return -1;
 
@@ -186,6 +200,7 @@ done:
 	*physical_partition = partition;
 	*start_sector = sector;
 	*num_sectors = length;
+	*gpt_partition = gpt;
 
 	return 0;
 }

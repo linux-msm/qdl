@@ -9,7 +9,7 @@ LDFLAGS += -lws2_32
 endif
 prefix := /usr/local
 
-QDL_SRCS := firehose.c io.c qdl.c sahara.c util.c patch.c program.c read.c sha2.c sim.c ufs.c usb.c ux.c oscompat.c vip.c sparse.c
+QDL_SRCS := firehose.c io.c qdl.c sahara.c util.c patch.c program.c read.c sha2.c sim.c ufs.c usb.c ux.c oscompat.c vip.c sparse.c gpt.c
 QDL_OBJS := $(QDL_SRCS:.c=.o)
 
 RAMDUMP_SRCS := ramdump.c sahara.c io.c sim.c usb.c util.c ux.c oscompat.c
