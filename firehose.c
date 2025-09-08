@@ -33,6 +33,8 @@ enum {
 	FIREHOSE_NAK,
 };
 
+static int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);
+
 static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 {
 	xmlChar buf[128];
@@ -283,8 +285,13 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size,
 static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init,
 			      const char *storage)
 {
+	size_t max_sector_size;
+	size_t sector_sizes[] = { 512, 4096 };
+	struct read_op op;
 	size_t size = 0;
+	void *buf;
 	int ret;
+	int i;
 
 	ret = firehose_send_configure(qdl, qdl->max_payload_size, skip_storage_init,
 				      storage, &size);
@@ -313,22 +320,52 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init,
 
 	ux_debug("accepted max payload size: %zu\n", qdl->max_payload_size);
 
+	if (strcmp(storage, "nand")) {
+		max_sector_size = sector_sizes[ARRAY_SIZE(sector_sizes) - 1];
+		buf = malloc(max_sector_size);
+		memset(&op, 0, sizeof(op));
+		op.partition = 0;
+		op.start_sector = "1";
+		op.num_sectors = 1;
+
+		/*
+		 * Testing has shown that the loader will fail gracefully if a
+		 * read is issued with the wrong sector size, use this to attempt
+		 * to discover the storage device's sector size.
+		 */
+		for (i = 0; i < ARRAY_SIZE(sector_sizes); i++) {
+			op.sector_size = sector_sizes[i];
+
+			ret = firehose_read_buf(qdl, &op, buf, max_sector_size);
+			if (ret == 0) {
+				qdl->sector_size = sector_sizes[i];
+				break;
+			}
+		}
+	}
+
+	if (qdl->sector_size)
+		ux_debug("detected sector size of: %zd\n", qdl->sector_size);
+
 	return 0;
 }
 
 static int firehose_erase(struct qdl_device *qdl, struct program *program)
 {
+	unsigned int sector_size;
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
 	int ret;
+
+	sector_size = program->sector_size ? : qdl->sector_size;
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
 	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
 	node = xmlNewChild(root, NULL, (xmlChar *)"erase", NULL);
-	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", program->sector_size);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", sector_size);
 	xml_setpropf(node, "num_partition_sectors", "%d", program->num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
 	xml_setpropf(node, "start_sector", "%s", program->start_sector);
@@ -356,6 +393,7 @@ out:
 static int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
 {
 	unsigned int num_sectors;
+	unsigned int sector_size;
 	struct stat sb;
 	size_t chunk_size;
 	xmlNode *root;
@@ -370,19 +408,20 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	uint32_t fill_value;
 
 	num_sectors = program->num_sectors;
+	sector_size = program->sector_size ? : qdl->sector_size;
 
 	ret = fstat(fd, &sb);
 	if (ret < 0)
 		err(1, "failed to stat \"%s\"\n", program->filename);
 
 	if (!program->sparse) {
-		num_sectors = (sb.st_size + program->sector_size - 1) / program->sector_size;
+		num_sectors = (sb.st_size + sector_size - 1) / sector_size;
 
 		if (program->num_sectors && num_sectors > program->num_sectors) {
 			ux_err("%s to big for %s truncated to %d\n",
 			       program->filename,
 			       program->label,
-			       program->num_sectors * program->sector_size);
+			       program->num_sectors * sector_size);
 			num_sectors = program->num_sectors;
 		}
 	}
@@ -396,7 +435,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	xmlDocSetRootElement(doc, root);
 
 	node = xmlNewChild(root, NULL, (xmlChar *)"program", NULL);
-	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", program->sector_size);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", sector_size);
 	xml_setpropf(node, "num_partition_sectors", "%d", num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
 	xml_setpropf(node, "start_sector", "%s", program->start_sector);
@@ -423,7 +462,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	t0 = time(NULL);
 
 	if (!program->sparse) {
-		lseek(fd, (off_t)program->file_offset * program->sector_size, SEEK_SET);
+		lseek(fd, (off_t)program->file_offset * sector_size, SEEK_SET);
 	} else {
 		switch (program->sparse_chunk_type) {
 		case CHUNK_TYPE_RAW:
@@ -443,7 +482,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	left = num_sectors;
 
 	ux_debug("FIREHOSE RAW BINARY WRITE: %s, %d bytes\n",
-		 program->filename, program->sector_size * num_sectors);
+		 program->filename, sector_size * num_sectors);
 
 	while (left > 0) {
 		/*
@@ -451,10 +490,10 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		 * not for the whole binary.
 		 */
 		vip_gen_chunk_init(qdl);
-		chunk_size = MIN(qdl->max_payload_size / program->sector_size, left);
+		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
 
 		if (!program->sparse || program->sparse_chunk_type != CHUNK_TYPE_FILL) {
-			n = read(fd, buf, chunk_size * program->sector_size);
+			n = read(fd, buf, chunk_size * sector_size);
 			if (n < 0) {
 				ux_err("failed to read %s\n", program->filename);
 				goto out;
@@ -464,7 +503,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 				memset(buf + n, 0, qdl->max_payload_size - n);
 		}
 
-		vip_gen_chunk_update(qdl, buf, chunk_size * program->sector_size);
+		vip_gen_chunk_update(qdl, buf, chunk_size * sector_size);
 
 		ret = vip_transfer_handle_tables(qdl);
 		if (ret) {
@@ -482,7 +521,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 			vip_transfer_clear_status(qdl);
 		}
-		n = qdl_write(qdl, buf, chunk_size * program->sector_size);
+		n = qdl_write(qdl, buf, chunk_size * sector_size);
 		if (n < 0) {
 			ux_err("USB write failed for data chunk\n");
 			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
@@ -492,7 +531,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 			goto out;
 		}
 
-		if (n != chunk_size * program->sector_size) {
+		if (n != chunk_size * sector_size) {
 			ux_err("USB write truncated\n");
 			ret = -1;
 			goto out;
@@ -512,7 +551,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	} else if (t) {
 		ux_info("flashed \"%s\" successfully at %lukB/s\n",
 			program->label,
-			(unsigned long)program->sector_size * num_sectors / t / 1024);
+			(unsigned long)sector_size * num_sectors / t / 1024);
 	} else {
 		ux_info("flashed \"%s\" successfully\n",
 			program->label);
@@ -525,9 +564,12 @@ out:
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
-static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int fd)
+static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
+			       int fd, void *out_buf, size_t out_len, bool quiet)
 {
+	unsigned int sector_size;
 	size_t chunk_size;
+	size_t out_offset = 0;
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
@@ -547,8 +589,10 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
+	sector_size = read_op->sector_size ? : qdl->sector_size;
+
 	node = xmlNewChild(root, NULL, (xmlChar *)"read", NULL);
-	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", read_op->sector_size);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", sector_size);
 	xml_setpropf(node, "num_partition_sectors", "%d", read_op->num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", read_op->partition);
 	xml_setpropf(node, "start_sector", "%s", read_op->start_sector);
@@ -563,7 +607,8 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 
 	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
 	if (ret) {
-		ux_err("failed to setup reading operation\n");
+		if (!quiet)
+			ux_err("failed to setup reading operation\n");
 		goto out;
 	}
 
@@ -572,9 +617,9 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 	left = read_op->num_sectors;
 	expect_empty = false;
 	while (left > 0 || expect_empty) {
-		chunk_size = MIN(qdl->max_payload_size / read_op->sector_size, left);
+		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
 
-		n = qdl_read(qdl, buf, chunk_size * read_op->sector_size, 30000);
+		n = qdl_read(qdl, buf, chunk_size * sector_size, 30000);
 		if (n < 0) {
 			err(1, "failed to read");
 		}
@@ -585,14 +630,22 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 			continue;
 		} else if (expect_empty) {
 			err(1, "expected empty transfer but received non-empty transfer during read");
-		} else if (n != chunk_size * read_op->sector_size) {
+		} else if (n != chunk_size * sector_size) {
 			err(1, "failed to read full sector");
 		}
 
-		n = write(fd, buf, n);
+		if (out_buf) {
+			if (n > out_len - out_offset)
+				n = out_len - out_offset;
 
-		if (n != chunk_size * read_op->sector_size) {
-			err(1, "failed to write");
+			memcpy(out_buf + out_offset, buf, n);
+			out_offset += n;
+		} else {
+			n = write(fd, buf, n);
+
+			if (n != chunk_size * sector_size) {
+				err(1, "failed to write");
+			}
 		}
 
 		left -= chunk_size;
@@ -610,19 +663,31 @@ static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int
 
 	t = time(NULL) - t0;
 
-	if (t) {
-		ux_info("read \"%s\" successfully at %ldkB/s\n",
-			read_op->filename,
-			(unsigned long)read_op->sector_size * read_op->num_sectors / t / 1024);
-	} else {
-		ux_info("read \"%s\" successfully\n",
-			read_op->filename);
+	if (!quiet) {
+		if (t) {
+			ux_info("read \"%s\" successfully at %ldkB/s\n",
+				read_op->filename,
+				(unsigned long)sector_size * read_op->num_sectors / t / 1024);
+		} else {
+			ux_info("read \"%s\" successfully\n",
+				read_op->filename);
+		}
 	}
 
 out:
 	xmlFreeDoc(doc);
 	free(buf);
 	return ret;
+}
+
+static int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size)
+{
+	return firehose_issue_read(qdl, read_op, -1, out_buf, out_size, true);
+}
+
+static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int fd)
+{
+	return firehose_issue_read(qdl, read_op, fd, NULL, 0, false);
 }
 
 static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)

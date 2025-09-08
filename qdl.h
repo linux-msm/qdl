@@ -26,6 +26,8 @@
 	(_x + _a - 1) & ~(_a - 1);	\
 })
 
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+
 #define MAPPING_SZ 64
 
 enum QDL_DEVICE_TYPE {
@@ -37,6 +39,7 @@ struct qdl_device {
 	enum QDL_DEVICE_TYPE dev_type;
 	int fd;
 	size_t max_payload_size;
+	size_t sector_size;
 
 	int (*open)(struct qdl_device *qdl, const char *serial);
 	int (*read)(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
