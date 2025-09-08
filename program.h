@@ -35,6 +35,7 @@ int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program));
 int program_find_bootable_partition(bool *multiple_found);
 int program_is_sec_partition_flashed(void);
+int program_cmd_add(const char *address, const char *filename);
 
 void free_programs(void);
 

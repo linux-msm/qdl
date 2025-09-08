@@ -85,6 +85,9 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int size, ...);
 
 void print_version(void);
 
+int parse_storage_address(const char *address, int *_partition,
+			  unsigned int *_sector, unsigned int *_length);
+
 extern bool qdl_debug;
 
 #endif

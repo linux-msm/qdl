@@ -422,3 +422,42 @@ void free_programs(void)
 
 	programes = NULL;
 }
+
+int program_cmd_add(const char *address, const char *filename)
+{
+	unsigned int start_sector;
+	unsigned int num_sectors;
+	struct program *program;
+	int partition;
+	char buf[20];
+	int ret;
+
+	ret = parse_storage_address(address, &partition, &start_sector, &num_sectors);
+	if (ret < 0)
+		return ret;
+
+	program = calloc(1, sizeof(struct program));
+
+	program->sector_size = 0;
+	program->file_offset = 0;
+	program->filename = filename ? strdup(filename) : NULL;
+	program->label = filename ? strdup(filename) : NULL;
+	program->num_sectors = num_sectors;
+	program->partition = partition;
+	program->sparse = false;
+	sprintf(buf, "%u", start_sector);
+	program->start_sector = strdup(buf);
+	program->last_sector = 0;
+	program->is_nand = false;
+	program->is_erase = false;
+
+	if (programes) {
+		programes_last->next = program;
+		programes_last = program;
+	} else {
+		programes = program;
+		programes_last = program;
+	}
+
+	return 0;
+}

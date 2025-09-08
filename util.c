@@ -4,6 +4,7 @@
  * All rights reserved.
  */
 #include <ctype.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -114,4 +115,77 @@ bool attr_as_bool(xmlNode *node, const char *attr, int *errors)
 	}
 
 	return xmlStrcmp(value, (xmlChar *)"true") == 0;
+}
+
+/***
+ * parse_storage_address() - parse a storage address specifier
+ * @address: specifier to be parsed
+ * @physical_partition: physical partition
+ * @start_sector: start_sector
+ * @num_sectors: number of sectors
+ *
+ * This function parses the provided address specifier and detects the
+ * following patterns:
+ *
+ * N => physical partition N, sector 0
+ * N/S => physical partition N, sector S
+ * N/S+L => physical partition N, L sectors at sector S
+ *
+ * Returns: 0 on success, -1 on failure
+ */
+int parse_storage_address(const char *address, int *physical_partition,
+			  unsigned int *start_sector, unsigned int *num_sectors)
+{
+	unsigned long length = 0;
+	const char *ptr = address;
+	unsigned long sector = 0;
+	long partition;
+	char *end;
+
+	errno = 0;
+	partition = strtol(ptr, &end, 10);
+	if (end == ptr)
+		return -1;
+	if ((errno == ERANGE && partition == LONG_MAX) || partition < 0)
+		return -1;
+
+	if (end[0] == '\0')
+		goto done;
+	if (end[0] != '/')
+		return -1;
+
+	ptr = end + 1;
+
+	errno = 0;
+	sector = strtoul(ptr, &end, 10);
+	if (end == ptr)
+		return -1;
+	if (errno == ERANGE && sector == ULONG_MAX)
+		return -1;
+
+	if (end[0] == '\0')
+		goto done;
+	if (end[0] != '+')
+		return -1;
+
+	ptr = end + 1;
+
+	errno = 0;
+	length = strtoul(ptr, &end, 10);
+	if (end == ptr)
+		return -1;
+	if (errno == ERANGE && length == ULONG_MAX)
+		return -1;
+	if (length == 0)
+		return -1;
+
+	if (end[0] != '\0')
+		return -1;
+
+done:
+	*physical_partition = partition;
+	*start_sector = sector;
+	*num_sectors = length;
+
+	return 0;
 }
