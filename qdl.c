@@ -96,7 +96,8 @@ static void print_usage(FILE *out)
 {
 	extern const char *__progname;
 
-	fprintf(out, "Usage: %s [options] <prog.mbn> [<program> <patch> ...]\n", __progname);
+	fprintf(out, "Usage: %s [options] <prog.mbn> (<program-xml> | <patch-xml> | <read-xml>)...\n", __progname);
+	fprintf(out, "       %s [options] <prog.mbn> ((read | write) <address> <binary>)...\n", __progname);
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
 	fprintf(out, " -v, --version\t\t\tPrint the current version and exit\n");
 	fprintf(out, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
@@ -109,6 +110,12 @@ static void print_usage(FILE *out)
 	fprintf(out, " -t, --create-digests=T\t\tGenerate table of digests in the T folder\n");
 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
+	fprintf(out, " <program-xml>\txml file containing <program> or <erase> directives\n");
+	fprintf(out, " <patch-xml>\txml file containing <patch> directives\n");
+	fprintf(out, " <read-xml>\txml file containing <read> directives\n");
+	fprintf(out, " <address>\tdisk address specifier, can be one of <P>, <P/S>, <P/S+L>, <name>, or\n");
+	fprintf(out, "          \t<P/name>, to specify a physical partition number P, a starting sector\n");
+	fprintf(out, "          \tnumber S, the number of sectors to follow L, or partition by \"name\"\n");
 	fprintf(out, "\n");
 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
 }
