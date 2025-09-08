@@ -140,7 +140,7 @@ jobs:
           New-Item -ItemType Directory -Path $DistDir | Out-Null
 
           Copy-Item (Join-Path $BIN_DIR "zlib1.dll") $DistDir
-          Copy-Item (Join-Path $BIN_DIR "libxml2-2.dll") $DistDir
+          Copy-Item (Join-Path $BIN_DIR "libxml2-16.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "libusb-1.0.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "liblzma-5.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "libiconv-2.dll") $DistDir
