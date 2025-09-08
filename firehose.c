@@ -33,8 +33,6 @@ enum {
 	FIREHOSE_NAK,
 };
 
-static int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);
-
 static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 {
 	xmlChar buf[128];
@@ -680,7 +678,7 @@ out:
 	return ret;
 }
 
-static int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size)
+int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size)
 {
 	return firehose_issue_read(qdl, read_op, -1, out_buf, out_size, true);
 }
@@ -914,6 +912,14 @@ int firehose_run(struct qdl_device *qdl, const char *incdir,
 	}
 
 	ret = firehose_configure(qdl, false, storage);
+	if (ret)
+		return ret;
+
+	ret = read_resolve_gpt_deferrals(qdl);
+	if (ret)
+		return ret;
+
+	ret = program_resolve_gpt_deferrals(qdl);
 	if (ret)
 		return ret;
 

@@ -9,9 +9,10 @@ struct qdl_device;
 struct read_op {
 	unsigned int sector_size;
 	const char *filename;
-	unsigned int partition;
+	int partition;
 	unsigned int num_sectors;
 	const char *start_sector;
+	const char *gpt_partition;
 	struct read_op *next;
 };
 
@@ -20,5 +21,6 @@ int read_op_execute(struct qdl_device *qdl,
 		    int (*apply)(struct qdl_device *qdl, struct read_op *read_op, int fd),
 		    const char *incdir);
 int read_cmd_add(const char *source, const char *filename);
+int read_resolve_gpt_deferrals(struct qdl_device *qdl);
 
 #endif

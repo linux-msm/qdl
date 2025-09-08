@@ -14,6 +14,7 @@
 #include "read.h"
 #include "qdl.h"
 #include "oscompat.h"
+#include "gpt.h"
 
 static struct read_op *read_ops;
 static struct read_op *read_ops_last;
@@ -112,15 +113,16 @@ int read_cmd_add(const char *address, const char *filename)
 	unsigned int start_sector;
 	unsigned int num_sectors;
 	struct read_op *read_op;
+	char *gpt_partition;
 	int partition;
 	char buf[20];
 	int ret;
 
-	ret = parse_storage_address(address, &partition, &start_sector, &num_sectors);
+	ret = parse_storage_address(address, &partition, &start_sector, &num_sectors, &gpt_partition);
 	if (ret < 0)
 		return ret;
 
-	if (num_sectors == 0) {
+	if (num_sectors == 0 && !gpt_partition) {
 		ux_err("read command without length specifier not supported\n");
 		return -1;
 	}
@@ -133,6 +135,7 @@ int read_cmd_add(const char *address, const char *filename)
 	read_op->num_sectors = num_sectors;
 	sprintf(buf, "%u", start_sector);
 	read_op->start_sector = strdup(buf);
+	read_op->gpt_partition = gpt_partition;
 
 	if (read_ops) {
 		read_ops_last->next = read_op;
@@ -140,6 +143,29 @@ int read_cmd_add(const char *address, const char *filename)
 	} else {
 		read_ops = read_op;
 		read_ops_last = read_op;
+	}
+
+	return 0;
+}
+
+int read_resolve_gpt_deferrals(struct qdl_device *qdl)
+{
+	struct read_op *read_op;
+	unsigned int start_sector;
+	char buf[20];
+	int ret;
+
+	for (read_op = read_ops; read_op; read_op = read_op->next) {
+		if (!read_op->gpt_partition)
+			continue;
+
+		ret = gpt_find_by_name(qdl, read_op->gpt_partition, &read_op->partition,
+				       &start_sector, &read_op->num_sectors);
+		if (ret < 0)
+			return -1;
+
+		sprintf(buf, "%u", start_sector);
+		read_op->start_sector = strdup(buf);
 	}
 
 	return 0;

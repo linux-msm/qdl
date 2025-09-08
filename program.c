@@ -18,6 +18,7 @@
 #include "qdl.h"
 #include "oscompat.h"
 #include "sparse.h"
+#include "gpt.h"
 
 static struct program *programes;
 static struct program *programes_last;
@@ -417,6 +418,7 @@ void free_programs(void)
 		free((void *)program->filename);
 		free((void *)program->label);
 		free((void *)program->start_sector);
+		free((void *)program->gpt_partition);
 		free(program);
 	}
 
@@ -428,11 +430,12 @@ int program_cmd_add(const char *address, const char *filename)
 	unsigned int start_sector;
 	unsigned int num_sectors;
 	struct program *program;
+	char *gpt_partition;
 	int partition;
 	char buf[20];
 	int ret;
 
-	ret = parse_storage_address(address, &partition, &start_sector, &num_sectors);
+	ret = parse_storage_address(address, &partition, &start_sector, &num_sectors, &gpt_partition);
 	if (ret < 0)
 		return ret;
 
@@ -450,6 +453,7 @@ int program_cmd_add(const char *address, const char *filename)
 	program->last_sector = 0;
 	program->is_nand = false;
 	program->is_erase = false;
+	program->gpt_partition = gpt_partition;
 
 	if (programes) {
 		programes_last->next = program;
@@ -457,6 +461,29 @@ int program_cmd_add(const char *address, const char *filename)
 	} else {
 		programes = program;
 		programes_last = program;
+	}
+
+	return 0;
+}
+
+int program_resolve_gpt_deferrals(struct qdl_device *qdl)
+{
+	struct program *program;
+	unsigned int start_sector;
+	char buf[20];
+	int ret;
+
+	for (program = programes; program; program = program->next) {
+		if (!program->gpt_partition)
+			continue;
+
+		ret = gpt_find_by_name(qdl, program->gpt_partition, &program->partition,
+				       &start_sector, &program->num_sectors);
+		if (ret < 0)
+			return -1;
+
+		sprintf(buf, "%u", start_sector);
+		program->start_sector = strdup(buf);
 	}
 
 	return 0;
