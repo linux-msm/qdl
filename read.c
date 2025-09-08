@@ -106,3 +106,41 @@ int read_op_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl,
 
 	return 0;
 }
+
+int read_cmd_add(const char *address, const char *filename)
+{
+	unsigned int start_sector;
+	unsigned int num_sectors;
+	struct read_op *read_op;
+	int partition;
+	char buf[20];
+	int ret;
+
+	ret = parse_storage_address(address, &partition, &start_sector, &num_sectors);
+	if (ret < 0)
+		return ret;
+
+	if (num_sectors == 0) {
+		ux_err("read command without length specifier not supported\n");
+		return -1;
+	}
+
+	read_op = calloc(1, sizeof(struct read_op));
+
+	read_op->sector_size = 0;
+	read_op->filename = strdup(filename);
+	read_op->partition = partition;
+	read_op->num_sectors = num_sectors;
+	sprintf(buf, "%u", start_sector);
+	read_op->start_sector = strdup(buf);
+
+	if (read_ops) {
+		read_ops_last->next = read_op;
+		read_ops_last = read_op;
+	} else {
+		read_ops = read_op;
+		read_ops_last = read_op;
+	}
+
+	return 0;
+}

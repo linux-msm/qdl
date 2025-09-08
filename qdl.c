@@ -12,6 +12,7 @@
 #include <string.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
+#include <unistd.h>
 
 #include "qdl.h"
 #include "patch.h"
@@ -33,20 +34,32 @@ enum {
 	QDL_FILE_READ,
 	QDL_FILE_UFS,
 	QDL_FILE_CONTENTS,
+	QDL_CMD_READ,
+	QDL_CMD_WRITE,
 };
 
 bool qdl_debug;
 
-static int detect_type(const char *xml_file)
+static int detect_type(const char *verb)
 {
 	xmlNode *root;
 	xmlDoc *doc;
 	xmlNode *node;
 	int type = QDL_FILE_UNKNOWN;
 
-	doc = xmlReadFile(xml_file, NULL, 0);
+	if (!strcmp(verb, "read"))
+		return QDL_CMD_READ;
+	if (!strcmp(verb, "write"))
+		return QDL_CMD_WRITE;
+
+	if (access(verb, F_OK)) {
+		ux_err("%s is not a verb and not a XML file\n", verb);
+		return -EINVAL;
+	}
+
+	doc = xmlReadFile(verb, NULL, 0);
 	if (!doc) {
-		ux_err("failed to parse XML file \"%s\"\n", xml_file);
+		ux_err("failed to parse XML file \"%s\"\n", verb);
 		return -EINVAL;
 	}
 
@@ -248,6 +261,22 @@ int main(int argc, char **argv)
 			ret = ufs_load(argv[optind], qdl_finalize_provisioning);
 			if (ret < 0)
 				errx(1, "ufs_load %s failed", argv[optind]);
+			break;
+		case QDL_CMD_READ:
+			if (optind + 2 >= argc)
+				errx(1, "read command missing arguments");
+			ret = read_cmd_add(argv[optind + 1], argv[optind + 2]);
+			if (ret < 0)
+				errx(1, "failed to add read command");
+			optind += 2;
+			break;
+		case QDL_CMD_WRITE:
+			if (optind + 2 >= argc)
+				errx(1, "write command missing arguments");
+			ret = program_cmd_add(argv[optind + 1], argv[optind + 2]);
+			if (ret < 0)
+				errx(1, "failed to add write command");
+			optind += 2;
 			break;
 		default:
 			errx(1, "%s type not yet supported", argv[optind]);

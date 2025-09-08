@@ -19,5 +19,6 @@ int read_op_load(const char *read_op_file);
 int read_op_execute(struct qdl_device *qdl,
 		    int (*apply)(struct qdl_device *qdl, struct read_op *read_op, int fd),
 		    const char *incdir);
+int read_cmd_add(const char *source, const char *filename);
 
 #endif
