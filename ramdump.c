@@ -12,14 +12,13 @@ const char *__progname = "ramdump";
 
 bool qdl_debug;
 
-static void print_usage(void)
+static void print_usage(FILE *out)
 {
 	extern const char *__progname;
 
-	fprintf(stderr,
+	fprintf(out,
 		"%s [--debug] [-o <ramdump-path>] [segment-filter,...]\n",
 		__progname);
-	exit(1);
 }
 
 int main(int argc, char **argv)
@@ -41,10 +40,11 @@ int main(int argc, char **argv)
 		{"version", no_argument, 0, 'v'},
 		{"output", required_argument, 0, 'o'},
 		{"serial", required_argument, 0, 'S'},
+		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvo:S:", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvo:S:h", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -59,16 +59,22 @@ int main(int argc, char **argv)
 		case 'S':
 			serial = optarg;
 			break;
+		case 'h':
+			print_usage(stdout);
+			return 0;
 		default:
-			print_usage();
+			print_usage(stderr);
+			return 1;
 		}
 	}
 
 	if (optind < argc)
 		filter = argv[optind++];
 
-	if (optind != argc)
-		print_usage();
+	if (optind != argc) {
+		print_usage(stderr);
+		return 1;
+	}
 
 	if (qdl_debug)
 		print_version();
