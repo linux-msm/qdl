@@ -201,10 +201,11 @@ static int gpt_load_table_from_partition(struct qdl_device *qdl, unsigned int ph
 		partition->name = strdup(name);
 		partition->partition = phys_partition;
 		partition->start_sector = entry->first_lba;
-		partition->num_sectors = entry->last_lba - entry->first_lba;
+		/* if first_lba == last_lba there is 1 sector worth of data (IE: add 1 below) */
+		partition->num_sectors = entry->last_lba - entry->first_lba + 1;
 
-		ux_debug("  %3d: %s sector %u to %u\n", i, partition->name,
-			 partition->start_sector, partition->start_sector + partition->num_sectors);
+		ux_debug("  %3d: %s start sector %u, num sectors %u\n", i, partition->name,
+			 partition->start_sector, partition->num_sectors);
 
 		if (gpt_partitions) {
 			gpt_partitions_last->next = partition;
