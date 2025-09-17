@@ -651,6 +651,9 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 		// on mac/linux, every other response is empty
 		expect_empty = true;
 #endif
+
+		if (!quiet)
+			ux_progress("%s", read_op->num_sectors - left, read_op->num_sectors, read_op->filename);
 	}
 
 	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
