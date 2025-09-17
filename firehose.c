@@ -83,7 +83,7 @@ static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 	return node;
 }
 
-static int firehose_generic_parser(xmlNode *node, void *data)
+static int firehose_generic_parser(xmlNode *node, void *data, bool *rawmode)
 {
 	xmlChar *value;
 	int ret = -EINVAL;
@@ -103,18 +103,27 @@ static int firehose_generic_parser(xmlNode *node, void *data)
 
 	xmlFree(value);
 
+	value = xmlGetProp(node, (xmlChar *)"rawmode");
+	if (value) {
+		if (xmlStrcmp(value, (xmlChar *)"true") == 0)
+			*rawmode = true;
+		xmlFree(value);
+	}
+
 	return ret;
 }
 
 static int firehose_read(struct qdl_device *qdl, int timeout_ms,
-			 int (*response_parser)(xmlNode *node, void *data),
+			 int (*response_parser)(xmlNode *node, void *data, bool *rawmode),
 			 void *data)
 {
 	char buf[4096];
 	xmlNode *node;
 	int error;
+	int resp = -EIO;
 	int ret = -EAGAIN;
 	int n;
+	bool rawmode = false;
 	struct timeval timeout;
 	struct timeval now;
 	struct timeval delta = { .tv_sec = timeout_ms / 1000,
@@ -127,9 +136,40 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 	if (qdl->dev_type == QDL_DEVICE_SIM)
 		return 0;
 
-	do {
+	/*
+	 * The goal of firehose_read() is to find a response to a request among
+	 * one or more incoming messages AND to consume all incoming messages
+	 * (otherwise subsequent writes will time out).
+	 * The messages can be one of:
+	 * - <log/>
+	 * - <response value=""/>
+	 * - <response value="" rawmode="true"/>
+	 *
+	 * Generally <log/> messages are coming prior to the <response/>, but
+	 * on MSM8916 (at least) it's been observed that <log/> messages can
+	 * arrive after the <response/>.
+	 *
+	 * We therefor need to consume messages until there are no more
+	 * (timeout) and we have been able to parse out a response (using
+	 * @response_parser).
+	 *
+	 * In the special case that the <response/> contain an attribute
+	 * "rawmode=true", the device signals that it has entered a mode where
+	 * it will not send/receive XML-formatted commands. So, (at least for
+	 * reads) we need to shortcircuit the logic and directly terminate the
+	 * consumption of incoming data.
+	 */
+	for (;;) {
 		n = qdl_read(qdl, buf, sizeof(buf), 100);
-		if (n <= 0) {
+
+		/* Timeout after seeing a response, we're done waiting for logs */
+		if (n == -ETIMEDOUT && resp >= 0)
+			break;
+		/* We want to return resp on error, to not loose the reset resposne */
+		else if (n == -EIO)
+			break;
+
+		if (n == -ETIMEDOUT || n == 0) {
 			gettimeofday(&now, NULL);
 			if (timercmp(&now, &timeout, <))
 				continue;
@@ -144,11 +184,17 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 		if (!node)
 			return error;
 
-		ret = response_parser(node, data);
+		ret = response_parser(node, data, &rawmode);
 		xmlFreeDoc(node->doc);
-	} while (ret == -EAGAIN);
 
-	return ret;
+		if (ret >= 0)
+			resp = ret;
+
+		if (rawmode)
+			break;
+	}
+
+	return resp;
 }
 
 static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
@@ -208,7 +254,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
  *
  * Return: max size supported by the remote, or negative errno on failure
  */
-static int firehose_configure_response_parser(xmlNode *node, void *data)
+static int firehose_configure_response_parser(xmlNode *node, void *data, bool *rawmode)
 {
 	xmlChar *payload;
 	xmlChar *value;
