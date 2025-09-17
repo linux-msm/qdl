@@ -452,8 +452,10 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 
 	while (!done) {
 		n = qdl_read(qdl, buf, sizeof(buf), 1000);
-		if (n < 0)
+		if (n < 0) {
+			ux_err("failed to read sahara request from device\n");
 			break;
+		}
 
 		pkt = (struct sahara_pkt *)buf;
 		if (n != pkt->length) {
