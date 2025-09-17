@@ -38,6 +38,16 @@ void qdl_close(struct qdl_device *qdl)
 	qdl->close(qdl);
 }
 
+/**
+ * qdl_read() - Read a message from the device
+ * @qdl: device handle
+ * @buf: buffer to write the data into
+ * @len: maximum length of data to be read
+ * @timeout: timeout for the read, in milliseconds
+ *
+ * Returns: number of bytes read, might be zero for a ZLP
+ *	    negative errno on failure (notably -ETIMEDOUT)
+ */
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
 {
 	return qdl->read(qdl, buf, len, timeout);

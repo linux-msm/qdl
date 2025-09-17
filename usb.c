@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #include <sys/types.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -237,9 +238,11 @@ static int usb_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int 
 	int ret;
 
 	ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->in_ep, buf, len, &actual, timeout);
-	if ((ret != 0 && ret != LIBUSB_ERROR_TIMEOUT) ||
-	    (ret == LIBUSB_ERROR_TIMEOUT && actual == 0))
-		return -1;
+	if (ret != 0 && ret != LIBUSB_ERROR_TIMEOUT)
+		return -EIO;
+
+	if (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)
+		return -ETIMEDOUT;
 
 	return actual;
 }
