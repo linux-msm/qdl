@@ -929,6 +929,30 @@ static int firehose_reset(struct qdl_device *qdl)
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
+int firehose_provision(struct qdl_device *qdl)
+{
+	int ret;
+
+	firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+
+	ret = firehose_configure(qdl, true, "ufs");
+	if (ret)
+		return ret;
+
+	ret = ufs_provisioning_execute(qdl, firehose_apply_ufs_common,
+				       firehose_apply_ufs_body,
+				       firehose_apply_ufs_epilogue);
+	if (!ret)
+		ux_info("UFS provisioning succeeded\n");
+	else
+		ux_info("UFS provisioning failed\n");
+
+	firehose_reset(qdl);
+
+	return ret;
+
+}
+
 int firehose_run(struct qdl_device *qdl, const char *storage)
 {
 	bool multiple;
@@ -938,23 +962,6 @@ int firehose_run(struct qdl_device *qdl, const char *storage)
 	ux_info("waiting for programmer...\n");
 
 	firehose_read(qdl, 5000, firehose_generic_parser, NULL);
-
-	if (ufs_need_provisioning()) {
-		ret = firehose_configure(qdl, true, storage);
-		if (ret)
-			return ret;
-		ret = ufs_provisioning_execute(qdl, firehose_apply_ufs_common,
-					       firehose_apply_ufs_body,
-					       firehose_apply_ufs_epilogue);
-		if (!ret)
-			ux_info("UFS provisioning succeeded\n");
-		else
-			ux_info("UFS provisioning failed\n");
-
-		firehose_reset(qdl);
-
-		return ret;
-	}
 
 	ret = firehose_configure(qdl, false, storage);
 	if (ret)

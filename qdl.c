@@ -267,6 +267,9 @@ int main(int argc, char **argv)
 				errx(1, "read_op_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_UFS:
+			if (strcmp(storage, "ufs"))
+				errx(1, "attempting to load provisioning config when storage isn't \"ufs\"");
+
 			ret = ufs_load(argv[optind], qdl_finalize_provisioning);
 			if (ret < 0)
 				errx(1, "ufs_load %s failed", argv[optind]);
@@ -302,7 +305,10 @@ int main(int argc, char **argv)
 	if (ret < 0)
 		goto out_cleanup;
 
-	ret = firehose_run(qdl, storage);
+	if (ufs_need_provisioning())
+		ret = firehose_provision(qdl);
+	else
+		ret = firehose_run(qdl, storage);
 	if (ret < 0)
 		goto out_cleanup;
 
