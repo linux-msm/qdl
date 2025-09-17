@@ -262,11 +262,12 @@ static int usb_write(struct qdl_device *qdl, const void *buf, size_t len)
 
 		ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->out_ep, data,
 					   xfer, &actual, 1000);
-		if ((ret != 0 && ret != LIBUSB_ERROR_TIMEOUT) ||
-		    (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)) {
+		if (ret != 0 && ret != LIBUSB_ERROR_TIMEOUT) {
 			warnx("bulk write failed: %s", libusb_strerror(ret));
-			return -1;
+			return -EIO;
 		}
+		if (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)
+			return -ETIMEDOUT;
 
 		count += actual;
 		len -= actual;
@@ -277,7 +278,7 @@ static int usb_write(struct qdl_device *qdl, const void *buf, size_t len)
 		ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->out_ep, NULL,
 					   0, &actual, 1000);
 		if (ret < 0)
-			return -1;
+			return -EIO;
 	}
 
 	return count;

@@ -305,7 +305,6 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size,
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
-	int ret;
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
 	root = xmlNewNode(NULL, (xmlChar *)"data");
@@ -318,16 +317,14 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size,
 	xml_setpropf(node, "ZLPAwareHost", "%d", 1);
 	xml_setpropf(node, "SkipStorageInit", "%d", skip_storage_init);
 
-	ret = firehose_write(qdl, doc);
+	firehose_write(qdl, doc);
 	xmlFreeDoc(doc);
-	if (ret < 0)
-		return ret;
 
-	return firehose_read(qdl, 5000, firehose_configure_response_parser, max_payload_size);
+	return firehose_read(qdl, 100, firehose_configure_response_parser, max_payload_size);
 }
 
-static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init,
-			      const char *storage)
+static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init,
+				  const char *storage)
 {
 	size_t max_sector_size;
 	size_t sector_sizes[] = { 512, 4096 };
@@ -339,10 +336,8 @@ static int firehose_configure(struct qdl_device *qdl, bool skip_storage_init,
 
 	ret = firehose_send_configure(qdl, qdl->max_payload_size, skip_storage_init,
 				      storage, &size);
-	if (ret < 0) {
-		ux_err("configure request failed\n");
-		return -1;
-	}
+	if (ret < 0)
+		return ret;
 
 	/*
 	 * In simulateion mode "remote" target can't propose different size, so
@@ -932,13 +927,42 @@ static int firehose_reset(struct qdl_device *qdl)
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
+static int firehose_detect_and_configure(struct qdl_device *qdl,
+					 bool skip_storage_init,
+					 const char *storage,
+					 unsigned int timeout_s)
+{
+	struct timeval timeout = { .tv_sec = timeout_s };
+	struct timeval now;
+	int ret;
+
+	gettimeofday(&now, NULL);
+	timeradd(&now, &timeout, &timeout);
+	for (;;) {
+		ret = firehose_try_configure(qdl, false, storage);
+
+		if (ret == FIREHOSE_ACK) {
+			break;
+		} else if (ret != -ETIMEDOUT) {
+			ux_err("configure request failed\n");
+			return -1;
+		}
+
+		gettimeofday(&now, NULL);
+		if (timercmp(&now, &timeout, >)) {
+			ux_err("failed to detect firehose programmer\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 int firehose_provision(struct qdl_device *qdl)
 {
 	int ret;
 
-	firehose_read(qdl, 5000, firehose_generic_parser, NULL);
-
-	ret = firehose_configure(qdl, true, "ufs");
+	ret = firehose_detect_and_configure(qdl, true, "ufs", 5);
 	if (ret)
 		return ret;
 
@@ -964,9 +988,7 @@ int firehose_run(struct qdl_device *qdl, const char *storage)
 
 	ux_info("waiting for programmer...\n");
 
-	firehose_read(qdl, 5000, firehose_generic_parser, NULL);
-
-	ret = firehose_configure(qdl, false, storage);
+	ret = firehose_detect_and_configure(qdl, true, storage, 5);
 	if (ret)
 		return ret;
 
