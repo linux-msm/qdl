@@ -19,7 +19,7 @@ KS_OUT := ks
 KS_SRCS := ks.c sahara.c util.c ux.c oscompat.c
 KS_OBJS := $(KS_SRCS:.c=.o)
 
-CHECKPATCH_SOURCES := $(shell find . -type f \( -name "*.c" -o -name "*.h" -o -name "*.sh" \) ! -name "sha2.c" ! -name "sha2.h" ! -name "*version.h")
+CHECKPATCH_SOURCES := $(shell find . -type f \( -name "*.c" -o -name "*.h" -o -name "*.sh" \) ! -name "sha2.c" ! -name "sha2.h" ! -name "*version.h" ! -name "list.h")
 CHECKPATCH_ROOT := https://raw.githubusercontent.com/torvalds/linux/v6.15/scripts
 CHECKPATCH_URL := $(CHECKPATCH_ROOT)/checkpatch.pl
 CHECKPATCH_SP_URL := $(CHECKPATCH_ROOT)/spelling.txt
