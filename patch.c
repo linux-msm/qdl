@@ -14,6 +14,7 @@
 #include "qdl.h"
 
 static struct list_head patches = LIST_INIT(patches);
+static bool patches_loaded;
 
 int patch_load(const char *patch_file)
 {
@@ -63,6 +64,8 @@ int patch_load(const char *patch_file)
 
 	xmlFreeDoc(doc);
 
+	patches_loaded = true;
+
 	return 0;
 }
 
@@ -72,6 +75,9 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 	unsigned int count = 0;
 	unsigned int idx = 0;
 	int ret;
+
+	if (!patches_loaded)
+		return 0;
 
 	list_for_each_entry(patch, &patches, node) {
 		if (!strcmp(patch->filename, "DISK"))
