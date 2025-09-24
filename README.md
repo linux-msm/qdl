@@ -17,8 +17,15 @@ make
 
 ### MacOS
 
+For Homebrew users,
 ```bash
 brew install libxml2 pkg-config libusb
+make
+```
+
+For MacPorts users
+```bash
+sudo port install libxml2 pkgconfig libusb
 make
 ```
 
