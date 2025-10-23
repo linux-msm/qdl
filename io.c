@@ -58,11 +58,12 @@ int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout
  * @qdl: device handle
  * @buf: buffer with data to be written
  * @len: length of data to be written
+ * @timeout: timeout for write, in milliseconds
  *
  * Returns: number of bytes read
  *	    negative errno on failure (notably -ETIMEDOUT)
  */
-int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
+int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int timeout)
 {
-	return qdl->write(qdl, buf, len);
+	return qdl->write(qdl, buf, len, timeout);
 }
