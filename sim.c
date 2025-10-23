@@ -27,7 +27,7 @@ static int sim_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int 
 	return len;
 }
 
-static int sim_write(struct qdl_device *qdl, const void *buf, size_t len)
+static int sim_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int timeout)
 {
 	return len;
 }

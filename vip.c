@@ -432,7 +432,7 @@ static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
 		goto out;
 	}
 
-	n = qdl_write(qdl, buf, sb.st_size);
+	n = qdl_write(qdl, buf, sb.st_size, 1000);
 	if (n < 0) {
 		ux_err("USB write failed for data chunk\n");
 		ret = -1;
