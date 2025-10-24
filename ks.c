@@ -34,14 +34,15 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
 	return write(qdl->fd, buf, len);
 }
 
-static void print_usage(void)
+static void print_usage(FILE *out)
 {
 	extern const char *__progname;
 
-	fprintf(stderr,
+	fprintf(out,
 		"%s -p <sahara dev_node> -s <id:file path> ...\n",
 		__progname);
-	fprintf(stderr,
+	fprintf(out,
+		" -h                   --help                      Print this usage info\n"
 		" -p                   --port                      Sahara device node to use\n"
 		" -s <id:file path>    --sahara <id:file path>     Sahara protocol file mapping\n"
 		"\n"
@@ -62,13 +63,14 @@ int main(int argc, char **argv)
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
+		{"help", no_argument, 0, 'h'},
 		{"version", no_argument, 0, 'v'},
 		{"port", required_argument, 0, 'p'},
 		{"sahara", required_argument, 0, 's'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvp:s:", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvp:s:h", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -84,7 +86,7 @@ int main(int argc, char **argv)
 			found_mapping = true;
 			file_id = strtol(optarg, NULL, 10);
 			if (file_id < 0) {
-				print_usage();
+				print_usage(stderr);
 				return 1;
 			}
 			if (file_id >= MAPPING_SZ) {
@@ -96,21 +98,24 @@ int main(int argc, char **argv)
 			}
 			colon = strchr(optarg, ':');
 			if (!colon) {
-				print_usage();
+				print_usage(stderr);
 				return 1;
 			}
 			qdl.mappings[file_id] = &optarg[colon - optarg + 1];
 			printf("Created mapping ID:%ld File:%s\n", file_id, qdl.mappings[file_id]);
 			break;
+		case 'h':
+			print_usage(stdout);
+			return 0;
 		default:
-			print_usage();
+			print_usage(stderr);
 			return 1;
 		}
 	}
 
 	// -p and -s is required
 	if (!dev_node || !found_mapping) {
-		print_usage();
+		print_usage(stderr);
 		return 1;
 	}
 
