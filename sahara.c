@@ -60,6 +60,8 @@
 
 #define DEBUG_BLOCK_SIZE (512 * 1024)
 
+#define SAHARA_CMD_TIMEOUT_MS	1000
+
 struct sahara_pkt {
 	uint32_t cmd;
 	uint32_t length;
@@ -120,7 +122,7 @@ static void sahara_send_reset(struct qdl_device *qdl)
 	resp.cmd = SAHARA_RESET_CMD;
 	resp.length = SAHARA_RESET_LENGTH;
 
-	qdl_write(qdl, &resp, resp.length);
+	qdl_write(qdl, &resp, resp.length, SAHARA_CMD_TIMEOUT_MS);
 }
 
 static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
@@ -139,7 +141,7 @@ static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	resp.hello_resp.status = SAHARA_SUCCESS;
 	resp.hello_resp.mode = pkt->hello_req.mode;
 
-	qdl_write(qdl, &resp, resp.length);
+	qdl_write(qdl, &resp, resp.length, SAHARA_CMD_TIMEOUT_MS);
 }
 
 static int sahara_read_common(struct qdl_device *qdl, int progfd, off_t offset, size_t len)
@@ -159,7 +161,7 @@ static int sahara_read_common(struct qdl_device *qdl, int progfd, off_t offset, 
 		goto out;
 	}
 
-	n = qdl_write(qdl, buf, n);
+	n = qdl_write(qdl, buf, n, SAHARA_CMD_TIMEOUT_MS);
 	if (n != len)
 		err(1, "failed to write %zu bytes to sahara", len);
 
@@ -259,7 +261,7 @@ static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 
 	done.cmd = SAHARA_DONE_CMD;
 	done.length = SAHARA_DONE_LENGTH;
-	qdl_write(qdl, &done, done.length);
+	qdl_write(qdl, &done, done.length, SAHARA_CMD_TIMEOUT_MS);
 }
 
 static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
@@ -309,7 +311,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 		read_req.length = SAHARA_MEM_READ64_LENGTH;
 		read_req.debug64_req.addr = region.addr + chunk;
 		read_req.debug64_req.length = remain;
-		n = qdl_write(qdl, &read_req, read_req.length);
+		n = qdl_write(qdl, &read_req, read_req.length, SAHARA_CMD_TIMEOUT_MS);
 		if (n < 0)
 			break;
 
@@ -405,13 +407,13 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	read_req.debug64_req.addr = pkt->debug64_req.addr;
 	read_req.debug64_req.length = pkt->debug64_req.length;
 
-	n = qdl_write(qdl, &read_req, read_req.length);
+	n = qdl_write(qdl, &read_req, read_req.length, SAHARA_CMD_TIMEOUT_MS);
 	if (n < 0)
 		return;
 
 	table = malloc(read_req.debug64_req.length);
 
-	n = qdl_read(qdl, table, pkt->debug64_req.length, 1000);
+	n = qdl_read(qdl, table, pkt->debug64_req.length, SAHARA_CMD_TIMEOUT_MS);
 	if (n < 0)
 		return;
 
@@ -451,7 +453,7 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 		return 0;
 
 	while (!done) {
-		n = qdl_read(qdl, buf, sizeof(buf), 1000);
+		n = qdl_read(qdl, buf, sizeof(buf), SAHARA_CMD_TIMEOUT_MS);
 		if (n < 0) {
 			ux_err("failed to read sahara request from device\n");
 			break;

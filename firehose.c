@@ -228,7 +228,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 	for (;;) {
 		ux_debug("FIREHOSE WRITE: %s\n", s);
 		vip_gen_chunk_update(qdl, s, len);
-		ret = qdl_write(qdl, s, len);
+		ret = qdl_write(qdl, s, len, 1000);
 		saved_errno = errno;
 
 		/*
@@ -560,7 +560,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 			vip_transfer_clear_status(qdl);
 		}
-		n = qdl_write(qdl, buf, chunk_size * sector_size);
+		n = qdl_write(qdl, buf, chunk_size * sector_size, 10000);
 		if (n < 0) {
 			ux_err("USB write failed for data chunk\n");
 			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);

@@ -29,7 +29,7 @@ int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout
 	return read(qdl->fd, buf, len);
 }
 
-int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
+int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int timeout)
 {
 	return write(qdl->fd, buf, len);
 }

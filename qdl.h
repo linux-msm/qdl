@@ -43,7 +43,7 @@ struct qdl_device {
 
 	int (*open)(struct qdl_device *qdl, const char *serial);
 	int (*read)(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
-	int (*write)(struct qdl_device *qdl, const void *buf, size_t nbytes);
+	int (*write)(struct qdl_device *qdl, const void *buf, size_t nbytes, unsigned int timeout);
 	void (*close)(struct qdl_device *qdl);
 	void (*set_out_chunk_size)(struct qdl_device *qdl, long size);
 	void (*set_vip_transfer)(struct qdl_device *qdl, const char *signed_table,
@@ -61,7 +61,7 @@ void qdl_deinit(struct qdl_device *qdl);
 int qdl_open(struct qdl_device *qdl, const char *serial);
 void qdl_close(struct qdl_device *qdl);
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
-int qdl_write(struct qdl_device *qdl, const void *buf, size_t len);
+int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int timeout);
 void qdl_set_out_chunk_size(struct qdl_device *qdl, long size);
 int qdl_vip_transfer_enable(struct qdl_device *qdl, const char *vip_table_path);
 
