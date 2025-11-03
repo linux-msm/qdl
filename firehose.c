@@ -441,6 +441,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 {
 	unsigned int num_sectors;
 	unsigned int sector_size;
+	unsigned int zlp_timeout = 10000;
 	struct stat sb;
 	size_t chunk_size;
 	xmlNode *root;
@@ -453,6 +454,13 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	int ret;
 	int n;
 	uint32_t fill_value;
+
+	/*
+	 * ZLP has been measured to take up to 15 seconds on SPINOR devices,
+	 * let's double it to be on the safe side...
+	 */
+	if (qdl->storage_type == QDL_STORAGE_SPINOR)
+		zlp_timeout = 30000;
 
 	num_sectors = program->num_sectors;
 	sector_size = program->sector_size ? : qdl->sector_size;
@@ -568,7 +576,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 			vip_transfer_clear_status(qdl);
 		}
-		n = qdl_write(qdl, buf, chunk_size * sector_size, 10000);
+		n = qdl_write(qdl, buf, chunk_size * sector_size, zlp_timeout);
 		if (n < 0) {
 			ux_err("USB write failed for data chunk\n");
 			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
