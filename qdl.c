@@ -92,6 +92,24 @@ static int detect_type(const char *verb)
 	return type;
 }
 
+static enum qdl_storage_type decode_storage(const char *storage)
+{
+
+	if (!strcmp(storage, "emmc"))
+		return QDL_STORAGE_EMMC;
+	if (!strcmp(storage, "nand"))
+		return QDL_STORAGE_NAND;
+	if (!strcmp(storage, "nvme"))
+		return QDL_STORAGE_NVME;
+	if (!strcmp(storage, "spinor"))
+		return QDL_STORAGE_SPINOR;
+	if (!strcmp(storage, "ufs"))
+		return QDL_STORAGE_UFS;
+
+	fprintf(stderr, "Unknown storage type \"%s\"\n", storage);
+	exit(1);
+}
+
 static void print_usage(FILE *out)
 {
 	extern const char *__progname;
@@ -102,7 +120,7 @@ static void print_usage(FILE *out)
 	fprintf(out, " -v, --version\t\t\tPrint the current version and exit\n");
 	fprintf(out, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
 	fprintf(out, " -f, --allow-missing\t\tAllow skipping of missing files during flashing\n");
-	fprintf(out, " -s, --storage=T\t\tSet target storage type T: <emmc|nand|ufs>\n");
+	fprintf(out, " -s, --storage=T\t\tSet target storage type T: <emmc|nand|nvme|spinor|ufs>\n");
 	fprintf(out, " -l, --finalize-provisioning\tProvision the target storage\n");
 	fprintf(out, " -i, --include=T\t\tSet an optional folder T to search for files\n");
 	fprintf(out, " -S, --serial=T\t\t\tSelect target by serial number T (e.g. <0AA94EFD>)\n");
@@ -122,7 +140,8 @@ static void print_usage(FILE *out)
 
 int main(int argc, char **argv)
 {
-	char *prog_mbn, *storage = "ufs";
+	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
+	char *prog_mbn;
 	char *incdir = NULL;
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
@@ -186,7 +205,7 @@ int main(int argc, char **argv)
 			out_chunk_size = strtol(optarg, NULL, 10);
 			break;
 		case 's':
-			storage = optarg;
+			storage_type = decode_storage(optarg);
 			break;
 		case 'S':
 			serial = optarg;
@@ -253,7 +272,7 @@ int main(int argc, char **argv)
 				errx(1, "patch_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_PROGRAM:
-			ret = program_load(argv[optind], !strcmp(storage, "nand"), allow_missing, incdir);
+			ret = program_load(argv[optind], storage_type == QDL_STORAGE_NAND, allow_missing, incdir);
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[optind]);
 
@@ -267,7 +286,7 @@ int main(int argc, char **argv)
 				errx(1, "read_op_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_UFS:
-			if (strcmp(storage, "ufs"))
+			if (storage_type != QDL_STORAGE_UFS)
 				errx(1, "attempting to load provisioning config when storage isn't \"ufs\"");
 
 			ret = ufs_load(argv[optind], qdl_finalize_provisioning);
@@ -300,6 +319,8 @@ int main(int argc, char **argv)
 	if (ret)
 		goto out_cleanup;
 
+	qdl->storage_type = storage_type;
+
 	qdl->mappings[0] = prog_mbn;
 	ret = sahara_run(qdl, qdl->mappings, true, NULL, NULL);
 	if (ret < 0)
@@ -308,7 +329,7 @@ int main(int argc, char **argv)
 	if (ufs_need_provisioning())
 		ret = firehose_provision(qdl);
 	else
-		ret = firehose_run(qdl, storage);
+		ret = firehose_run(qdl);
 	if (ret < 0)
 		goto out_cleanup;
 
