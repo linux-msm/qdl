@@ -299,9 +299,17 @@ static int firehose_configure_response_parser(xmlNode *node, void *data, bool *r
 }
 
 static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size,
-				   bool skip_storage_init, const char *storage,
+				   bool skip_storage_init,
+				   enum qdl_storage_type storage,
 				   size_t *max_payload_size)
 {
+	static const char * const memory_names[] = {
+		[QDL_STORAGE_EMMC] = "emmc",
+		[QDL_STORAGE_NAND] = "nand",
+		[QDL_STORAGE_UFS] = "ufs",
+		[QDL_STORAGE_NVME] = "nvme",
+		[QDL_STORAGE_SPINOR] = "spinor",
+	};
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
@@ -311,7 +319,7 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size,
 	xmlDocSetRootElement(doc, root);
 
 	node = xmlNewChild(root, NULL, (xmlChar *)"configure", NULL);
-	xml_setpropf(node, "MemoryName", storage);
+	xml_setpropf(node, "MemoryName", memory_names[storage]);
 	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%lu", payload_size);
 	xml_setpropf(node, "verbose", "%d", 0);
 	xml_setpropf(node, "ZLPAwareHost", "%d", 1);
@@ -324,7 +332,7 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size,
 }
 
 static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init,
-				  const char *storage)
+				  enum qdl_storage_type storage)
 {
 	size_t max_sector_size;
 	size_t sector_sizes[] = { 512, 4096 };
@@ -359,7 +367,7 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 
 	ux_debug("accepted max payload size: %zu\n", qdl->max_payload_size);
 
-	if (strcmp(storage, "nand")) {
+	if (storage != QDL_STORAGE_NAND) {
 		max_sector_size = sector_sizes[ARRAY_SIZE(sector_sizes) - 1];
 		buf = malloc(max_sector_size);
 		memset(&op, 0, sizeof(op));
@@ -929,7 +937,7 @@ static int firehose_reset(struct qdl_device *qdl)
 
 static int firehose_detect_and_configure(struct qdl_device *qdl,
 					 bool skip_storage_init,
-					 const char *storage,
+					 enum qdl_storage_type storage,
 					 unsigned int timeout_s)
 {
 	struct timeval timeout = { .tv_sec = timeout_s };
@@ -962,7 +970,7 @@ int firehose_provision(struct qdl_device *qdl)
 {
 	int ret;
 
-	ret = firehose_detect_and_configure(qdl, true, "ufs", 5);
+	ret = firehose_detect_and_configure(qdl, true, QDL_STORAGE_UFS, 5);
 	if (ret)
 		return ret;
 
@@ -980,7 +988,7 @@ int firehose_provision(struct qdl_device *qdl)
 
 }
 
-int firehose_run(struct qdl_device *qdl, const char *storage)
+int firehose_run(struct qdl_device *qdl)
 {
 	bool multiple;
 	int bootable;
@@ -988,7 +996,7 @@ int firehose_run(struct qdl_device *qdl, const char *storage)
 
 	ux_info("waiting for programmer...\n");
 
-	ret = firehose_detect_and_configure(qdl, true, storage, 5);
+	ret = firehose_detect_and_configure(qdl, true, qdl->storage_type, 5);
 	if (ret)
 		return ret;
 

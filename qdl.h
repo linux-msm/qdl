@@ -35,11 +35,21 @@ enum QDL_DEVICE_TYPE {
 	QDL_DEVICE_SIM,
 };
 
+enum qdl_storage_type {
+	QDL_STORAGE_UNKNOWN,
+	QDL_STORAGE_EMMC,
+	QDL_STORAGE_NAND,
+	QDL_STORAGE_UFS,
+	QDL_STORAGE_NVME,
+	QDL_STORAGE_SPINOR,
+};
+
 struct qdl_device {
 	enum QDL_DEVICE_TYPE dev_type;
 	int fd;
 	size_t max_payload_size;
 	size_t sector_size;
+	enum qdl_storage_type storage_type;
 
 	int (*open)(struct qdl_device *qdl, const char *serial);
 	int (*read)(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
@@ -68,7 +78,7 @@ int qdl_vip_transfer_enable(struct qdl_device *qdl, const char *vip_table_path);
 struct qdl_device *usb_init(void);
 struct qdl_device *sim_init(void);
 
-int firehose_run(struct qdl_device *qdl, const char *storage);
+int firehose_run(struct qdl_device *qdl);
 int firehose_provision(struct qdl_device *qdl);
 int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);
 int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
