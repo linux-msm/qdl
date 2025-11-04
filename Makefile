@@ -1,23 +1,30 @@
-QDL := qdl
-RAMDUMP := qdl-ramdump
 VERSION := $(or $(VERSION), $(shell git describe --dirty --always --tags 2>/dev/null), "unknown-version")
 
-CFLAGS += -O2 -Wall -g `pkg-config --cflags libxml-2.0 libusb-1.0`
+CFLAGS += -Wall `pkg-config --cflags libxml-2.0 libusb-1.0`
 LDFLAGS += `pkg-config --libs libxml-2.0 libusb-1.0`
 ifeq ($(OS),Windows_NT)
 LDFLAGS += -lws2_32
 endif
 prefix := /usr/local
 
-QDL_SRCS := firehose.c io.c qdl.c sahara.c util.c patch.c program.c read.c sha2.c sim.c ufs.c usb.c ux.c oscompat.c vip.c sparse.c gpt.c
-QDL_OBJS := $(QDL_SRCS:.c=.o)
+# Default build type
+BUILD_TYPE ?= debug
+BUILD_DIR = build/$(BUILD_TYPE)
+OBJ_DIR = $(BUILD_DIR)/obj
+BIN_DIR = $(BUILD_DIR)/bin
+GEN_DIR = $(BUILD_DIR)/gen
 
+QDL := qdl
+QDL_SRCS := firehose.c io.c qdl.c sahara.c util.c patch.c program.c read.c sha2.c sim.c ufs.c usb.c ux.c oscompat.c vip.c sparse.c gpt.c
+QDL_OBJS = $(addprefix $(OBJ_DIR)/, $(notdir $(QDL_SRCS:.c=.o)))
+
+RAMDUMP := qdl-ramdump
 RAMDUMP_SRCS := ramdump.c sahara.c io.c sim.c usb.c util.c ux.c oscompat.c
-RAMDUMP_OBJS := $(RAMDUMP_SRCS:.c=.o)
+RAMDUMP_OBJS = $(addprefix $(OBJ_DIR)/, $(notdir $(RAMDUMP_SRCS:.c=.o)))
 
 KS_OUT := ks
 KS_SRCS := ks.c sahara.c util.c ux.c oscompat.c
-KS_OBJS := $(KS_SRCS:.c=.o)
+KS_OBJS = $(addprefix $(OBJ_DIR)/, $(notdir $(KS_SRCS:.c=.o)))
 
 CHECKPATCH_SOURCES := $(shell find . -type f \( -name "*.c" -o -name "*.h" -o -name "*.sh" \) ! -name "sha2.c" ! -name "sha2.h" ! -name "*version.h" ! -name "list.h")
 CHECKPATCH_ROOT := https://raw.githubusercontent.com/torvalds/linux/v6.15/scripts
@@ -26,41 +33,55 @@ CHECKPATCH_SP_URL := $(CHECKPATCH_ROOT)/spelling.txt
 CHECKPATCH := ./.scripts/checkpatch.pl
 CHECKPATCH_SP := ./.scripts/spelling.txt
 
-default: $(QDL) $(RAMDUMP) $(KS_OUT)
+default: debug
+all: debug release
 
-$(QDL): $(QDL_OBJS)
+release:
+	$(MAKE) BUILD_TYPE=release CFLAGS='$(CFLAGS) -O2 -Ibuild/release/gen' _all_internal
+
+debug:
+	$(MAKE) BUILD_TYPE=debug CFLAGS='$(CFLAGS) -O0 -g -Ibuild/debug/gen' _all_internal
+
+# Inner target that actually builds things with the chosen BUILD_TYPE
+_all_internal: dirs $(BIN_DIR)/$(QDL) $(BIN_DIR)/$(RAMDUMP) $(BIN_DIR)/$(KS_OUT)
+
+dirs:
+	@mkdir -p $(OBJ_DIR) $(BIN_DIR) $(GEN_DIR)
+
+$(OBJ_DIR)/%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BIN_DIR)/$(QDL): $(QDL_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-$(RAMDUMP): $(RAMDUMP_OBJS)
+$(BIN_DIR)/$(RAMDUMP): $(RAMDUMP_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-$(KS_OUT): $(KS_OBJS)
+$(BIN_DIR)/$(KS_OUT): $(KS_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 compile_commands.json: $(QDL_SRCS) $(KS_SRCS)
 	@echo -n $^ | jq -snR "[inputs|split(\" \")[]|{directory:\"$(PWD)\", command: \"$(CC) $(CFLAGS) -c \(.)\", file:.}]" > $@
 
-version.h::
-	@echo "#define VERSION \"$(VERSION)\"" > .version.h
-	@cmp -s .version.h version.h || cp .version.h version.h
+$(GEN_DIR)/version.h:
+	@echo "#define VERSION \"$(VERSION)\"" > $(GEN_DIR)/.version.h
+	@cmp -s $(GEN_DIR)/.version.h $(GEN_DIR)/version.h || cp $(GEN_DIR)/.version.h $(GEN_DIR)/version.h
 
-util.o: version.h
+$(OBJ_DIR)/util.o: $(GEN_DIR)/version.h
 
 clean:
-	rm -f $(QDL) $(QDL_OBJS)
-	rm -f $(RAMDUMP) $(RAMDUMP_OBJS)
-	rm -f $(KS_OUT) $(KS_OBJS)
+	rm -rf build
 	rm -f compile_commands.json
 	rm -f version.h .version.h
 	rm -f $(CHECKPATCH)
 	rm -f $(CHECKPATCH_SP)
 	if [ -d .scripts ]; then rmdir .scripts; fi
 
-install: $(QDL) $(RAMDUMP) $(KS_OUT)
+install: release
 	install -d $(DESTDIR)$(prefix)/bin
-	install -m 755 $^ $(DESTDIR)$(prefix)/bin
+	install -m 755 $(BIN_DIR)/$(QDL) $(BIN_DIR)/$(RAMDUMP) $(BIN_DIR)/$(KS_OUT) $(DESTDIR)$(prefix)/bin
 
-tests: default
+tests: debug
 tests:
 	@./tests/run_tests.sh
 

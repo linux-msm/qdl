@@ -25,7 +25,7 @@ jobs:
           sudo apt-get install -y libxml2-dev libusb-1.0-0-dev
 
       - name: Build
-        run: make
+        run: make all
 
       - name: Run tests
         run: make tests
@@ -35,7 +35,7 @@ jobs:
           mkdir dist
           cp `pkg-config --variable=libdir libusb-1.0`/libusb-1.0.so.0 dist
           chmod 0644 dist/*
-          cp qdl dist
+          cp ./build/release/bin/qdl dist
           patchelf --set-rpath '$ORIGIN' dist/qdl
 
       - name: Upload artifact
@@ -63,7 +63,7 @@ jobs:
           brew install libxml2
 
       - name: Build
-        run: make
+        run: make all
 
       - name: Run tests
         run: make tests
@@ -75,7 +75,7 @@ jobs:
           cp `pkg-config --variable=libdir libusb-1.0`/libusb-1.0.0.dylib dist
           cp `pkg-config --variable=libdir liblzma`/liblzma.5.dylib dist
           chmod 0644 dist/*
-          cp qdl dist
+          cp ./build/release/bin/qdl dist
 
           if uname -a | grep -q arm64; then
             LIBUSB_DIR=/opt/homebrew/opt/libusb/lib
@@ -124,7 +124,7 @@ jobs:
             mingw-w64-x86_64-libusb
 
       - name: Build
-        run: make
+        run: make all
         shell: msys2 {0}
 
       - name: Run tests
@@ -145,7 +145,7 @@ jobs:
           Copy-Item (Join-Path $BIN_DIR "liblzma-5.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "libiconv-2.dll") $DistDir
 
-          Copy-Item "qdl.exe" $DistDir
+          Copy-Item "./build/release/bin/qdl.exe" $DistDir
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

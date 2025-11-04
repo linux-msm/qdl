@@ -8,6 +8,7 @@ SCRIPT_PATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 FLAT_BUILD=${SCRIPT_PATH}/data
 
 REP_ROOT=${SCRIPT_PATH}/..
+QDL_PATH=${REP_ROOT}/build/debug/bin
 VIP_PATH=${FLAT_BUILD}/vip
 EXPECTED_DIGEST="a05e1124edbe34dc504a327544fb66572591353dc3fa25e6e7eafbe4803e63e0"
 VIP_TABLE_FILE=${VIP_PATH}/DigestsToSign.bin
@@ -15,7 +16,7 @@ VIP_TABLE_FILE=${VIP_PATH}/DigestsToSign.bin
 mkdir -p $VIP_PATH
 
 cd $FLAT_BUILD
-${REP_ROOT}/qdl --dry-run --create-digests=${VIP_PATH} \
+${QDL_PATH}/qdl --dry-run --create-digests=${VIP_PATH} \
         prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 
 if command -v sha256sum >/dev/null 2>&1; then
