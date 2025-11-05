@@ -104,6 +104,7 @@ const char *attr_as_string(xmlNode *node, const char *attr, int *errors)
 bool attr_as_bool(xmlNode *node, const char *attr, int *errors)
 {
 	xmlChar *value;
+	bool ret = false;
 
 	if (!xmlHasProp(node, (xmlChar *)attr))
 		return false;
@@ -114,7 +115,9 @@ bool attr_as_bool(xmlNode *node, const char *attr, int *errors)
 		return false;
 	}
 
-	return xmlStrcmp(value, (xmlChar *)"true") == 0;
+	ret = (xmlStrcmp(value, (xmlChar *)"true") == 0);
+	xmlFree(value);
+	return ret;
 }
 
 /***

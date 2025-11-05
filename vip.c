@@ -65,6 +65,7 @@ int vip_gen_init(struct qdl_device *qdl, const char *path)
 
 	if (stat(path, &st) || !S_ISDIR(st.st_mode)) {
 		ux_err("Directory '%s' to store VIP tables doesn't exist\n", path);
+		return -1;
 	}
 
 	vip_gen = malloc(sizeof(struct vip_table_generator));
