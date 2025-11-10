@@ -5,17 +5,49 @@ set -e
 
 SCRIPT_PATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --builddir)
+            builddir="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "${builddir}" ]]; then
+    echo "Error: --builddir is required." >&2
+    exit 1
+fi
+
 FLAT_BUILD=${SCRIPT_PATH}/data
 
 REP_ROOT=${SCRIPT_PATH}/..
+QDL_PATH=$builddir
 VIP_PATH=${FLAT_BUILD}/vip
 EXPECTED_DIGEST="d93fc596a037abe4977f50ca68e1bf57377299a496cb1436a9421579517cef13"
 VIP_TABLE_FILE=${VIP_PATH}/DigestsToSign.bin
 
+uname_out="$(uname -s)"
+case "${uname_out}" in
+    Linux*|Darwin*)
+        QDL=qdl
+        ;;
+    CYGWIN*|MINGW*|MSYS*)
+        QDL=qdl.exe
+        ;;
+    *)
+        exit 1
+        ;;
+esac
+
 mkdir -p $VIP_PATH
 
 cd $FLAT_BUILD
-${REP_ROOT}/qdl --dry-run --create-digests=${VIP_PATH} \
+${QDL_PATH}/${QDL} --dry-run --create-digests=${VIP_PATH} \
         prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 
 if command -v sha256sum >/dev/null 2>&1; then
