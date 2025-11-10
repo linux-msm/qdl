@@ -1,3 +1,7 @@
+/build/
+/tests/data/*.elf
+/tests/data/*.bin
+/tests/data/*.img
 *.o
 qdl
 qdl-ramdump
@@ -5,7 +9,6 @@ ks
 *.exe
 compile_commands.json
 .cache
-.version.h
 version.h
-scripts
+.scripts
 .checkpatch-camelcase.git.
