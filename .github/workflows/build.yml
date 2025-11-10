@@ -24,23 +24,49 @@ jobs:
       - name: Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev help2man
+
+          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev meson ninja-build help2man
+
+      - name: Configure
+        run: |
+          # Get current Meson version string (e.g. "1.5.1")
+          meson_version="$(meson --version 2>/dev/null | awk -F. '{print $1 "." $2}')"
+
+          # Convert version to comparable integer, e.g. "0.45" -> 45, "1.5" -> 105
+          version_to_num() {
+              local major minor
+              IFS='.' read -r major minor <<<"$1"
+              printf "%d%02d" "$major" "$minor"
+          }
+
+          current="$(version_to_num "$meson_version_short")"
+          threshold="$(version_to_num "1.1")"
+          # According to https://mesonbuild.com/Build-options.html for versions < 1.1 we should use
+          # meson_options.txt for build options
+          if (( current < threshold )); then
+              if [[ -f "meson.options" ]]; then
+                  echo "Detected Meson $meson_version (< 1.1) - renaming meson.options -> meson_options.txt"
+                  mv -f meson.options meson_options.txt
+              fi
+          fi
+
+          meson setup build
 
       - name: Build
-        run: make
+        run: meson compile -C build
 
       - name: Run tests
-        run: make tests
+        run: meson test -C build
 
       - name: Generate man pages
-        run: make manpages
+        run: meson compile manpages -C build
 
       - name: Package
         run: |
           mkdir dist
           cp `pkg-config --variable=libdir libusb-1.0`/libusb-1.0.so.0 dist
           chmod 0644 dist/*
-          cp qdl dist
+          cp ./build/qdl dist
           patchelf --set-rpath '$ORIGIN' dist/qdl
 
       - name: Upload artifact
@@ -67,16 +93,19 @@ jobs:
 
       - name: Dependencies
         run: |
-          brew install libxml2 help2man
+          brew install libxml2 meson ninja help2man
+
+      - name: Configure
+        run: meson setup build
 
       - name: Build
-        run: make
+        run: meson compile -C build
 
       - name: Generate man pages
-        run: make manpages
+        run: meson compile manpages -C build
 
       - name: Run tests
-        run: make tests
+        run: meson test -C build
 
       - name: Package
         run: |
@@ -85,7 +114,7 @@ jobs:
           cp `pkg-config --variable=libdir libusb-1.0`/libusb-1.0.0.dylib dist
           cp `pkg-config --variable=libdir liblzma`/liblzma.5.dylib dist
           chmod 0644 dist/*
-          cp qdl dist
+          cp ./build/qdl dist
 
           if uname -a | grep -q arm64; then
             LIBUSB_DIR=/opt/homebrew/opt/libusb/lib
@@ -132,24 +161,28 @@ jobs:
             git
             help2man
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-ninja
             mingw-w64-x86_64-libxml2
             mingw-w64-x86_64-libusb
             mingw-w64-x86_64-xz
 
+      - name: Configure
+        run: meson setup build
+        shell: msys2 {0}
+
       - name: Build
         run: |
           git config --global core.autocrlf true
-          make
+          meson compile -C build
         shell: msys2 {0}
 
       - name: Generate man pages
-        run: make manpages
+        run: meson compile manpages -C build
         shell: msys2 {0}
 
       - name: Run tests
-        run: make tests
+        run: meson test -C build
         shell: msys2 {0}
 
       - name: Package
@@ -166,7 +199,7 @@ jobs:
           Copy-Item (Join-Path $BIN_DIR "liblzma-5.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "libiconv-2.dll") $DistDir
 
-          Copy-Item "qdl.exe" $DistDir
+          Copy-Item "./build/qdl.exe" $DistDir
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
