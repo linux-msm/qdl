@@ -13,26 +13,32 @@ struct qdl_device_sim {
 	bool create_digests;
 };
 
-static int sim_open(struct qdl_device *qdl, const char *serial)
+static int sim_open(struct qdl_device __unused *qdl,
+		    const char __unused *serial)
 {
 	ux_info("This is a dry-run execution of QDL. No actual flashing has been performed\n");
 
 	return 0;
 }
 
-static void sim_close(struct qdl_device *qdl) {}
+static void sim_close(struct qdl_device __unused *qdl) {}
 
-static int sim_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
+static int sim_read(struct qdl_device __unused *qdl,
+		    void  __unused *buf, size_t len,
+		    unsigned int __unused timeout)
 {
 	return len;
 }
 
-static int sim_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int timeout)
+static int sim_write(struct qdl_device __unused *qdl, const void __unused *buf,
+		     size_t len, unsigned int __unused timeout)
 {
 	return len;
 }
 
-static void sim_set_out_chunk_size(struct qdl_device *qdl, long size) {}
+static void sim_set_out_chunk_size(struct qdl_device __unused *qdl,
+				   long __unused size)
+{}
 
 struct qdl_device *sim_init(void)
 {
