@@ -26,6 +26,8 @@
 	(_x + _a - 1) & ~(_a - 1);	\
 })
 
+#define __unused __attribute__((__unused__))
+
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 #define MAPPING_SZ 64
