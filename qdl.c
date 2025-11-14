@@ -110,6 +110,70 @@ static enum qdl_storage_type decode_storage(const char *storage)
 	exit(1);
 }
 
+/**
+ * decode_programmer() - decodes the programmer specifier
+ * @s: programmer specifier, from the user
+ * @images: array of images to populate
+ * @single: legacy single image specifier, for which image id should be ignored
+ *
+ * This parses the progammer specifier @s, which can either be a single
+ * filename, or a comma-separated series of <id>:<filename> entries.
+ *
+ * In the first case @images[0] is assigned the provided filename and @single is
+ * set to true. In the second case, each comma-separated entry will be split on
+ * ':' and the given <filename> will be assigned to the @image entry indicated
+ * by the given <id>.
+ *
+ * Memory is not allocated for the various strings, instead @s will be modified
+ * by the tokenizer and pointers to the individual parts will be stored in the
+ * @images array.
+ *
+ * Returns: 0 on success, -1 otherwise.
+ */
+static int decode_programmer(char *s, struct sahara_image *images, bool *single)
+{
+	char *filename;
+	char *save1;
+	char *save2;
+	char *pair;
+	char *id_str;
+	long id;
+	int ret;
+
+	if (!strchr(s, ':')) {
+		ret = load_sahara_image(s, &images[0]);
+		if (ret < 0)
+			return -1;
+		*single = true;
+
+		return 0;
+	}
+
+	for (pair = strtok_r(s, ",", &save1); pair; pair = strtok_r(NULL, ",", &save1)) {
+		id_str = strtok_r(pair, ":", &save2);
+		filename = strtok_r(NULL, ":", &save2);
+
+		if (!id_str || !filename) {
+			ux_err("failed to parse programmer specifier\n");
+			return -1;
+		}
+
+		id = strtoul(id_str, NULL, 0);
+		if (id == 0 || id >= MAPPING_SZ) {
+			ux_err("invalid image id \"%s\"\n", id_str);
+			return -1;
+		}
+
+		ret = load_sahara_image(filename, &images[id]);
+		if (ret < 0)
+			return -1;
+	}
+
+	*single = false;
+
+	return 0;
+}
+
 static void print_usage(FILE *out)
 {
 	extern const char *__progname;
@@ -257,7 +321,7 @@ int main(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	ret = load_sahara_image(argv[optind++], &sahara_images[0]);
+	ret = decode_programmer(argv[optind++], sahara_images, &single_image);
 	if (ret < 0)
 		exit(1);
 
