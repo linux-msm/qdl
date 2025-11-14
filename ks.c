@@ -54,6 +54,8 @@ static void print_usage(FILE *out)
 
 int main(int argc, char **argv)
 {
+	struct sahara_image mappings[MAPPING_SZ] = {};
+	const char *filename;
 	bool found_mapping = false;
 	char *dev_node = NULL;
 	long file_id;
@@ -101,8 +103,12 @@ int main(int argc, char **argv)
 				print_usage(stderr);
 				return 1;
 			}
-			qdl.mappings[file_id] = &optarg[colon - optarg + 1];
-			printf("Created mapping ID:%ld File:%s\n", file_id, qdl.mappings[file_id]);
+			filename = &optarg[colon - optarg + 1];
+			ret = load_sahara_image(filename, &mappings[file_id]);
+			if (ret < 0)
+				exit(1);
+
+			printf("Created mapping ID:%ld File:%s\n", file_id, filename);
 			break;
 		case 'h':
 			print_usage(stdout);
@@ -128,7 +134,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	ret = sahara_run(&qdl, qdl.mappings, false, NULL, NULL);
+	ret = sahara_run(&qdl, mappings, false, NULL, NULL);
 	if (ret < 0)
 		return 1;
 
