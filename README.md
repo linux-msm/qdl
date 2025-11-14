@@ -167,6 +167,57 @@ table of digests are stored using `--vip-table-path` param:
 qdl --vip-table-path=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
 
+### Multi-programmer targets
+
+On some targets multiple files need to be loaded in order to reach the
+Firehose programmer, these targets will request multiple images over Sahara.
+Three mechanisms for providing these images are provided:
+
+#### Command line argument
+
+The *programmer* argument, allows specifying a comma-separated list of
+colon-separated "id" and "filename" pairs. Each filename should refer to the
+Sahara image of the specified Sahara image id.
+
+```bash
+qdl 13:prog_firehose_ddr.elf,42:the-answer rawprogram.xml
+```
+
+#### Sahara configuration XML file
+
+Flattened METAs does include the various images that need to be loaded to
+enter Firehose mode, as well as a sahara_config XML file, which defines the
+Sahara image id for each of these images.
+
+If the specified device programmer is determined to be a Sahara configuration
+XML file, it will be parsed and the referred to files will be loaded and
+serviced to the device upon request.
+
+```bash
+qdl sahara_programmer.xml rawprogram.xml
+```
+
+#### Programmer archive
+
+Directly providing a list of ids and filenames is cumbersome and error prone,
+QDL therefore accepts a "*programmer archive*". This allows the user to use the
+tool in the same fashion as was done for single-programmer targets.
+
+The *programmer archive* is a CPIO archive containing the Sahara images to be
+loaded, identified by the filename **id[:filename]** (*filename* is optional,
+but useful for debugging). Each included file will be used to serve requests
+for the given Sahara *id*.
+
+Such an archive can be created by putting the target's programmer images in an
+empty directory, then in that directory execute the command:
+
+```bash
+ls | cpio -o -H newc > ../programmer.cpio
+```
+
+*programmer.cpio* can now be passed to QDL and the included images will be
+served, in order to reach Firehose mode.
+
 ## Run tests
 
 To run the integration test suite for QDL, use the `make tests` target:
