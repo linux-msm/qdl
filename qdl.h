@@ -29,6 +29,10 @@
 #define __unused __attribute__((__unused__))
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#define ALIGN_UP(p, size) ({						\
+		__typeof__(size) _mask = (size) - 1;			\
+		(__typeof__(p))(((uintptr_t)(p) + _mask) & ~_mask);	\
+})
 
 #define MAPPING_SZ 64
 

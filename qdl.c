@@ -4,6 +4,7 @@
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
  * All rights reserved.
  */
+#include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
 #include <stdbool.h>
@@ -110,6 +111,127 @@ static enum qdl_storage_type decode_storage(const char *storage)
 	exit(1);
 }
 
+#define CPIO_MAGIC "070701"
+struct cpio_newc_header {
+	char c_magic[6];       /* "070701" */
+	char c_ino[8];
+	char c_mode[8];
+	char c_uid[8];
+	char c_gid[8];
+	char c_nlink[8];
+	char c_mtime[8];
+	char c_filesize[8];
+	char c_devmajor[8];
+	char c_devminor[8];
+	char c_rdevmajor[8];
+	char c_rdevminor[8];
+	char c_namesize[8];
+	char c_check[8];
+};
+
+static uint32_t parse_ascii_hex32(const char *s)
+{
+	uint32_t x = 0;
+
+	for (int i = 0; i < 8; i++) {
+		if (!isxdigit(s[i]))
+			err(1, "non-hex-digit found in archive header");
+
+		if (s[i] <= '9')
+			x = (x << 4) | (s[i] - '0');
+		else
+			x = (x << 4) | (10 + (s[i] | 32) - 'a');
+	}
+
+	return x;
+}
+
+/**
+ * decode_programmer_archive() - Attempt to decode a programmer CPIO archive
+ * @images: List of Sahara images, with @images[0] populated
+ *
+ * The single blob provided in @images[0] might be a CPIO archive containing
+ * Sahara images, in files with names in the format "<id>:<filename>". Load
+ * each such Sahara image into the relevant spot in the @images array.
+ *
+ * The original blob (in @images[0]) is freed once it has been consumed.
+ *
+ * Returns: 0 if no archive was found, 1 if archive was decoded, -1 on error
+ */
+static int decode_programmer_archive(struct sahara_image *images)
+{
+	struct sahara_image *blob = &images[0];
+	struct cpio_newc_header *hdr;
+	size_t filesize;
+	size_t namesize;
+	char name[128];
+	char *save;
+	char *tok;
+	void *ptr = blob->ptr;
+	void *end = blob->ptr + blob->len;
+	long id;
+
+	if (blob->len < sizeof(*hdr) || memcmp(ptr, CPIO_MAGIC, 6))
+		return 0;
+
+	for (;;) {
+		if (ptr + sizeof(*hdr) > end) {
+			ux_err("programmer archive is truncated\n");
+			return -1;
+		}
+		hdr = ptr;
+
+		if (memcmp(hdr->c_magic, "070701", 6)) {
+			ux_err("expected cpio header in programmer archive\n");
+			return -1;
+		}
+
+		filesize = parse_ascii_hex32(hdr->c_filesize);
+		namesize = parse_ascii_hex32(hdr->c_namesize);
+
+		ptr += sizeof(*hdr);
+		if (ptr + namesize > end || ptr + filesize + namesize > end) {
+			ux_err("programmer archive is truncated\n");
+			return -1;
+		}
+
+		if (namesize > sizeof(name)) {
+			ux_err("unexpected filename length in progammer archive\n");
+			return -1;
+		}
+		memcpy(name, ptr, namesize);
+
+		if (!memcmp(name, "TRAILER!!!", 11))
+			break;
+
+		tok = strtok_r(name, ":", &save);
+		id = strtoul(tok, NULL, 0);
+		if (id == 0 || id >= MAPPING_SZ) {
+			ux_err("invalid image id \"%s\" in programmer archive\n", tok);
+			return -1;
+		}
+
+		ptr += namesize;
+		ptr = ALIGN_UP(ptr, 4);
+
+		tok = strtok_r(NULL, ":", &save);
+		if (tok)
+			images[id].name = strdup(tok);
+		images[id].len = filesize;
+		images[id].ptr = malloc(filesize);
+		memcpy(images[id].ptr, ptr, filesize);
+
+		ptr += filesize;
+		ptr = ALIGN_UP(ptr, 4);
+	}
+
+	free(blob->ptr);
+	blob->ptr = NULL;
+	blob->len = 0;
+
+	return 1;
+}
+
 /**
  * decode_programmer() - decodes the programmer specifier
  * @s: programmer specifier, from the user
@@ -144,7 +266,12 @@ static int decode_programmer(char *s, struct sahara_image *images, bool *single)
 		ret = load_sahara_image(s, &images[0]);
 		if (ret < 0)
 			return -1;
-		*single = true;
+
+		ret = decode_programmer_archive(images);
+		if (ret < 0)
+			return -1;
+
+		*single = (ret == 0);
 
 		return 0;
 	}
