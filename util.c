@@ -5,6 +5,7 @@
  */
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -12,7 +13,9 @@
 #include <stdlib.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
+#include <unistd.h>
 
+#include "oscompat.h"
 #include "qdl.h"
 #include "version.h"
 
@@ -206,4 +209,56 @@ done:
 	*gpt_partition = gpt;
 
 	return 0;
+}
+
+/**
+ * load_sahara_image() - Load the content of the given file into the image
+ * @filename: file to be loaded
+ * @image: Sahara image object to be populated
+ *
+ * Read the content of the given @filename into the given @image, update the
+ * @image->len, and then populate the @image->name for debugging purposes.
+ *
+ * Returns: 0 on success, -1 on error
+ */
+int load_sahara_image(const char *filename, struct sahara_image *image)
+{
+	ssize_t n;
+	off_t len;
+	void *ptr;
+	int fd;
+
+	fd = open(filename, O_RDONLY | O_BINARY);
+	if (fd < 0) {
+		ux_err("failed to read \"%s\"\n", filename);
+		return -1;
+	}
+
+	len = lseek(fd, 0, SEEK_END);
+	if (len < 0) {
+		ux_err("failed to find end of \"%s\"\n", filename);
+		goto err_close;
+	}
+	lseek(fd, 0, SEEK_SET);
+
+	ptr = malloc(len);
+
+	n = read(fd, ptr, len);
+	if (n != len) {
+		ux_err("failed to read content of \"%s\"\n", filename);
+		free(ptr);
+		goto err_close;
+	}
+
+	close(fd);
+
+	image->name = strdup(filename);
+	image->ptr = ptr;
+	image->len = len;
+
+	return 0;
+
+err_close:
+	close(fd);
+	return -1;
 }

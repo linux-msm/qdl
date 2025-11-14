@@ -141,7 +141,8 @@ static void print_usage(FILE *out)
 int main(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
-	char *prog_mbn;
+	struct sahara_image sahara_images[MAPPING_SZ] = {};
+	bool single_image = true;
 	char *incdir = NULL;
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
@@ -256,9 +257,9 @@ int main(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	prog_mbn = argv[optind++];
-	if (access(prog_mbn, F_OK))
-		errx(1, "unable to load programmer \"%s\"", prog_mbn);
+	ret = load_sahara_image(argv[optind++], &sahara_images[0]);
+	if (ret < 0)
+		exit(1);
 
 	do {
 		type = detect_type(argv[optind]);
@@ -321,8 +322,7 @@ int main(int argc, char **argv)
 
 	qdl->storage_type = storage_type;
 
-	qdl->mappings[0] = prog_mbn;
-	ret = sahara_run(qdl, qdl->mappings, true, NULL, NULL);
+	ret = sahara_run(qdl, sahara_images, single_image, NULL, NULL);
 	if (ret < 0)
 		goto out_cleanup;
 
