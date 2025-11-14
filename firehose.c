@@ -83,7 +83,7 @@ static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 	return node;
 }
 
-static int firehose_generic_parser(xmlNode *node, void __unused *data, bool *rawmode)
+static int firehose_generic_parser(xmlNode *node, void __unused * data, bool *rawmode)
 {
 	xmlChar *value;
 	int ret = -EINVAL;
@@ -255,7 +255,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
  * Return: max size supported by the remote, or negative errno on failure
  */
 static int firehose_configure_response_parser(xmlNode *node, void *data,
-					      bool __unused *rawmode)
+					      bool __unused * rawmode)
 {
 	xmlChar *payload;
 	xmlChar *value;
