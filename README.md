@@ -15,6 +15,13 @@ sudo apt install libxml2 libusb-1.0-0-dev
 make
 ```
 
+Manpages can be built separately:
+
+```bash
+sudo apt install help2man
+make manpages
+```
+
 ### MacOS
 
 For Homebrew users,

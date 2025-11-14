@@ -26,6 +26,8 @@ CHECKPATCH_SP_URL := $(CHECKPATCH_ROOT)/spelling.txt
 CHECKPATCH := ./.scripts/checkpatch.pl
 CHECKPATCH_SP := ./.scripts/spelling.txt
 
+MANPAGES := ks.1 qdl-ramdump.1 qdl.1
+
 default: $(QDL) $(RAMDUMP) $(KS_OUT)
 
 $(QDL): $(QDL_OBJS)
@@ -40,6 +42,11 @@ $(KS_OUT): $(KS_OBJS)
 compile_commands.json: $(QDL_SRCS) $(KS_SRCS)
 	@echo -n $^ | jq -snR "[inputs|split(\" \")[]|{directory:\"$(PWD)\", command: \"$(CC) $(CFLAGS) -c \(.)\", file:.}]" > $@
 
+manpages: $(KS_OUT) $(RAMDUMP) $(QDL)
+	help2man -N -n "KS" -o ks.1 ./ks
+	help2man -N -n "Qualcomm Download" -o qdl.1 ./qdl
+	help2man -N -n "Qualcomm Download Ramdump" -o qdl-ramdump.1 ./qdl-ramdump
+
 version.h::
 	@echo "#define VERSION \"$(VERSION)\"" > .version.h
 	@cmp -s .version.h version.h || cp .version.h version.h
@@ -50,6 +57,7 @@ clean:
 	rm -f $(QDL) $(QDL_OBJS)
 	rm -f $(RAMDUMP) $(RAMDUMP_OBJS)
 	rm -f $(KS_OUT) $(KS_OBJS)
+	rm -f $(MANPAGES)
 	rm -f compile_commands.json
 	rm -f version.h .version.h
 	rm -f $(CHECKPATCH)
