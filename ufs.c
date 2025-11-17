@@ -36,7 +36,7 @@ bool ufs_need_provisioning(void)
 	return !!ufs_epilogue_p;
 }
 
-struct ufs_common *ufs_parse_common_params(xmlNode *node, bool __unused finalize_provisioning)
+struct ufs_common *ufs_parse_common_params(xmlNode *node, bool finalize_provisioning __unused)
 {
 	struct ufs_common *result;
 	int errors;
