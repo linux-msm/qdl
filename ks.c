@@ -24,12 +24,12 @@ static struct qdl_device qdl;
 
 bool qdl_debug;
 
-int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int __unused timeout)
+int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout __unused)
 {
 	return read(qdl->fd, buf, len);
 }
 
-int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int __unused timeout)
+int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int timeout __unused)
 {
 	return write(qdl->fd, buf, len);
 }

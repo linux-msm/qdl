@@ -264,7 +264,7 @@ static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	qdl_write(qdl, &done, done.length, SAHARA_CMD_TIMEOUT_MS);
 }
 
-static int sahara_done(struct qdl_device __unused *qdl, struct sahara_pkt *pkt)
+static int sahara_done(struct qdl_device *qdl __unused, struct sahara_pkt *pkt)
 {
 	assert(pkt->length == SAHARA_DONE_RESP_LENGTH);
 
