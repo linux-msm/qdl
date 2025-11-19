@@ -29,6 +29,10 @@
 #define __unused __attribute__((__unused__))
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#define ALIGN_UP(p, size) ({						\
+		__typeof__(size) _mask = (size) - 1;			\
+		(__typeof__(p))(((uintptr_t)(p) + _mask) & ~_mask);	\
+})
 
 #define MAPPING_SZ 64
 
@@ -61,9 +65,13 @@ struct qdl_device {
 	void (*set_vip_transfer)(struct qdl_device *qdl, const char *signed_table,
 				 const char *chained_table);
 
-	char *mappings[MAPPING_SZ]; // array index is the id from the device
-
 	struct vip_transfer_data vip_data;
+};
+
+struct sahara_image {
+	const char *name;
+	void *ptr;
+	size_t len;
 };
 
 struct libusb_device_handle;
@@ -83,8 +91,10 @@ struct qdl_device *sim_init(void);
 int firehose_run(struct qdl_device *qdl);
 int firehose_provision(struct qdl_device *qdl);
 int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);
-int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
-	       const char *ramdump_path, const char *ramdump_filter);
+int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
+	       bool single_image, const char *ramdump_path,
+	       const char *ramdump_filter);
+int load_sahara_image(const char *filename, struct sahara_image *image);
 void print_hex_dump(const char *prefix, const void *buf, size_t len);
 unsigned int attr_as_unsigned(xmlNode *node, const char *attr, int *errors);
 const char *attr_as_string(xmlNode *node, const char *attr, int *errors);

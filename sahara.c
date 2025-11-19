@@ -144,38 +144,15 @@ static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	qdl_write(qdl, &resp, resp.length, SAHARA_CMD_TIMEOUT_MS);
 }
 
-static int sahara_read_common(struct qdl_device *qdl, int progfd, off_t offset, size_t len)
+static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
+			const struct sahara_image *images,
+			bool single_image)
 {
-	ssize_t n;
-	void *buf;
-	int ret = 0;
-
-	buf = malloc(len);
-	if (!buf)
-		return -ENOMEM;
-
-	lseek(progfd, offset, SEEK_SET);
-	n = read(progfd, buf, len);
-	if (n != len) {
-		ret = -errno;
-		goto out;
-	}
-
-	n = qdl_write(qdl, buf, n, SAHARA_CMD_TIMEOUT_MS);
-	if (n != len)
-		err(1, "failed to write %zu bytes to sahara", len);
-
-	free(buf);
-
-out:
-	return ret;
-}
-
-static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *img_arr[], bool single_image)
-{
-	unsigned int image;
+	const struct sahara_image *image;
+	unsigned int image_idx;
+	size_t offset;
+	size_t len;
 	int ret;
-	int fd;
 
 	assert(pkt->length == SAHARA_READ_DATA_LENGTH);
 
@@ -183,37 +160,39 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt, char *im
 		 pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
 	if (single_image)
-		image = 0;
+		image_idx = 0;
 	else
-		image = pkt->read_req.image;
+		image_idx = pkt->read_req.image;
 
-	if (image >= MAPPING_SZ || !img_arr[image]) {
-		ux_err("device requested invalid image: %u\n", image);
+	if (image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
+		ux_err("device requested invalid image: %u\n", image_idx);
 		sahara_send_reset(qdl);
 		return;
 	}
 
-	fd = open(img_arr[image], O_RDONLY | O_BINARY);
-	if (fd < 0) {
-		ux_err("Can not open \"%s\": %s\n", img_arr[image], strerror(errno));
-		// Maybe this read was optional.  Notify device of error and let
-		// it decide how to proceed.
-		sahara_send_reset(qdl);
+	offset = pkt->read_req.offset;
+	len = pkt->read_req.length;
+
+	image = &images[image_idx];
+	if (offset > image->len || offset + len > image->len) {
+		ux_err("device requested invalid range of image %d\n", image_idx);
 		return;
 	}
 
-	ret = sahara_read_common(qdl, fd, pkt->read_req.offset, pkt->read_req.length);
-	if (ret < 0)
-		errx(1, "failed to read image chunk to sahara");
-
-	close(fd);
+	ret = qdl_write(qdl, image->ptr + offset, len, SAHARA_CMD_TIMEOUT_MS);
+	if (ret != len)
+		err(1, "failed to write %zu bytes to sahara", len);
 }
 
-static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *img_arr[], bool single_image)
+static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
+			  const struct sahara_image *images,
+			  bool single_image)
 {
-	unsigned int image;
+	const struct sahara_image *image;
+	unsigned int image_idx;
+	size_t offset;
+	size_t len;
 	int ret;
-	int fd;
 
 	assert(pkt->length == SAHARA_READ_DATA64_LENGTH);
 
@@ -221,29 +200,28 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt, char *
 		 pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
 	if (single_image)
-		image = 0;
+		image_idx = 0;
 	else
-		image = pkt->read64_req.image;
+		image_idx = pkt->read64_req.image;
 
-	if (image >= MAPPING_SZ || !img_arr[image]) {
-		ux_err("device requested invalid image: %u\n", image);
-		sahara_send_reset(qdl);
-		return;
-	}
-	fd = open(img_arr[image], O_RDONLY | O_BINARY);
-	if (fd < 0) {
-		ux_err("Can not open \"%s\": %s\n", img_arr[image], strerror(errno));
-		// Maybe this read was optional.  Notify device of error and let
-		// it decide how to proceed.
+	if (image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
+		ux_err("device requested invalid image: %u\n", image_idx);
 		sahara_send_reset(qdl);
 		return;
 	}
 
-	ret = sahara_read_common(qdl, fd, pkt->read64_req.offset, pkt->read64_req.length);
-	if (ret < 0)
-		errx(1, "failed to read image chunk to sahara");
+	offset = pkt->read64_req.offset;
+	len = pkt->read64_req.length;
 
-	close(fd);
+	image = &images[image_idx];
+	if (offset > image->len || offset + len > image->len) {
+		ux_err("device requested invalid range of image %d\n", image_idx);
+		return;
+	}
+
+	ret = qdl_write(qdl, image->ptr + offset, len, SAHARA_CMD_TIMEOUT_MS);
+	if (ret != len)
+		err(1, "failed to write %zu bytes to sahara", len);
 }
 
 static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
@@ -436,14 +414,31 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	sahara_send_reset(qdl);
 }
 
-int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
-	       const char *ramdump_path, const char *ramdump_filter)
+static void sahara_debug_list_images(const struct sahara_image *images, bool single_image)
+{
+	int i;
+
+	if (single_image)
+		ux_debug("Sahara image id in read requests will be ignored\n");
+
+	ux_debug("Sahara images:\n");
+	for (i = 0; i < MAPPING_SZ; i++) {
+		if (images[i].ptr)
+			ux_debug("  %2d: %s\n", i, images[i].name ? : "(unknown)");
+	}
+}
+
+int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
+	       bool single_image, const char *ramdump_path,
+	       const char *ramdump_filter)
 {
 	struct sahara_pkt *pkt;
 	char buf[4096];
 	char tmp[32];
 	bool done = false;
 	int n;
+
+	sahara_debug_list_images(images, single_image);
 
 	/*
 	 * Don't need to do anything in simulation mode with Sahara,
@@ -470,7 +465,7 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 			sahara_hello(qdl, pkt);
 			break;
 		case SAHARA_READ_DATA_CMD:
-			sahara_read(qdl, pkt, img_arr, single_image);
+			sahara_read(qdl, pkt, images, single_image);
 			break;
 		case SAHARA_END_OF_IMAGE_CMD:
 			sahara_eoi(qdl, pkt);
@@ -486,7 +481,7 @@ int sahara_run(struct qdl_device *qdl, char *img_arr[], bool single_image,
 			sahara_debug64(qdl, pkt, ramdump_path, ramdump_filter);
 			break;
 		case SAHARA_READ_DATA64_CMD:
-			sahara_read64(qdl, pkt, img_arr, single_image);
+			sahara_read64(qdl, pkt, images, single_image);
 			break;
 		case SAHARA_RESET_RESP_CMD:
 			assert(pkt->length == SAHARA_RESET_LENGTH);
