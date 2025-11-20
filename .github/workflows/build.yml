@@ -24,13 +24,16 @@ jobs:
       - name: Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev
+          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev help2man
 
       - name: Build
         run: make
 
       - name: Run tests
         run: make tests
+
+      - name: Generate man pages
+        run: make manpages
 
       - name: Package
         run: |
@@ -64,10 +67,13 @@ jobs:
 
       - name: Dependencies
         run: |
-          brew install libxml2
+          brew install libxml2 help2man
 
       - name: Build
         run: make
+
+      - name: Generate man pages
+        run: make manpages
 
       - name: Run tests
         run: make tests
@@ -124,6 +130,7 @@ jobs:
           install: >
             base-devel
             git
+            help2man
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-make
             mingw-w64-x86_64-pkg-config
@@ -134,6 +141,10 @@ jobs:
         run: |
           git config --global core.autocrlf true
           make
+        shell: msys2 {0}
+
+      - name: Generate man pages
+        run: make manpages
         shell: msys2 {0}
 
       - name: Run tests
