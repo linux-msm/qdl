@@ -11,15 +11,8 @@ loader and use this to flash images.
 ### Linux
 
 ```bash
-sudo apt install libxml2 libusb-1.0-0-dev
+sudo apt install libxml2 libusb-1.0-0-dev help2man
 make
-```
-
-Manpages can be built separately:
-
-```bash
-sudo apt install help2man
-make manpages
 ```
 
 ### MacOS
@@ -27,14 +20,14 @@ make manpages
 For Homebrew users,
 
 ```bash
-brew install libxml2 pkg-config libusb
+brew install libxml2 pkg-config libusb help2man
 make
 ```
 
 For MacPorts users
 
 ```bash
-sudo port install libxml2 pkgconfig libusb
+sudo port install libxml2 pkgconfig libusb help2man
 make
 ```
 
@@ -47,6 +40,7 @@ install additional packages needed for QDL compilation using the `pacman` tool:
 ```bash
 pacman -S base-devel --needed
 pacman -S git
+pacman -S help2man
 pacman -S mingw-w64-x86_64-gcc
 pacman -S mingw-w64-x86_64-make
 pacman -S mingw-w64-x86_64-pkg-config
@@ -225,6 +219,14 @@ To run the integration test suite for QDL, use the `make tests` target:
 
 ```bash
 make tests
+```
+
+## Generate man pages
+
+Manpages can be generated using `make manpages` target:
+
+```bash
+make manpages
 ```
 
 ## Contributing
