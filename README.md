@@ -46,6 +46,7 @@ install additional packages needed for QDL compilation using the `pacman` tool:
 
 ```bash
 pacman -S base-devel --needed
+pacman -S git
 pacman -S mingw-w64-x86_64-gcc
 pacman -S mingw-w64-x86_64-make
 pacman -S mingw-w64-x86_64-pkg-config
