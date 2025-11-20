@@ -11,8 +11,9 @@ loader and use this to flash images.
 ### Linux
 
 ```bash
-sudo apt install libxml2 libusb-1.0-0-dev help2man
-make
+sudo apt install libxml2 libusb-1.0-0-dev meson ninja-build help2man
+meson setup build
+meson compile -C build
 ```
 
 ### MacOS
@@ -20,15 +21,17 @@ make
 For Homebrew users,
 
 ```bash
-brew install libxml2 pkg-config libusb help2man
-make
+brew install libxml2 libusb meson ninja help2man
+meson setup build
+meson compile -C build
 ```
 
 For MacPorts users
 
 ```bash
-sudo port install libxml2 pkgconfig libusb help2man
-make
+sudo port install libxml2 libusb meson ninja help2man
+meson setup build
+meson compile -C build
 ```
 
 ### Windows
@@ -42,16 +45,17 @@ pacman -S base-devel --needed
 pacman -S git
 pacman -S help2man
 pacman -S mingw-w64-x86_64-gcc
-pacman -S mingw-w64-x86_64-make
-pacman -S mingw-w64-x86_64-pkg-config
+pacman -S mingw-w64-x86_64-meson
+pacman -S mingw-w64-x86_64-ninja
 pacman -S mingw-w64-x86_64-libusb
 pacman -S mingw-w64-x86_64-libxml2
 ```
 
-Then use the `make` tool to build QDL:
+Then use the `meson` tool to build QDL:
 
 ```bash
-make
+meson setup build
+meson compile -C build
 ```
 
 ## Use QDL
@@ -215,18 +219,19 @@ served, in order to reach Firehose mode.
 
 ## Run tests
 
-To run the integration test suite for QDL, use the `make tests` target:
+To run the integration test suite for QDL, use the `meson` tool with `test`
+param:
 
 ```bash
-make tests
+meson test -C build
 ```
 
 ## Generate man pages
 
-Manpages can be generated using `make manpages` target:
+Manpages can be generated using `manpages` target:
 
 ```bash
-make manpages
+meson compile manpages -C build
 ```
 
 ## Contributing
@@ -238,7 +243,7 @@ and submit the pull request.
 The preferred coding style for this tool is [Linux kernel coding style](https://www.kernel.org/doc/html/v6.15/process/coding-style.html).
 
 Before creating a commit, please ensure that your changes adhere to the coding style
-by using the `make check-cached` target, for example:
+by using the `meson compile check-cached -C build` target, for example:
 
 ```bash
 $ git status
@@ -248,7 +253,8 @@ Changes to be committed:
   modified:   qdl.c
   modified:   qdl.h
 
-$ make check-cached
+$ meson compile check-cached -C build
+[0/1] Running external command check-cached (wrapped by meson to set env)
 Running checkpatch on staged changes...
 ERROR: trailing whitespace
 #28: FILE: qdl.h:32:
