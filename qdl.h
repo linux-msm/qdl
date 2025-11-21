@@ -56,6 +56,7 @@ struct qdl_device {
 	size_t max_payload_size;
 	size_t sector_size;
 	enum qdl_storage_type storage_type;
+	unsigned int slot;
 
 	int (*open)(struct qdl_device *qdl, const char *serial);
 	int (*read)(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
