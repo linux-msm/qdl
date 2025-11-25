@@ -412,7 +412,7 @@ static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
 	struct stat sb;
 	int ret;
 	void *buf;
-	size_t n;
+	ssize_t n;
 
 	ret = fstat(table_fd, &sb);
 	if (ret < 0) {
