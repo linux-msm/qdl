@@ -341,7 +341,7 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 	size_t size = 0;
 	void *buf;
 	int ret;
-	int i;
+	unsigned int i;
 
 	ret = firehose_send_configure(qdl, qdl->max_payload_size, skip_storage_init,
 				      storage, &size);
@@ -454,6 +454,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	int left;
 	int ret;
 	int n;
+	size_t i;
 	uint32_t fill_value;
 
 	/*
@@ -526,8 +527,8 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 			break;
 		case CHUNK_TYPE_FILL:
 			fill_value = program->sparse_fill_value;
-			for (n = 0; n < qdl->max_payload_size; n += sizeof(fill_value))
-				memcpy(buf + n, &fill_value, sizeof(fill_value));
+			for (i = 0; i < qdl->max_payload_size; i += sizeof(fill_value))
+				memcpy(buf + i, &fill_value, sizeof(fill_value));
 			break;
 		default:
 			ux_err("[SPARSE] invalid chunk type\n");
@@ -555,7 +556,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 				goto out;
 			}
 
-			if (n < qdl->max_payload_size)
+			if ((size_t)n < qdl->max_payload_size)
 				memset(buf + n, 0, qdl->max_payload_size - n);
 		}
 
@@ -587,7 +588,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 			goto out;
 		}
 
-		if (n != chunk_size * sector_size) {
+		if ((size_t)n != chunk_size * sector_size) {
 			ux_err("USB write truncated\n");
 			ret = -1;
 			goto out;
@@ -686,12 +687,12 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 			continue;
 		} else if (expect_empty) {
 			err(1, "expected empty transfer but received non-empty transfer during read");
-		} else if (n != chunk_size * sector_size) {
+		} else if ((size_t)n != chunk_size * sector_size) {
 			err(1, "failed to read full sector");
 		}
 
 		if (out_buf) {
-			if (n > out_len - out_offset)
+			if ((size_t)n > out_len - out_offset)
 				n = out_len - out_offset;
 
 			memcpy(out_buf + out_offset, buf, n);
@@ -699,7 +700,7 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 		} else {
 			n = write(fd, buf, n);
 
-			if (n != chunk_size * sector_size) {
+			if (n < 0 || (size_t)n != chunk_size * sector_size) {
 				err(1, "failed to write");
 			}
 		}

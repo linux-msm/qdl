@@ -39,8 +39,8 @@ void print_hex_dump(const char *prefix, const void *buf, size_t len)
 	uint8_t ch;
 	char line[16 * 3 + 16 + 1];
 	int li;
-	int i;
-	int j;
+	unsigned int i;
+	unsigned int j;
 
 	for (i = 0; i < len; i += 16) {
 		linelen = MIN(16, len - i);

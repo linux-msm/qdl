@@ -180,7 +180,7 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	}
 
 	ret = qdl_write(qdl, image->ptr + offset, len, SAHARA_CMD_TIMEOUT_MS);
-	if (ret != len)
+	if (ret < 0 || ((size_t)ret != len))
 		err(1, "failed to write %zu bytes to sahara", len);
 }
 
@@ -220,7 +220,7 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	}
 
 	ret = qdl_write(qdl, image->ptr + offset, len, SAHARA_CMD_TIMEOUT_MS);
-	if (ret != len)
+	if (ret < 0 || ((size_t)ret != len))
 		err(1, "failed to write %zu bytes to sahara", len);
 }
 
@@ -302,7 +302,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 				goto out;
 			}
 
-			while (buf_offset < n) {
+			while (buf_offset < (size_t)n) {
 				written = write(fd, buf + buf_offset, n - buf_offset);
 				if (written <= 0) {
 					warn("failed to write ramdump chunk to \"%s\"", region.filename);
@@ -373,7 +373,7 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	struct sahara_debug_region64 *table;
 	struct sahara_pkt read_req;
 	ssize_t n;
-	int i;
+	size_t i;
 
 	assert(pkt->length == SAHARA_MEM_DEBUG64_LENGTH);
 
@@ -455,7 +455,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 		}
 
 		pkt = (struct sahara_pkt *)buf;
-		if (n != pkt->length) {
+		if ((uint32_t)n != pkt->length) {
 			ux_err("request length not matching received request\n");
 			return -EINVAL;
 		}
