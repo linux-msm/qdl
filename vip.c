@@ -395,7 +395,7 @@ int vip_transfer_init(struct qdl_device *qdl, const char *vip_table_path)
 
 out_cleanup:
 	close(qdl->vip_data.signed_table_fd);
-	for (int i = 0; i < qdl->vip_data.chained_num - 1; ++i)
+	for (size_t i = 0; i < qdl->vip_data.chained_num - 1; ++i)
 		close(qdl->vip_data.chained_fds[i]);
 	return -1;
 }
@@ -403,7 +403,7 @@ out_cleanup:
 void vip_transfer_deinit(struct qdl_device *qdl)
 {
 	close(qdl->vip_data.signed_table_fd);
-	for (int i = 0; i < qdl->vip_data.chained_num - 1; ++i)
+	for (size_t i = 0; i < qdl->vip_data.chained_num - 1; ++i)
 		close(qdl->vip_data.chained_fds[i]);
 }
 
@@ -412,7 +412,7 @@ static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
 	struct stat sb;
 	int ret;
 	void *buf;
-	size_t n;
+	ssize_t n;
 
 	ret = fstat(table_fd, &sb);
 	if (ret < 0) {

@@ -145,7 +145,7 @@ static int gpt_load_table_from_partition(struct qdl_device *qdl, unsigned int ph
 	uint16_t name_utf16le[36];
 	char name[36 * 4];
 	int ret;
-	int i;
+	unsigned int i;
 
 	memset(&op, 0, sizeof(op));
 
