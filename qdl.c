@@ -431,6 +431,7 @@ static void print_usage(FILE *out)
 	fprintf(out, " -S, --serial=T\t\t\tSelect target by serial number T (e.g. <0AA94EFD>)\n");
 	fprintf(out, " -u, --out-chunk-size=T\t\tOverride chunk size for transaction with T\n");
 	fprintf(out, " -t, --create-digests=T\t\tGenerate table of digests in the T folder\n");
+	fprintf(out, " -T, --slot=T\t\t\tSet slot number T for multiple storage devices\n");
 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
 	fprintf(out, " <program-xml>\txml file containing <program> or <erase> directives\n");
@@ -459,6 +460,7 @@ int main(int argc, char **argv)
 	bool allow_fusing = false;
 	bool allow_missing = false;
 	long out_chunk_size = 0;
+	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
 	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
 
@@ -475,11 +477,12 @@ int main(int argc, char **argv)
 		{"allow-fusing", no_argument, 0, 'c'},
 		{"dry-run", no_argument, 0, 'n'},
 		{"create-digests", required_argument, 0, 't'},
+		{"slot", required_argument, 0, 'T'},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:h", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:h", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -519,6 +522,9 @@ int main(int argc, char **argv)
 		case 'D':
 			vip_table_path = optarg;
 			break;
+		case 'T':
+			slot = (unsigned int)strtoul(optarg, NULL, 10);
+			break;
 		case 'h':
 			print_usage(stdout);
 			return 0;
@@ -539,6 +545,8 @@ int main(int argc, char **argv)
 		ret = -1;
 		goto out_cleanup;
 	}
+
+	qdl->slot = slot;
 
 	if (vip_table_path) {
 		if (vip_generate_dir)

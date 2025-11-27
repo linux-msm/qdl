@@ -417,6 +417,9 @@ static int firehose_erase(struct qdl_device *qdl, struct program *program)
 	xml_setpropf(node, "num_partition_sectors", "%d", program->num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
 	xml_setpropf(node, "start_sector", "%s", program->start_sector);
+	if (qdl->slot != UINT_MAX) {
+		xml_setpropf(node, "slot", "%u", qdl->slot);
+	}
 	if (program->is_nand) {
 		xml_setpropf(node, "PAGES_PER_BLOCK", "%d", program->pages_per_block);
 	}
@@ -496,6 +499,9 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	xml_setpropf(node, "num_partition_sectors", "%d", num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
 	xml_setpropf(node, "start_sector", "%s", program->start_sector);
+	if (qdl->slot != UINT_MAX) {
+		xml_setpropf(node, "slot", "%u", qdl->slot);
+	}
 	if (program->filename)
 		xml_setpropf(node, "filename", "%s", program->filename);
 
@@ -653,6 +659,9 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 	xml_setpropf(node, "num_partition_sectors", "%d", read_op->num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", read_op->partition);
 	xml_setpropf(node, "start_sector", "%s", read_op->start_sector);
+	if (qdl->slot != UINT_MAX) {
+		xml_setpropf(node, "slot", "%u", qdl->slot);
+	}
 	if (read_op->filename)
 		xml_setpropf(node, "filename", "%s", read_op->filename);
 
@@ -771,6 +780,9 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
 	xml_setpropf(node, "size_in_bytes", "%d", patch->size_in_bytes);
 	xml_setpropf(node, "start_sector", "%s", patch->start_sector);
 	xml_setpropf(node, "value", "%s", patch->value);
+	if (qdl->slot != UINT_MAX) {
+		xml_setpropf(node, "slot", "%u", qdl->slot);
+	}
 
 	ret = firehose_write(qdl, doc);
 	if (ret < 0)
@@ -827,6 +839,9 @@ int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs)
 	xml_setpropf(node_to_send, "bInitActiveICCLevel", "%d", ufs->bInitActiveICCLevel);
 	xml_setpropf(node_to_send, "wPeriodicRTCUpdate", "%d", ufs->wPeriodicRTCUpdate);
 	xml_setpropf(node_to_send, "bConfigDescrLock", "%d", ufs->bConfigDescrLock);
+	if (qdl->slot != UINT_MAX) {
+		xml_setpropf(node_to_send, "slot", "%u", qdl->slot);
+	}
 
 	if (ufs->wb) {
 		xml_setpropf(node_to_send, "bWriteBoosterBufferPreserveUserSpaceEn",
@@ -859,6 +874,9 @@ int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
 	xml_setpropf(node_to_send, "bLogicalBlockSize", "%d", ufs->bLogicalBlockSize);
 	xml_setpropf(node_to_send, "bProvisioningType", "%d", ufs->bProvisioningType);
 	xml_setpropf(node_to_send, "wContextCapabilities", "%d", ufs->wContextCapabilities);
+	if (qdl->slot != UINT_MAX) {
+		xml_setpropf(node_to_send, "slot", "%u", qdl->slot);
+	}
 	if (ufs->desc)
 		xml_setpropf(node_to_send, "desc", "%s", ufs->desc);
 
@@ -879,6 +897,9 @@ int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs
 
 	xml_setpropf(node_to_send, "LUNtoGrow", "%d", ufs->LUNtoGrow);
 	xml_setpropf(node_to_send, "commit", "%d", commit);
+	if (qdl->slot != UINT_MAX) {
+		xml_setpropf(node_to_send, "slot", "%u", qdl->slot);
+	}
 
 	ret = firehose_send_single_tag(qdl, node_to_send);
 	if (ret)
