@@ -43,7 +43,7 @@ void print_hex_dump(const char *prefix, const void *buf, size_t len)
 	unsigned int j;
 
 	for (i = 0; i < len; i += 16) {
-		linelen = MIN(16, len - i);
+		linelen = MIN(16u, (size_t)(len - i));
 		li = 0;
 
 		for (j = 0; j < linelen; j++) {

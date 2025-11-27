@@ -252,7 +252,7 @@ int gpt_find_by_name(struct qdl_device *qdl, const char *name, int *phys_partiti
 		return -1;
 
 	for (gpt_part = gpt_partitions; gpt_part; gpt_part = gpt_part->next) {
-		if (*phys_partition >= 0 && gpt_part->partition != *phys_partition)
+		if (*phys_partition >= 0 && gpt_part->partition != (unsigned int)(*phys_partition))
 			continue;
 
 		if (strcmp(gpt_part->name, name))
