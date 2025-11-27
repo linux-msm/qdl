@@ -451,7 +451,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	void *buf;
 	time_t t0;
 	time_t t;
-	int left;
+	size_t left;
 	int ret;
 	int n;
 	size_t i;
@@ -633,7 +633,7 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 	void *buf;
 	time_t t0;
 	time_t t;
-	int left;
+	size_t left;
 	int ret;
 	int n;
 	bool expect_empty;

@@ -210,7 +210,7 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 	}
 
 	/* Seek to offset of start_digest */
-	size_t offset = elem_size * start_digest;
+	off_t offset = elem_size * start_digest;
 
 	if (lseek(fd, offset, SEEK_SET) != offset) {
 		ux_err("Failed to seek in %s\n", src_table);

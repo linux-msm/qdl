@@ -58,7 +58,7 @@
 #define SAHARA_DONE_RESP_LENGTH		0xc
 #define SAHARA_RESET_LENGTH		0x8
 
-#define DEBUG_BLOCK_SIZE (512 * 1024)
+#define DEBUG_BLOCK_SIZE (512u * 1024u)
 
 #define SAHARA_CMD_TIMEOUT_MS	1000
 
@@ -283,7 +283,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 
 	chunk = 0;
 	while (chunk < region.length) {
-		remain = MIN(region.length - chunk, DEBUG_BLOCK_SIZE);
+		remain = MIN((uint64_t)(region.length - chunk), DEBUG_BLOCK_SIZE);
 
 		read_req.cmd = SAHARA_MEM_READ64_CMD;
 		read_req.length = SAHARA_MEM_READ64_LENGTH;
