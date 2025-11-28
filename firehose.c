@@ -370,7 +370,8 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 
 	if (storage != QDL_STORAGE_NAND) {
 		max_sector_size = sector_sizes[ARRAY_SIZE(sector_sizes) - 1];
-		buf = malloc(max_sector_size);
+		buf = alloca(max_sector_size);
+
 		memset(&op, 0, sizeof(op));
 		op.partition = 0;
 		op.start_sector = "1";

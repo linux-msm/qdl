@@ -2,6 +2,13 @@
 #ifndef __QDL_H__
 #define __QDL_H__
 
+#ifdef _WIN32
+#include <malloc.h>
+#define alloca _alloca
+#else
+#include <alloca.h>
+#endif
+
 #include <stdbool.h>
 
 #include "patch.h"
