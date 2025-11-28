@@ -242,6 +242,10 @@ int load_sahara_image(const char *filename, struct sahara_image *image)
 	lseek(fd, 0, SEEK_SET);
 
 	ptr = malloc(len);
+	if (!ptr) {
+		ux_err("failed to init buffer for content of \"%s\"\n", filename);
+		goto err_close;
+	}
 
 	n = read(fd, ptr, len);
 	if (n != len) {
