@@ -642,7 +642,6 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 	size_t left;
 	int ret;
 	int n;
-	bool expect_empty;
 
 	buf = malloc(qdl->max_payload_size);
 	if (!buf)
@@ -681,8 +680,7 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 	t0 = time(NULL);
 
 	left = read_op->num_sectors;
-	expect_empty = false;
-	while (left > 0 || expect_empty) {
+	while (left > 0) {
 		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
 
 		n = qdl_read(qdl, buf, chunk_size * sector_size, 30000);
@@ -690,13 +688,7 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 			err(1, "failed to read");
 		}
 
-		if (n == 0 && expect_empty) {
-			// Every second transfer is empty during this stage.
-			expect_empty = false;
-			continue;
-		} else if (expect_empty) {
-			err(1, "expected empty transfer but received non-empty transfer during read");
-		} else if ((size_t)n != chunk_size * sector_size) {
+		if ((size_t)n != chunk_size * sector_size) {
 			err(1, "failed to read full sector");
 		}
 
@@ -715,10 +707,6 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 		}
 
 		left -= chunk_size;
-#ifndef _WIN32
-		// on mac/linux, every other response is empty
-		expect_empty = true;
-#endif
 
 		if (!quiet)
 			ux_progress("%s", read_op->num_sectors - left, read_op->num_sectors, read_op->filename);
