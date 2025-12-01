@@ -244,6 +244,14 @@ static int usb_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int 
 	if (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)
 		return -ETIMEDOUT;
 
+	/* If what we read equals the endpoint's Max Packet Size, consume the ZLP explicitly */
+	if ((len == actual) && !(actual % qdl_usb->in_maxpktsize)) {
+		ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->in_ep,
+					   NULL, 0, NULL, timeout);
+		if (ret)
+			warnx("Unable to read ZLP: %s", libusb_strerror(ret));
+	}
+
 	return actual;
 }
 
