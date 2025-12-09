@@ -433,6 +433,7 @@ static void print_usage(FILE *out)
 	fprintf(out, " -t, --create-digests=T\t\tGenerate table of digests in the T folder\n");
 	fprintf(out, " -T, --slot=T\t\t\tSet slot number T for multiple storage devices\n");
 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
+	fprintf(out, " -w, --timeout=T\t\tTransfer timeout in milliseconds\n");
 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
 	fprintf(out, " <program-xml>\txml file containing <program> or <erase> directives\n");
 	fprintf(out, " <patch-xml>\txml file containing <patch> directives\n");
@@ -460,6 +461,7 @@ int main(int argc, char **argv)
 	bool allow_fusing = false;
 	bool allow_missing = false;
 	long out_chunk_size = 0;
+	unsigned int timeout = TRANSFER_TIMEOUT;
 	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
 	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
@@ -472,6 +474,7 @@ int main(int argc, char **argv)
 		{"out-chunk-size", required_argument, 0, 'u' },
 		{"serial", required_argument, 0, 'S'},
 		{"vip-table-path", required_argument, 0, 'D'},
+		{"timeout", required_argument, 0, 'w'},
 		{"storage", required_argument, 0, 's'},
 		{"allow-missing", no_argument, 0, 'f'},
 		{"allow-fusing", no_argument, 0, 'c'},
@@ -482,7 +485,7 @@ int main(int argc, char **argv)
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:h", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:w:s:fcnt:T:h", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -512,6 +515,9 @@ int main(int argc, char **argv)
 			break;
 		case 'u':
 			out_chunk_size = strtol(optarg, NULL, 10);
+			break;
+		case 'w':
+			timeout = MAX((unsigned int)strtol(optarg, NULL, 10), 30000u);
 			break;
 		case 's':
 			storage_type = decode_storage(optarg);
@@ -547,6 +553,7 @@ int main(int argc, char **argv)
 	}
 
 	qdl->slot = slot;
+	qdl->timeout_ms = timeout;
 
 	if (vip_table_path) {
 		if (vip_generate_dir)

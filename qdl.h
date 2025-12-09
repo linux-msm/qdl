@@ -20,6 +20,12 @@
 	_x < _y ? _x : _y;	\
 })
 
+#define MAX(x, y) ({         \
+	__typeof__(x) _x = (x); \
+	__typeof__(y) _y = (y); \
+	_x > _y ? _x : _y;      \
+})
+
 #define ROUND_UP(x, a) ({		\
 	__typeof__(x) _x = (x);		\
 	__typeof__(a) _a = (a);		\
@@ -35,6 +41,8 @@
 })
 
 #define MAPPING_SZ 64
+
+#define TRANSFER_TIMEOUT 30000u
 
 enum QDL_DEVICE_TYPE {
 	QDL_DEVICE_USB,
@@ -57,6 +65,7 @@ struct qdl_device {
 	size_t sector_size;
 	enum qdl_storage_type storage_type;
 	unsigned int slot;
+	unsigned int timeout_ms;
 
 	int (*open)(struct qdl_device *qdl, const char *serial);
 	int (*read)(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);

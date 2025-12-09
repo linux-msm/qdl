@@ -212,7 +212,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 		return -1;
 	}
 	if (vip_transfer_status_check_needed(qdl)) {
-		ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+		ret = firehose_read(qdl, qdl->timeout_ms, firehose_generic_parser, NULL);
 		if (ret) {
 			ux_err("VIP: sending of digest table failed\n");
 			return -1;
@@ -430,7 +430,7 @@ static int firehose_erase(struct qdl_device *qdl, struct program *program)
 		goto out;
 	}
 
-	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, qdl->timeout_ms, firehose_generic_parser, NULL);
 	if (ret)
 		ux_err("failed to erase %s+0x%x\n", program->start_sector, program->num_sectors);
 	else
@@ -445,7 +445,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 {
 	unsigned int num_sectors;
 	unsigned int sector_size;
-	unsigned int zlp_timeout = 10000;
+	unsigned int zlp_timeout = qdl->timeout_ms;
 	struct stat sb;
 	size_t chunk_size;
 	xmlNode *root;
@@ -459,13 +459,6 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	int n;
 	size_t i;
 	uint32_t fill_value;
-
-	/*
-	 * ZLP has been measured to take up to 15 seconds on SPINOR devices,
-	 * let's double it to be on the safe side...
-	 */
-	if (qdl->storage_type == QDL_STORAGE_SPINOR)
-		zlp_timeout = 30000;
 
 	num_sectors = program->num_sectors;
 	sector_size = program->sector_size ? : qdl->sector_size;
@@ -516,7 +509,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		goto out;
 	}
 
-	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, qdl->timeout_ms, firehose_generic_parser, NULL);
 	if (ret) {
 		ux_err("failed to setup programming\n");
 		goto out;
@@ -574,7 +567,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 			return -1;
 		}
 		if (vip_transfer_status_check_needed(qdl)) {
-			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+			ret = firehose_read(qdl, qdl->timeout_ms, firehose_generic_parser, NULL);
 			if (ret) {
 				ux_err("VIP: sending of digest table failed\n");
 				return -1;
@@ -587,7 +580,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 		n = qdl_write(qdl, buf, chunk_size * sector_size, zlp_timeout);
 		if (n < 0) {
 			ux_err("USB write failed for data chunk\n");
-			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+			ret = firehose_read(qdl, qdl->timeout_ms, firehose_generic_parser, NULL);
 			if (ret)
 				ux_err("flashing of chunk failed\n");
 
@@ -608,7 +601,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t = time(NULL) - t0;
 
-	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, qdl->timeout_ms, firehose_generic_parser, NULL);
 	if (ret) {
 		ux_err("flashing of %s failed\n", program->label);
 	} else if (t) {
@@ -671,7 +664,7 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 		goto out;
 	}
 
-	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, qdl->timeout_ms, firehose_generic_parser, NULL);
 	if (ret) {
 		if (!quiet)
 			ux_err("failed to setup reading operation\n");
@@ -685,7 +678,7 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 	while (left > 0 || expect_empty) {
 		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
 
-		n = qdl_read(qdl, buf, chunk_size * sector_size, 30000);
+		n = qdl_read(qdl, buf, chunk_size * sector_size, qdl->timeout_ms);
 		if (n < 0) {
 			err(1, "failed to read");
 		}
@@ -724,7 +717,7 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 			ux_progress("%s", read_op->num_sectors - left, read_op->num_sectors, read_op->filename);
 	}
 
-	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, qdl->timeout_ms, firehose_generic_parser, NULL);
 	if (ret) {
 		ux_err("read operation failed\n");
 		goto out;

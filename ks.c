@@ -45,6 +45,7 @@ static void print_usage(FILE *out)
 		" -h                   --help                      Print this usage info\n"
 		" -p                   --port                      Sahara device node to use\n"
 		" -s <id:file path>    --sahara <id:file path>     Sahara protocol file mapping\n"
+		" -w <timeout>         --timeout <timeout>         Transfer timeout in ms\n"
 		"\n"
 		"One -p instance is required.  One or more -s instances are required.\n"
 		"\n"
@@ -59,6 +60,7 @@ int main(int argc, char **argv)
 	bool found_mapping = false;
 	char *dev_node = NULL;
 	long file_id;
+	unsigned int timeout = TRANSFER_TIMEOUT;
 	char *colon;
 	int opt;
 	int ret;
@@ -69,10 +71,11 @@ int main(int argc, char **argv)
 		{"version", no_argument, 0, 'v'},
 		{"port", required_argument, 0, 'p'},
 		{"sahara", required_argument, 0, 's'},
+		{"timeout", required_argument, 0, 'w'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvp:s:h", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvp:s:w:h", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -110,6 +113,9 @@ int main(int argc, char **argv)
 
 			printf("Created mapping ID:%ld File:%s\n", file_id, filename);
 			break;
+		case 'w':
+			timeout = MAX((unsigned int)strtol(optarg, NULL, 10), TRANSFER_TIMEOUT);
+			break;
 		case 'h':
 			print_usage(stdout);
 			return 0;
@@ -133,6 +139,8 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Unable to open %s\n", dev_node);
 		return 1;
 	}
+
+	qdl.timeout_ms = timeout;
 
 	ret = sahara_run(&qdl, mappings, false, NULL, NULL);
 	if (ret < 0)

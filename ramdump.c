@@ -32,6 +32,7 @@ int main(int argc, char **argv)
 	char *ramdump_path = ".";
 	char *filter = NULL;
 	char *serial = NULL;
+	unsigned int timeout = TRANSFER_TIMEOUT;
 	int ret = 0;
 	int opt;
 
@@ -40,11 +41,12 @@ int main(int argc, char **argv)
 		{"version", no_argument, 0, 'v'},
 		{"output", required_argument, 0, 'o'},
 		{"serial", required_argument, 0, 'S'},
+		{"timeout", required_argument, 0, 'w'},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvo:S:h", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvo:S:w:h", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -58,6 +60,9 @@ int main(int argc, char **argv)
 			break;
 		case 'S':
 			serial = optarg;
+			break;
+		case 'w':
+			timeout = MAX((unsigned int)strtol(optarg, NULL, 10), TRANSFER_TIMEOUT);
 			break;
 		case 'h':
 			print_usage(stdout);
@@ -78,6 +83,8 @@ int main(int argc, char **argv)
 
 	if (qdl_debug)
 		print_version();
+
+	qdl->timeout_ms = timeout;
 
 	ret = qdl_open(qdl, serial);
 	if (ret) {

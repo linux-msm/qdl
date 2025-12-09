@@ -296,7 +296,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 		offset = 0;
 		while (offset < remain) {
 			buf_offset = 0;
-			n = qdl_read(qdl, buf, DEBUG_BLOCK_SIZE, 30000);
+			n = qdl_read(qdl, buf, DEBUG_BLOCK_SIZE, qdl->timeout_ms);
 			if (n < 0) {
 				warn("failed to read ramdump chunk");
 				goto out;
