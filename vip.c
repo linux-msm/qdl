@@ -40,6 +40,8 @@ struct vip_table_generator {
 	const char *path;
 };
 
+void vip_transfer_deinit(struct qdl_device *qdl);
+
 static void print_digest(unsigned char *buf)
 {
 	char hex_str[SHA256_DIGEST_STRING_LENGTH];
@@ -394,17 +396,17 @@ int vip_transfer_init(struct qdl_device *qdl, const char *vip_table_path)
 	return 0;
 
 out_cleanup:
-	close(qdl->vip_data.signed_table_fd);
-	for (size_t i = 0; i < qdl->vip_data.chained_num - 1; ++i)
-		close(qdl->vip_data.chained_fds[i]);
+	vip_transfer_deinit(qdl);
 	return -1;
 }
 
 void vip_transfer_deinit(struct qdl_device *qdl)
 {
 	close(qdl->vip_data.signed_table_fd);
-	for (size_t i = 0; i < qdl->vip_data.chained_num - 1; ++i)
-		close(qdl->vip_data.chained_fds[i]);
+	if (qdl->vip_data.chained_num > 0) {
+		for (size_t i = 0; i < qdl->vip_data.chained_num - 1; ++i)
+			close(qdl->vip_data.chained_fds[i]);
+	}
 }
 
 static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
