@@ -465,7 +465,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	 * let's double it to be on the safe side...
 	 */
 	if (qdl->storage_type == QDL_STORAGE_SPINOR)
-		zlp_timeout = 30000;
+		zlp_timeout = 60000;
 
 	num_sectors = program->num_sectors;
 	sector_size = program->sector_size ? : qdl->sector_size;
