@@ -2,8 +2,9 @@ QDL := qdl
 RAMDUMP := qdl-ramdump
 VERSION := $(or $(VERSION), $(shell git describe --dirty --always --tags 2>/dev/null), "unknown-version")
 
-CFLAGS += -O2 -Wall -g `pkg-config --cflags libxml-2.0 libusb-1.0`
-LDFLAGS += `pkg-config --libs libxml-2.0 libusb-1.0`
+PKG_CONFIG ?= pkg-config
+CFLAGS += -O2 -Wall -g `$(PKG_CONFIG) --cflags libxml-2.0 libusb-1.0`
+LDFLAGS += `$(PKG_CONFIG) --libs libxml-2.0 libusb-1.0`
 ifeq ($(OS),Windows_NT)
 LDFLAGS += -lws2_32
 endif
