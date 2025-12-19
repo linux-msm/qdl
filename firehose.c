@@ -322,8 +322,8 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size,
 	node = xmlNewChild(root, NULL, (xmlChar *)"configure", NULL);
 	xml_setpropf(node, "MemoryName", memory_names[storage]);
 	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%lu", payload_size);
-	xml_setpropf(node, "verbose", "%d", 0);
-	xml_setpropf(node, "ZLPAwareHost", "%d", 1);
+	xml_setpropf(node, "Verbose", "%d", 0);
+	xml_setpropf(node, "ZlpAwareHost", "%d", 1);
 	xml_setpropf(node, "SkipStorageInit", "%d", skip_storage_init);
 
 	firehose_write(qdl, doc);
