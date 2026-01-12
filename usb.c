@@ -223,6 +223,89 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 	return -1;
 }
 
+struct qdl_device_desc *usb_list(unsigned int *devices_found)
+{
+	struct libusb_device_descriptor desc;
+	struct libusb_device_handle *handle;
+	struct qdl_device_desc *result;
+	struct libusb_device **devices;
+	struct libusb_device *dev;
+	unsigned long serial_len;
+	unsigned char buf[128];
+	ssize_t device_count;
+	unsigned int count = 0;
+	char *serial;
+	int ret;
+	int i;
+
+	ret = libusb_init(NULL);
+	if (ret < 0)
+		err(1, "failed to initialize libusb");
+
+	device_count = libusb_get_device_list(NULL, &devices);
+	if (device_count < 0)
+		err(1, "failed to list USB devices");
+	if (device_count == 0)
+		return NULL;
+
+	result = calloc(device_count, sizeof(struct qdl_device));
+	if (!result)
+		err(1, "failed to allocate devices array\n");
+
+	for (i = 0; i < device_count; i++) {
+		dev = devices[i];
+
+		ret = libusb_get_device_descriptor(dev, &desc);
+		if (ret < 0) {
+			warnx("failed to get USB device descriptor");
+			continue;
+		}
+
+		if (desc.idVendor != 0x05c6)
+			continue;
+		if (desc.idProduct != 0x9008 && desc.idProduct != 0x900e && desc.idProduct != 0x901d)
+			continue;
+
+		ret = libusb_open(dev, &handle);
+		if (ret < 0) {
+			warnx("unable to open USB device");
+			continue;
+		}
+
+		ret = libusb_get_string_descriptor_ascii(handle, desc.iProduct, buf, sizeof(buf) - 1);
+		if (ret < 0) {
+			warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
+			continue;
+		}
+		buf[ret] = '\0';
+
+		serial = strstr((char *)buf, "_SN:");
+		if (!serial) {
+			ux_err("ignoring device with no serial number\n");
+			continue;
+		}
+
+		serial += strlen("_SN:");
+		serial_len = strcspn(serial, " _");
+		if (serial_len + 1 > sizeof(result[count].serial)) {
+			ux_err("ignoring device with unexpectedly long serial number\n");
+			continue;
+		}
+
+		memcpy(result[count].serial, serial, serial_len);
+		result[count].serial[serial_len] = '\0';
+
+		result[count].vid = desc.idVendor;
+		result[count].pid = desc.idProduct;
+		count++;
+	}
+
+	libusb_free_device_list(devices, 1);
+	*devices_found = count;
+
+	return result;
+}
+
 static void usb_close(struct qdl_device *qdl)
 {
 	struct qdl_device_usb *qdl_usb = container_of(qdl, struct qdl_device_usb, base);
