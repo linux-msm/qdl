@@ -444,6 +444,23 @@ static void print_usage(FILE *out)
 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
 }
 
+int print_list(FILE *out)
+{
+	struct qdl_device_desc *qdl_list = NULL;
+	int n = usb_list(&qdl_list);
+	if (n <= 0) {
+		return 1;
+	}
+
+	for (int i = 0; i < n; i++) {
+		fprintf(out, "Device %d:%d %s\n", qdl_list[i].idVendor, qdl_list[i].idProduct, qdl_list[i].iProduct);
+	}
+
+	free(qdl_list);
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
@@ -527,16 +544,7 @@ int main(int argc, char **argv)
 			slot = (unsigned int)strtoul(optarg, NULL, 10);
 			break;
 		case 'L':
-			struct qdl_device_desc *qdl_list;
-			int n = usb_list(&qdl_list);
-			if (n <= 0) {
-				return 1;
-			}
-			for (int i = 0; i < n; i++) {
-				printf("Device %d:%d %s\n", qdl_list[i].idVendor, qdl_list[i].idProduct, qdl_list[i].iProduct);
-			}
-			free(qdl_list);
-			return 0;
+			return print_list(stdout);
 		case 'h':
 			print_usage(stdout);
 			return 0;
