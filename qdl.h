@@ -89,6 +89,13 @@ int qdl_vip_transfer_enable(struct qdl_device *qdl, const char *vip_table_path);
 struct qdl_device *usb_init(void);
 struct qdl_device *sim_init(void);
 
+struct qdl_device_desc {
+	int idVendor;
+	int idProduct;
+	char iProduct[128];
+};
+int usb_list(struct qdl_device_desc **devices);
+
 int firehose_run(struct qdl_device *qdl);
 int firehose_provision(struct qdl_device *qdl);
 int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);

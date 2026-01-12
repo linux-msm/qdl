@@ -478,6 +478,7 @@ int main(int argc, char **argv)
 		{"dry-run", no_argument, 0, 'n'},
 		{"create-digests", required_argument, 0, 't'},
 		{"slot", required_argument, 0, 'T'},
+		{"list", no_argument, 0, 'L'},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
@@ -525,6 +526,17 @@ int main(int argc, char **argv)
 		case 'T':
 			slot = (unsigned int)strtoul(optarg, NULL, 10);
 			break;
+		case 'L':
+			struct qdl_device_desc *qdl_list;
+			int n = usb_list(&qdl_list);
+			if (n <= 0) {
+				return 1;
+			}
+			for (int i = 0; i < n; i++) {
+				printf("Device %d:%d %s\n", qdl_list[i].idVendor, qdl_list[i].idProduct, qdl_list[i].iProduct);
+			}
+			free(qdl_list);
+			return 0;
 		case 'h':
 			print_usage(stdout);
 			return 0;
