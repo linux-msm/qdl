@@ -223,6 +223,70 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 	return -1;
 }
 
+struct qdl_device_desc *usb_list(int *device_count)
+{
+	struct libusb_device **devs;
+	struct libusb_device *dev;
+	struct qdl_device_desc *devices;
+	ssize_t n;
+	int ret;
+	int i;
+
+	*device_count = 0;
+
+	ret = libusb_init(NULL);
+	if (ret < 0)
+		err(1, "failed to initialize libusb");
+
+	n = libusb_get_device_list(NULL, &devs);
+	if (n < 0)
+		err(1, "failed to list USB devices");
+	if (n == 0)
+		return NULL;
+
+	devices = calloc(n, sizeof(struct qdl_device));
+
+	for (i = 0; i<n; i++) {
+		struct libusb_device_descriptor desc;
+		struct libusb_device_handle *handle;
+		char buf[128];
+
+		dev = devs[i];
+
+		ret = libusb_get_device_descriptor(dev, &desc);
+		if (ret < 0) {
+			warnx("failed to get USB device descriptor");
+			continue;
+		}
+
+		if (desc.idVendor != 0x05c6)
+			continue;
+		if (desc.idProduct != 0x9008 && desc.idProduct != 0x900e && desc.idProduct != 0x901d)
+			continue;
+
+		ret = libusb_open(dev, &handle);
+		if (ret < 0) {
+			warnx("unable to open USB device");
+			continue;
+		}
+
+		ret = libusb_get_string_descriptor_ascii(handle, desc.iProduct, (unsigned char *)buf, sizeof(buf));
+		if (ret < 0) {
+			warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
+			continue;
+		}
+
+		devices[*device_count].idVendor = desc.idVendor;
+		devices[*device_count].idProduct = desc.idProduct;
+		strncpy(devices[*device_count].iProduct, buf, sizeof(buf));
+		(*device_count)++;
+	}
+
+	libusb_free_device_list(devs, 1);
+
+	return devices;
+}
+
 static void usb_close(struct qdl_device *qdl)
 {
 	struct qdl_device_usb *qdl_usb = container_of(qdl, struct qdl_device_usb, base);
