@@ -26,6 +26,24 @@ struct qdl_device_usb {
 	size_t out_chunk_size;
 };
 
+static const char *usb_speed_str(int s)
+{
+	switch (s) {
+	case LIBUSB_SPEED_LOW:        return "low";
+	case LIBUSB_SPEED_FULL:       return "full (USB1)";
+	case LIBUSB_SPEED_HIGH:       return "high (USB2)";
+	case LIBUSB_SPEED_SUPER:      return "super (USB3)";
+	case LIBUSB_SPEED_SUPER_PLUS: return "super+ (USB3.1/3.2)";
+	default:                      return "unknown";
+	}
+}
+
+static bool is_usb2_or_slower(int s)
+{
+	/* Treat HIGH (480 Mbps) and FULL/LOW as “USB2-or-slower” for your heuristic */
+	return s == LIBUSB_SPEED_HIGH || s == LIBUSB_SPEED_FULL || s == LIBUSB_SPEED_LOW;
+}
+
 /*
  * libusb commit f0cce43f882d ("core: Fix definition and use of enum
  * libusb_transfer_type") split transfer type and endpoint transfer types.
@@ -158,6 +176,7 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
 		qdl->out_ep = out;
 		qdl->in_maxpktsize = in_size;
 		qdl->out_maxpktsize = out_size;
+		int speed = libusb_get_device_speed(dev);
 
 		if (qdl->out_chunk_size && qdl->out_chunk_size % out_size) {
 			ux_err("WARNING: requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld\n",
@@ -166,7 +185,29 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
 		} else if (!qdl->out_chunk_size) {
 			qdl->out_chunk_size = DEFAULT_OUT_CHUNK_SIZE;
 		}
+		ux_debug("USB: negotiated speed is %s (%d)\n", usb_speed_str(speed), speed);
 
+		if (is_usb2_or_slower(speed) && qdl->out_chunk_size == DEFAULT_OUT_CHUNK_SIZE) {
+			long orig = qdl->out_chunk_size;
+			fprintf(stderr, "[reset] orig programmer: %ld\n", orig);
+			long halved = orig / 2;
+
+			/* Keep a sensible minimum */
+			if (halved < (long)out_size)
+				halved = (long)out_size;
+
+			/* Ensure multiple of wMaxPacketSize */
+			halved = (halved / (long)out_size) * (long)out_size;
+			if (halved == 0)
+				halved = (long)out_size;
+
+			if (halved != orig) {
+				ux_debug("USB: USB2-or-slower detected; halving out-chunk-size %ld -> %ld\n",
+						orig, halved);
+				qdl->out_chunk_size = halved;
+			}
+		}
+		fprintf(stderr, "[reset] final programmer: %ld\n", qdl->out_chunk_size);
 		ux_debug("USB: using out-chunk-size of %ld\n", qdl->out_chunk_size);
 
 		break;
