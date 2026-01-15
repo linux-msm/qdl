@@ -1061,23 +1061,11 @@ int firehose_run(struct qdl_device *qdl)
 
 int firehose_request_reset(struct qdl_device *qdl)
 {
-	bool multiple;
-	int bootable;
 	int ret;
 	firehose_read(qdl, 5000, firehose_generic_parser, NULL);
-    bootable = program_find_bootable_partition(&multiple);
-	ret = firehose_try_configure(qdl, false, qdl->storage_type);
+	ret = firehose_try_configure(qdl, true, qdl->storage_type);
 	if (ret){
 		return ret;}
-	if (bootable < 0) {
-		ux_debug("no boot partition found\n");
-	} else {
-		if (multiple) {
-			fprintf(stderr, "Multiple candidates for primary bootloader found, using partition %d\n",
-				bootable);
-		}
-		firehose_set_bootable(qdl, bootable);
-	}
 	firehose_reset(qdl);
 	return 0;
 }
