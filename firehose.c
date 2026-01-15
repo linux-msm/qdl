@@ -1076,10 +1076,8 @@ int firehose_request_reset(struct qdl_device *qdl)
 			fprintf(stderr, "Multiple candidates for primary bootloader found, using partition %d\n",
 				bootable);
 		}
-		fprintf(stderr, "set bootable");
 		firehose_set_bootable(qdl, bootable);
 	}
-	fprintf(stderr, "reset");
 	firehose_reset(qdl);
 	return 0;
 }
