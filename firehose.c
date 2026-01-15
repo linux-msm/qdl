@@ -1064,6 +1064,7 @@ int firehose_request_reset(struct qdl_device *qdl)
 	bool multiple;
 	int bootable;
 	int ret;
+	firehose_read(qdl, 5000, firehose_generic_parser, NULL);
     bootable = program_find_bootable_partition(&multiple);
 	ret = firehose_try_configure(qdl, false, qdl->storage_type);
 	if (ret){
