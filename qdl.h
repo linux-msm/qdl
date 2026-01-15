@@ -91,6 +91,7 @@ struct qdl_device *sim_init(void);
 
 int firehose_run(struct qdl_device *qdl);
 int firehose_provision(struct qdl_device *qdl);
+int firehose_request_reset(struct qdl_device *qdl);
 int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);
 int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	       bool single_image, const char *ramdump_path,

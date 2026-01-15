@@ -459,6 +459,7 @@ int main(int argc, char **argv)
 	bool qdl_finalize_provisioning = false;
 	bool allow_fusing = false;
 	bool allow_missing = false;
+	bool do_reset = false;
 	long out_chunk_size = 0;
 	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
@@ -479,6 +480,7 @@ int main(int argc, char **argv)
 		{"create-digests", required_argument, 0, 't'},
 		{"slot", required_argument, 0, 'T'},
 		{"help", no_argument, 0, 'h'},
+		{"reset", no_argument, 0, 'r'},
 		{0, 0, 0, 0}
 	};
 
@@ -528,6 +530,9 @@ int main(int argc, char **argv)
 		case 'h':
 			print_usage(stdout);
 			return 0;
+        case 'r':
+            do_reset = true;
+            break;
 		default:
 			print_usage(stderr);
 			return 1;
@@ -535,7 +540,7 @@ int main(int argc, char **argv)
 	}
 
 	/* at least 2 non optional args required */
-	if ((optind + 2) > argc) {
+	if (!do_reset && (optind + 2) > argc) {
 		print_usage(stderr);
 		return 1;
 	}
@@ -569,6 +574,65 @@ int main(int argc, char **argv)
 
 	if (qdl_debug)
 		print_version();
+
+	if (do_reset) {
+		struct sahara_image prog = {0};
+		int ret;
+		ret = qdl_open(qdl, serial);
+		qdl->storage_type = storage_type;
+		if (ret)
+			goto out_cleanup;
+
+		fprintf(stderr, "[reset] entering reset path\n");
+
+		if (optind >= argc) {
+			fprintf(stderr, "[reset] ERROR: no programmer positional arg.\n");
+			fprintf(stderr, "[reset] Example:\n");
+			fprintf(stderr, "  ../qdl --reset --storage ufs flat-luxonis/xbl_s_devprg_ns.melf\n");
+			return 1;
+		}
+
+		const char *prog_path = argv[optind];
+		fprintf(stderr, "[reset] loading programmer: %s\n", prog_path);
+
+		ret = load_sahara_image(prog_path, &prog);
+		if (ret < 0) {
+			fprintf(stderr, "[reset] ERROR: load_sahara_image failed\n");
+			return 1;
+		}
+		prog.name = prog_path;
+
+		fprintf(stderr, "[reset] programmer loaded: name=%s len=%zu ptr=%p\n",
+				prog.name, prog.len, prog.ptr);
+
+		if (!prog.ptr || prog.len == 0) {
+			fprintf(stderr, "[reset] ERROR: programmer buffer invalid\n");
+			return 1;
+		}
+
+		if (!qdl || !qdl->read || !qdl->write) {
+			fprintf(stderr, "[reset] ERROR: qdl device not initialized/opened (qdl=%p read=%p write=%p)\n",
+					(void*)qdl, qdl ? (void*)qdl->read : NULL, qdl ? (void*)qdl->write : NULL);
+			return 1;
+		}
+
+		fprintf(stderr, "[reset] running Sahara (upload programmer)\n");
+		ret = sahara_run(qdl, &prog, true, NULL, NULL);
+		if (ret < 0) {
+			fprintf(stderr, "[reset] ERROR: sahara_run failed\n");
+			return 1;
+		}
+		if (qdl->max_payload_size == 0) {
+			ux_err("max_payload_size is 0 (not initialized)\n");
+			return -1;
+		}
+
+		fprintf(stderr, "[reset] Sahara done; requesting Firehose reset\n");
+		ret = firehose_request_reset(qdl);
+		fprintf(stderr, "[reset] done; ret=%d\n", ret);
+
+		return (ret < 0) ? 1 : 0;
+	}
 
 	ret = decode_programmer(argv[optind++], sahara_images, &single_image);
 	if (ret < 0)
@@ -644,7 +708,7 @@ int main(int argc, char **argv)
 	else
 		ret = firehose_run(qdl);
 	if (ret < 0)
-		goto out_cleanup;
+		goto out_cleanup;  
 
 out_cleanup:
 	if (vip_generate_dir)
