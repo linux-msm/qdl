@@ -364,13 +364,33 @@ static int decode_programmer(char *s, struct sahara_image *images, bool *single)
 {
 	char *filename;
 	char *save1;
-	char *save2;
 	char *pair;
-	char *id_str;
+	char *tail;
 	long id;
 	int ret;
 
-	if (!strchr(s, ':')) {
+	strtoul(s, &tail, 0);
+	if (tail != s && tail[0] == ':') {
+		for (pair = strtok_r(s, ",", &save1); pair; pair = strtok_r(NULL, ",", &save1)) {
+			id = strtoul(pair, &tail, 0);
+			if (tail == pair) {
+				ux_err("invalid programmer specifier\n");
+				return -1;
+			}
+
+			if (id == 0 || id >= MAPPING_SZ) {
+				ux_err("invalid image id \"%s\"\n", pair);
+				return -1;
+			}
+
+			filename = &tail[1];
+			ret = load_sahara_image(filename, &images[id]);
+			if (ret < 0)
+				return -1;
+
+			*single = false;
+		}
+	} else {
 		ret = load_sahara_image(s, &images[0]);
 		if (ret < 0)
 			return -1;
@@ -386,31 +406,7 @@ static int decode_programmer(char *s, struct sahara_image *images, bool *single)
 		}
 
 		*single = (ret == 0);
-
-		return 0;
 	}
-
-	for (pair = strtok_r(s, ",", &save1); pair; pair = strtok_r(NULL, ",", &save1)) {
-		id_str = strtok_r(pair, ":", &save2);
-		filename = strtok_r(NULL, ":", &save2);
-
-		if (!id_str || !filename) {
-			ux_err("failed to parse programmer specifier\n");
-			return -1;
-		}
-
-		id = strtoul(id_str, NULL, 0);
-		if (id == 0 || id >= MAPPING_SZ) {
-			ux_err("invalid image id \"%s\"\n", id_str);
-			return -1;
-		}
-
-		ret = load_sahara_image(filename, &images[id]);
-		if (ret < 0)
-			return -1;
-	}
-
-	*single = false;
 
 	return 0;
 }
