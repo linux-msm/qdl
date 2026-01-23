@@ -20,6 +20,7 @@ struct qdl_device_usb {
 
 	int in_ep;
 	int out_ep;
+	int intf;
 
 	size_t in_maxpktsize;
 	size_t out_maxpktsize;
@@ -156,6 +157,7 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
 		qdl->usb_handle = handle;
 		qdl->in_ep = in;
 		qdl->out_ep = out;
+		qdl->intf = ifc->bInterfaceNumber;
 		qdl->in_maxpktsize = in_size;
 		qdl->out_maxpktsize = out_size;
 
@@ -227,6 +229,8 @@ static void usb_close(struct qdl_device *qdl)
 {
 	struct qdl_device_usb *qdl_usb = container_of(qdl, struct qdl_device_usb, base);
 
+	libusb_release_interface(qdl_usb->usb_handle, qdl_usb->intf);
+	libusb_attach_kernel_driver(qdl_usb->usb_handle, qdl_usb->intf);
 	libusb_close(qdl_usb->usb_handle);
 	libusb_exit(NULL);
 }
