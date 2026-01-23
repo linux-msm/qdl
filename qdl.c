@@ -171,20 +171,22 @@ static int decode_programmer_archive(struct sahara_image *images)
 	void *ptr = blob->ptr;
 	void *end = blob->ptr + blob->len;
 	long id;
+	int ret;
 
 	if (blob->len < sizeof(*hdr) || memcmp(ptr, CPIO_MAGIC, 6))
 		return 0;
 
+	ret = -1;
 	for (;;) {
 		if (ptr + sizeof(*hdr) > end) {
 			ux_err("programmer archive is truncated\n");
-			return -1;
+			break;
 		}
 		hdr = ptr;
 
 		if (memcmp(hdr->c_magic, "070701", 6)) {
 			ux_err("expected cpio header in programmer archive\n");
-			return -1;
+			break;
 		}
 
 		filesize = parse_ascii_hex32(hdr->c_filesize);
@@ -193,44 +195,70 @@ static int decode_programmer_archive(struct sahara_image *images)
 		ptr += sizeof(*hdr);
 		if (ptr + namesize > end || ptr + filesize + namesize > end) {
 			ux_err("programmer archive is truncated\n");
-			return -1;
+			break;
 		}
 
 		if (namesize > sizeof(name)) {
 			ux_err("unexpected filename length in progammer archive\n");
-			return -1;
+			break;
 		}
 		memcpy(name, ptr, namesize);
 
-		if (!memcmp(name, "TRAILER!!!", 11))
+		if (!memcmp(name, "TRAILER!!!", 11)) {
+			ret = 1;
 			break;
+		}
 
 		tok = strtok_r(name, ":", &save);
 		id = strtoul(tok, NULL, 0);
 		if (id == 0 || id >= MAPPING_SZ) {
 			ux_err("invalid image id \"%s\" in programmer archive\n", tok);
-			return -1;
+			break;
 		}
 
 		ptr += namesize;
 		ptr = ALIGN_UP(ptr, 4);
 
 		tok = strtok_r(NULL, ":", &save);
-		if (tok)
+		if (tok) {
 			images[id].name = strdup(tok);
+			if (!images[id].name) {
+				ux_err("failed to allocated buffer for an image name\n");
+				break;
+			}
+		}
 		images[id].len = filesize;
 		images[id].ptr = malloc(filesize);
+		if (!images[id].ptr) {
+			ux_err("failed to allocated buffer for an image, len = %z\n", images[id].len);
+			break;
+		}
 		memcpy(images[id].ptr, ptr, filesize);
 
 		ptr += filesize;
 		ptr = ALIGN_UP(ptr, 4);
 	}
 
-	free(blob->ptr);
-	blob->ptr = NULL;
-	blob->len = 0;
+	/*
+	 * even if some images aren't initialized, it's safe to enumerate over each
+	 * image and try to free, as otherwise image[i] will be filled with zeros.
+	 *
+	 * first image isn't freed if error occurred
+	 */
+	for (size_t i = 0; i < MAPPING_SZ; i++) {
+		if (ret != 1 && i == 0)
+			continue;
 
-	return 1;
+		if (images[i].ptr)
+			free(images[i].ptr);
+		if (images[i].name)
+			free((void *)images[i].name);
+		images[i].ptr = NULL;
+		images[i].name = NULL;
+		images[i].len = 0;
+	}
+
+	return ret;
 }
 
 /**
