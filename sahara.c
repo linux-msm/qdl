@@ -145,8 +145,7 @@ static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 }
 
 static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
-			const struct sahara_image *images,
-			bool single_image)
+			const struct sahara_image *images)
 {
 	const struct sahara_image *image;
 	unsigned int image_idx;
@@ -159,11 +158,7 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	ux_debug("READ image: %d offset: 0x%x length: 0x%x\n",
 		 pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
-	if (single_image)
-		image_idx = 0;
-	else
-		image_idx = pkt->read_req.image;
-
+	image_idx = pkt->read_req.image;
 	if (image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
 		ux_err("device requested invalid image: %u\n", image_idx);
 		sahara_send_reset(qdl);
@@ -185,8 +180,7 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 }
 
 static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
-			  const struct sahara_image *images,
-			  bool single_image)
+			  const struct sahara_image *images)
 {
 	const struct sahara_image *image;
 	unsigned int image_idx;
@@ -199,11 +193,7 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	ux_debug("READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
 		 pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
-	if (single_image)
-		image_idx = 0;
-	else
-		image_idx = pkt->read64_req.image;
-
+	image_idx = pkt->read64_req.image;
 	if (image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
 		ux_err("device requested invalid image: %u\n", image_idx);
 		sahara_send_reset(qdl);
@@ -414,12 +404,26 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	sahara_send_reset(qdl);
 }
 
-static void sahara_debug_list_images(const struct sahara_image *images, bool single_image)
+static bool sahara_has_done_pending_quirk(const struct sahara_image *images)
 {
+	unsigned int count = 0;
 	int i;
 
-	if (single_image)
-		ux_debug("Sahara image id in read requests will be ignored\n");
+	/*
+	 * E.g MSM8916 EDL reports done = pending, allow this when one a single
+	 * image is provided, and it's used as SAHARA_ID_EHOSTDL_IMG.
+	 */
+	for (i = 0; i < MAPPING_SZ; i++) {
+		if (images[i].ptr)
+			count++;
+	}
+
+	return count == 1 && images[SAHARA_ID_EHOSTDL_IMG].ptr;
+}
+
+static void sahara_debug_list_images(const struct sahara_image *images)
+{
+	int i;
 
 	ux_debug("Sahara images:\n");
 	for (i = 0; i < MAPPING_SZ; i++) {
@@ -429,7 +433,7 @@ static void sahara_debug_list_images(const struct sahara_image *images, bool sin
 }
 
 int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
-	       bool single_image, const char *ramdump_path,
+	       const char *ramdump_path,
 	       const char *ramdump_filter)
 {
 	struct sahara_pkt *pkt;
@@ -439,7 +443,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	int n;
 
 	if (images)
-		sahara_debug_list_images(images, single_image);
+		sahara_debug_list_images(images);
 
 	/*
 	 * Don't need to do anything in simulation mode with Sahara,
@@ -466,7 +470,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 			sahara_hello(qdl, pkt);
 			break;
 		case SAHARA_READ_DATA_CMD:
-			sahara_read(qdl, pkt, images, single_image);
+			sahara_read(qdl, pkt, images);
 			break;
 		case SAHARA_END_OF_IMAGE_CMD:
 			sahara_eoi(qdl, pkt);
@@ -475,14 +479,14 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 			done = sahara_done(qdl, pkt);
 
 			/* E.g MSM8916 EDL reports done = 0 here */
-			if (single_image)
+			if (sahara_has_done_pending_quirk(images))
 				done = true;
 			break;
 		case SAHARA_MEM_DEBUG64_CMD:
 			sahara_debug64(qdl, pkt, ramdump_path, ramdump_filter);
 			break;
 		case SAHARA_READ_DATA64_CMD:
-			sahara_read64(qdl, pkt, images, single_image);
+			sahara_read64(qdl, pkt, images);
 			break;
 		case SAHARA_RESET_RESP_CMD:
 			assert(pkt->length == SAHARA_RESET_LENGTH);

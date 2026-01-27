@@ -85,7 +85,7 @@ int main(int argc, char **argv)
 		goto out_cleanup;
 	}
 
-	ret = sahara_run(qdl, NULL, true, ramdump_path, filter);
+	ret = sahara_run(qdl, NULL, ramdump_path, filter);
 	if (ret < 0) {
 		ret = 1;
 		goto out_cleanup;

@@ -134,7 +134,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	ret = sahara_run(&qdl, mappings, false, NULL, NULL);
+	ret = sahara_run(&qdl, mappings, NULL, NULL);
 	if (ret < 0)
 		return 1;
 
