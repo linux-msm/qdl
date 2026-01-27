@@ -160,7 +160,8 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 
 	image_idx = pkt->read_req.image;
 	if (image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
-		ux_err("device requested invalid image: %u\n", image_idx);
+		ux_err("device requested unknown image id %u, ensure that all Sahara images are provided\n",
+		       image_idx);
 		sahara_send_reset(qdl);
 		return;
 	}
@@ -195,7 +196,8 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 
 	image_idx = pkt->read64_req.image;
 	if (image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
-		ux_err("device requested invalid image: %u\n", image_idx);
+		ux_err("device requested unknown image id %u, ensure that all Sahara images are provided\n",
+		       image_idx);
 		sahara_send_reset(qdl);
 		return;
 	}
