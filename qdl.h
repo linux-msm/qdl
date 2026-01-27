@@ -36,6 +36,8 @@
 
 #define MAPPING_SZ 64
 
+#define SAHARA_ID_EHOSTDL_IMG	13
+
 enum QDL_DEVICE_TYPE {
 	QDL_DEVICE_USB,
 	QDL_DEVICE_SIM,
@@ -101,7 +103,7 @@ int firehose_run(struct qdl_device *qdl);
 int firehose_provision(struct qdl_device *qdl);
 int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);
 int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
-	       bool single_image, const char *ramdump_path,
+	       const char *ramdump_path,
 	       const char *ramdump_filter);
 int load_sahara_image(const char *filename, struct sahara_image *image);
 void print_hex_dump(const char *prefix, const void *buf, size_t len);

@@ -149,6 +149,7 @@ static uint32_t parse_ascii_hex32(const char *s)
 
 /**
  * decode_programmer_archive() - Attempt to decode a programmer CPIO archive
+ * @blob: Loaded image to be decoded as archive
  * @images: List of Sahara images, with @images[0] populated
  *
  * The single blob provided in @images[0] might be a CPIO archive containing
@@ -159,9 +160,8 @@ static uint32_t parse_ascii_hex32(const char *s)
  *
  * Returns: 0 if no archive was found, 1 if archive was decoded, -1 on error
  */
-static int decode_programmer_archive(struct sahara_image *images)
+static int decode_programmer_archive(struct sahara_image *blob, struct sahara_image *images)
 {
-	struct sahara_image *blob = &images[0];
 	struct cpio_newc_header *hdr;
 	size_t filesize;
 	size_t namesize;
@@ -235,6 +235,7 @@ static int decode_programmer_archive(struct sahara_image *images)
 
 /**
  * decode_sahara_config() - Attempt to decode a Sahara config XML document
+ * @blob: Loaded image to be decoded as Sahara config
  * @images: List of Sahara images, with @images[0] populated
  *
  * The single blob provided in @images[0] might be a XML blob containing
@@ -246,9 +247,8 @@ static int decode_programmer_archive(struct sahara_image *images)
  *
  * Returns: 0 if no archive was found, 1 if archive was decoded, -1 on error
  */
-static int decode_sahara_config(struct sahara_image *images)
+static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images)
 {
-	struct sahara_image *blob = &images[0];
 	char image_path_full[PATH_MAX];
 	const char *image_path;
 	unsigned int image_id;
@@ -344,15 +344,15 @@ err_free_doc:
  * decode_programmer() - decodes the programmer specifier
  * @s: programmer specifier, from the user
  * @images: array of images to populate
- * @single: legacy single image specifier, for which image id should be ignored
  *
  * This parses the progammer specifier @s, which can either be a single
  * filename, or a comma-separated series of <id>:<filename> entries.
  *
- * In the first case @images[0] is assigned the provided filename and @single is
- * set to true. In the second case, each comma-separated entry will be split on
- * ':' and the given <filename> will be assigned to the @image entry indicated
- * by the given <id>.
+ * In the first case an attempt will be made to decode the Sahara archive and
+ * each programmer part will be loaded into their requestd @images entry. If
+ * the file isn't an archive @images[SAHARA_ID_EHOSTDL_IMG] is assigned. In the
+ * second case, each comma-separated entry will be split on ':' and the given
+ * <filename> will be assigned to the @image entry indicated by the given <id>.
  *
  * Memory is not allocated for the various strings, instead @s will be modified
  * by the tokenizer and pointers to the individual parts will be stored in the
@@ -360,8 +360,9 @@ err_free_doc:
  *
  * Returns: 0 on success, -1 otherwise.
  */
-static int decode_programmer(char *s, struct sahara_image *images, bool *single)
+static int decode_programmer(char *s, struct sahara_image *images)
 {
+	struct sahara_image archive;
 	char *filename;
 	char *save1;
 	char *pair;
@@ -387,25 +388,21 @@ static int decode_programmer(char *s, struct sahara_image *images, bool *single)
 			ret = load_sahara_image(filename, &images[id]);
 			if (ret < 0)
 				return -1;
-
-			*single = false;
 		}
 	} else {
-		ret = load_sahara_image(s, &images[0]);
+		ret = load_sahara_image(s, &archive);
 		if (ret < 0)
 			return -1;
 
-		ret = decode_programmer_archive(images);
-		if (ret < 0)
+		ret = decode_programmer_archive(&archive, images);
+		if (ret < 0 || ret == 1)
+			return ret;
+
+		ret = decode_sahara_config(&archive, images);
+		if (ret < 0 || ret == 1)
 			return -1;
 
-		if (!ret) {
-			ret = decode_sahara_config(images);
-			if (ret < 0)
-				return -1;
-		}
-
-		*single = (ret == 0);
+		images[SAHARA_ID_EHOSTDL_IMG] = archive;
 	}
 
 	return 0;
@@ -468,7 +465,6 @@ int main(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
 	struct sahara_image sahara_images[MAPPING_SZ] = {};
-	bool single_image = true;
 	char *incdir = NULL;
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
@@ -593,7 +589,7 @@ int main(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	ret = decode_programmer(argv[optind++], sahara_images, &single_image);
+	ret = decode_programmer(argv[optind++], sahara_images);
 	if (ret < 0)
 		exit(1);
 
@@ -658,7 +654,7 @@ int main(int argc, char **argv)
 
 	qdl->storage_type = storage_type;
 
-	ret = sahara_run(qdl, sahara_images, single_image, NULL, NULL);
+	ret = sahara_run(qdl, sahara_images, NULL, NULL);
 	if (ret < 0)
 		goto out_cleanup;
 
