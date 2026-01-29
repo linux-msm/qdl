@@ -438,7 +438,8 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	bool done = false;
 	int n;
 
-	sahara_debug_list_images(images, single_image);
+	if (images)
+		sahara_debug_list_images(images, single_image);
 
 	/*
 	 * Don't need to do anything in simulation mode with Sahara,
