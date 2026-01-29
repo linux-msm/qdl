@@ -440,6 +440,23 @@ static void print_usage(FILE *out)
 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
 }
 
+int print_list(FILE *out)
+{
+	struct qdl_device_desc *qdl_list;
+	int count;
+
+	if (!(qdl_list = usb_list(&count)))
+		return 1;
+
+	for (int i = 0; i < count; i++) {
+		fprintf(out, "Device %04x:%04x %s\n", qdl_list[i].idVendor, qdl_list[i].idProduct, qdl_list[i].iProduct);
+	}
+
+	free(qdl_list);
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
@@ -474,6 +491,7 @@ int main(int argc, char **argv)
 		{"dry-run", no_argument, 0, 'n'},
 		{"create-digests", required_argument, 0, 't'},
 		{"slot", required_argument, 0, 'T'},
+		{"list", no_argument, 0, 'L'},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
@@ -521,6 +539,8 @@ int main(int argc, char **argv)
 		case 'T':
 			slot = (unsigned int)strtoul(optarg, NULL, 10);
 			break;
+		case 'L':
+			return print_list(stdout);
 		case 'h':
 			print_usage(stdout);
 			return 0;
