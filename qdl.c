@@ -415,6 +415,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "Usage: %s [options] <prog.mbn> (<program-xml> | <patch-xml> | <read-xml>)...\n", __progname);
 	fprintf(out, "       %s [options] <prog.mbn> ((read | write) <address> <binary>)...\n", __progname);
 	fprintf(out, "       %s list\n", __progname);
+	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
 	fprintf(out, " -v, --version\t\t\tPrint the current version and exit\n");
 	fprintf(out, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
@@ -428,12 +429,14 @@ static void print_usage(FILE *out)
 	fprintf(out, " -T, --slot=T\t\t\tSet slot number T for multiple storage devices\n");
 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
-	fprintf(out, " <program-xml>\txml file containing <program> or <erase> directives\n");
-	fprintf(out, " <patch-xml>\txml file containing <patch> directives\n");
-	fprintf(out, " <read-xml>\txml file containing <read> directives\n");
-	fprintf(out, " <address>\tdisk address specifier, can be one of <P>, <P/S>, <P/S+L>, <name>, or\n");
-	fprintf(out, "          \t<P/name>, to specify a physical partition number P, a starting sector\n");
-	fprintf(out, "          \tnumber S, the number of sectors to follow L, or partition by \"name\"\n");
+	fprintf(out, " <program-xml>\t\txml file containing <program> or <erase> directives\n");
+	fprintf(out, " <patch-xml>\t\txml file containing <patch> directives\n");
+	fprintf(out, " <read-xml>\t\txml file containing <read> directives\n");
+	fprintf(out, " <address>\t\tdisk address specifier, can be one of <P>, <P/S>, <P/S+L>, <name>, or\n");
+	fprintf(out, "          \t\t<P/name>, to specify a physical partition number P, a starting sector\n");
+	fprintf(out, "          \t\tnumber S, the number of sectors to follow L, or partition by \"name\"\n");
+	fprintf(out, " <ramdump-path>\t\tpath where ramdump should stored\n");
+	fprintf(out, " <segment-filter>\toptional glob-pattern to select which segments to ramdump\n");
 	fprintf(out, "\n");
 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
 }
@@ -459,6 +462,81 @@ static int qdl_list(FILE *out)
 	free(devices);
 
 	return 0;
+}
+
+static int qdl_ramdump(int argc, char **argv)
+{
+	struct qdl_device *qdl;
+	char *ramdump_path = ".";
+	char *filter = NULL;
+	char *serial = NULL;
+	int ret = 0;
+	int opt;
+
+	static struct option options[] = {
+		{"debug", no_argument, 0, 'd'},
+		{"version", no_argument, 0, 'v'},
+		{"output", required_argument, 0, 'o'},
+		{"serial", required_argument, 0, 'S'},
+		{"help", no_argument, 0, 'h'},
+		{0, 0, 0, 0}
+	};
+
+	while ((opt = getopt_long(argc, argv, "dvo:S:h", options, NULL)) != -1) {
+		switch (opt) {
+		case 'd':
+			qdl_debug = true;
+			break;
+		case 'v':
+			print_version();
+			return 0;
+		case 'o':
+			ramdump_path = optarg;
+			break;
+		case 'S':
+			serial = optarg;
+			break;
+		case 'h':
+			print_usage(stdout);
+			return 0;
+		default:
+			print_usage(stderr);
+			return 1;
+		}
+	}
+
+	if (optind < argc)
+		filter = argv[optind++];
+
+	if (optind != argc) {
+		print_usage(stderr);
+		return 1;
+	}
+
+	qdl = qdl_init(QDL_DEVICE_USB);
+	if (!qdl)
+		return 1;
+
+	if (qdl_debug)
+		print_version();
+
+	ret = qdl_open(qdl, serial);
+	if (ret) {
+		ret = 1;
+		goto out_cleanup;
+	}
+
+	ret = sahara_run(qdl, NULL, ramdump_path, filter);
+	if (ret < 0) {
+		ret = 1;
+		goto out_cleanup;
+	}
+
+out_cleanup:
+	qdl_close(qdl);
+	qdl_deinit(qdl);
+
+	return ret;
 }
 
 int main(int argc, char **argv)
@@ -500,6 +578,8 @@ int main(int argc, char **argv)
 
 	if (argc == 2 && !strcmp(argv[1], "list"))
 		return qdl_list(stdout);
+	if (argc >= 2 && !strcmp(argv[1], "ramdump"))
+		return qdl_ramdump(argc - 1, argv + 1);
 
 	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:h", options, NULL)) != -1) {
 		switch (opt) {
