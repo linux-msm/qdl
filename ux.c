@@ -151,6 +151,9 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 			return;
 	}
 
+	if (value > max)
+		value = max;
+
 	va_start(ap, max);
 	vsnprintf(task_name, sizeof(task_name), fmt, ap);
 	va_end(ap);

@@ -513,6 +513,8 @@ static int qdl_ramdump(int argc, char **argv)
 		return 1;
 	}
 
+	ux_init();
+
 	qdl = qdl_init(QDL_DEVICE_USB);
 	if (!qdl)
 		return 1;
