@@ -608,7 +608,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 	t = time(NULL) - t0;
 
-	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, 120000, firehose_generic_parser, NULL);
 	if (ret) {
 		ux_err("flashing of %s failed\n", program->label);
 	} else if (t) {
