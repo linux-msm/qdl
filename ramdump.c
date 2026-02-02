@@ -76,6 +76,8 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	ux_init();
+
 	if (qdl_debug)
 		print_version();
 

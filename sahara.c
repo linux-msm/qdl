@@ -309,6 +309,8 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 		qdl_read(qdl, buf, DEBUG_BLOCK_SIZE, 10);
 
 		chunk += DEBUG_BLOCK_SIZE;
+
+		ux_progress("%s", chunk, region.length, region.filename);
 	}
 out:
 
@@ -388,8 +390,10 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		return;
 
 	for (i = 0; i < pkt->debug64_req.length / sizeof(table[0]); i++) {
-		if (sahara_debug64_filter(table[i].filename, filter))
+		if (sahara_debug64_filter(table[i].filename, filter)) {
+			ux_info("%s skipped per filter\n", table[i].filename);
 			continue;
+		}
 
 		ux_debug("%-2d: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%"
 			 PRIx64 " region: %s filename: %s\n",
@@ -399,6 +403,8 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		n = sahara_debug64_one(qdl, table[i], ramdump_path);
 		if (n < 0)
 			break;
+
+		ux_info("%s dumped successfully\n", table[i].filename);
 	}
 
 	free(table);
