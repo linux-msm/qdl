@@ -541,7 +541,7 @@ out_cleanup:
 	return ret;
 }
 
-int main(int argc, char **argv)
+static int qdl_flash(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
 	struct sahara_image sahara_images[MAPPING_SZ] = {};
@@ -577,11 +577,6 @@ int main(int argc, char **argv)
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
-
-	if (argc == 2 && !strcmp(argv[1], "list"))
-		return qdl_list(stdout);
-	if (argc >= 2 && !strcmp(argv[1], "ramdump"))
-		return qdl_ramdump(argc - 1, argv + 1);
 
 	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:h", options, NULL)) != -1) {
 		switch (opt) {
@@ -761,4 +756,14 @@ out_cleanup:
 	qdl_deinit(qdl);
 
 	return !!ret;
+}
+
+int main(int argc, char **argv)
+{
+	if (argc == 2 && !strcmp(argv[1], "list"))
+		return qdl_list(stdout);
+	if (argc >= 2 && !strcmp(argv[1], "ramdump"))
+		return qdl_ramdump(argc - 1, argv + 1);
+
+	return qdl_flash(argc, argv);
 }
