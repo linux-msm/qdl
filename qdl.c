@@ -400,7 +400,7 @@ static int decode_programmer(char *s, struct sahara_image *images)
 
 		ret = decode_sahara_config(&archive, images);
 		if (ret < 0 || ret == 1)
-			return -1;
+			return ret;
 
 		images[SAHARA_ID_EHOSTDL_IMG] = archive;
 	}
