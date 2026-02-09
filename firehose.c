@@ -956,7 +956,7 @@ static int firehose_reset(struct qdl_device *qdl)
 }
 
 static int firehose_detect_and_configure(struct qdl_device *qdl,
-					 bool skip_storage_init __unused,
+					 bool skip_storage_init,
 					 enum qdl_storage_type storage,
 					 unsigned int timeout_s)
 {
@@ -967,7 +967,7 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 	gettimeofday(&now, NULL);
 	timeradd(&now, &timeout, &timeout);
 	for (;;) {
-		ret = firehose_try_configure(qdl, false, storage);
+		ret = firehose_try_configure(qdl, skip_storage_init, storage);
 
 		if (ret == FIREHOSE_ACK) {
 			break;
@@ -1016,7 +1016,7 @@ int firehose_run(struct qdl_device *qdl)
 
 	ux_info("waiting for programmer...\n");
 
-	ret = firehose_detect_and_configure(qdl, true, qdl->storage_type, 5);
+	ret = firehose_detect_and_configure(qdl, false, qdl->storage_type, 5);
 	if (ret)
 		return ret;
 
