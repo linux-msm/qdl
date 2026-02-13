@@ -395,7 +395,11 @@ static int decode_programmer(char *s, struct sahara_image *images)
 			return -1;
 
 		ret = decode_programmer_archive(&archive, images);
-		if (ret < 0 || ret == 1)
+		if (ret < 0) {
+			sahara_images_free(images, MAPPING_SZ);
+			return ret;
+		}
+		if (ret == 1)
 			return ret;
 
 		ret = decode_sahara_config(&archive, images);
@@ -747,6 +751,9 @@ out_cleanup:
 		vip_gen_finalize(qdl);
 
 	qdl_close(qdl);
+
+	sahara_images_free(sahara_images, MAPPING_SZ);
+
 	free_programs();
 	free_patches();
 

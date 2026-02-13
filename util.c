@@ -266,3 +266,12 @@ err_close:
 	close(fd);
 	return -1;
 }
+
+void sahara_images_free(struct sahara_image *images, size_t count)
+{
+	for (size_t i = 0; i < count; i++) {
+		free(images[i].name);
+		free(images[i].ptr);
+		images[i] = (struct sahara_image){};
+	}
+}
