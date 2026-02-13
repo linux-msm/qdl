@@ -79,7 +79,7 @@ struct qdl_device {
 };
 
 struct sahara_image {
-	const char *name;
+	char *name;
 	void *ptr;
 	size_t len;
 };
@@ -113,6 +113,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	       const char *ramdump_path,
 	       const char *ramdump_filter);
 int load_sahara_image(const char *filename, struct sahara_image *image);
+void sahara_images_free(struct sahara_image *images, size_t count);
 void print_hex_dump(const char *prefix, const void *buf, size_t len);
 unsigned int attr_as_unsigned(xmlNode *node, const char *attr, int *errors);
 const char *attr_as_string(xmlNode *node, const char *attr, int *errors);
