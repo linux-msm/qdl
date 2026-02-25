@@ -368,7 +368,13 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 
 	ux_debug("accepted max payload size: %zu\n", qdl->max_payload_size);
 
-	if (storage != QDL_STORAGE_NAND) {
+	/*
+	 * Skip sector size probing when VIP is active: the probe read commands
+	 * are not included in the pre-built VIP digest table (the dry-run that
+	 * builds it exits before reaching this code via the SIM early-return
+	 * above), so sending them would cause a VIP hash mismatch on the device.
+	 */
+	if (storage != QDL_STORAGE_NAND && qdl->vip_data.state == VIP_DISABLED) {
 		max_sector_size = sector_sizes[ARRAY_SIZE(sector_sizes) - 1];
 		buf = alloca(max_sector_size);
 
