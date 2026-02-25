@@ -368,7 +368,13 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 
 	ux_debug("accepted max payload size: %zu\n", qdl->max_payload_size);
 
-	if (storage != QDL_STORAGE_NAND) {
+	/*
+	 * Skip sector size probing when VIP is active: the probe read commands
+	 * are not included in the pre-built VIP digest table (the dry-run that
+	 * builds it exits before reaching this code via the SIM early-return
+	 * above), so sending them would cause a VIP hash mismatch on the device.
+	 */
+	if (storage != QDL_STORAGE_NAND && qdl->vip_data.state == VIP_DISABLED) {
 		max_sector_size = sector_sizes[ARRAY_SIZE(sector_sizes) - 1];
 		buf = alloca(max_sector_size);
 
@@ -964,6 +970,27 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 	struct timeval timeout = { .tv_sec = timeout_s };
 	struct timeval now;
 	int ret;
+
+	/*
+	 * The speculative retry loop below sends configure (and therefore the
+	 * VIP table) before the programmer has had a chance to start up and
+	 * request it.  The VIP table can only be sent once per session
+	 * (VIP_INIT -> VIP_SEND_DATA is a one-way transition), so a premature
+	 * send leaves the programmer waiting for a table that was already
+	 * consumed, breaking the VIP session.
+	 *
+	 * When VIP is active, restore the original behaviour: drain all
+	 * startup log messages first, then do a single configure attempt.
+	 */
+	if (qdl->vip_data.state != VIP_DISABLED) {
+		firehose_read(qdl, timeout_s * 1000, firehose_generic_parser, NULL);
+		ret = firehose_try_configure(qdl, false, storage);
+		if (ret != FIREHOSE_ACK) {
+			ux_err("configure request failed\n");
+			return -1;
+		}
+		return 0;
+	}
 
 	gettimeofday(&now, NULL);
 	timeradd(&now, &timeout, &timeout);
