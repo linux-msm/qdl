@@ -11,7 +11,7 @@ IDs `9008`, `900e`, `901d`) to upload a flash loader and use it to flash images.
 ### Linux
 
 ```bash
-sudo apt install libxml2 libusb-1.0-0-dev help2man
+sudo apt install libxml2-dev libusb-1.0-0-dev help2man
 make
 ```
 
