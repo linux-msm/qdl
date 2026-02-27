@@ -135,7 +135,8 @@ rejected, and the target halts.
 
 To use VIP programming, a digest table must be generated prior to flashing the device.
 To generate a table of digests, run QDL with the `--create-digests` option,
-providing a path to store the VIP tables. For example:
+providing a path to store the VIP tables. Note that `--create-digests`
+implicitly enables dry-run mode, so no device connection is required:
 
 ```bash
 mkdir vip
@@ -150,7 +151,7 @@ As a result, three types of files are generated:
   `ChainedTableOfDigests<n>.bin` files, and is not used directly by QDL for
   VIP programming.
 
-- `DigestsToSign.bin` - first 53 digests + digest of `ChainedTableOfDigests.bin`.
+- `DigestsToSign.bin` - first 53 digests + SHA256 hash of `ChainedTableOfDigests0.bin`.
   This file must be converted to MBN format and then signed with sectools:
 
   ```bash
@@ -161,8 +162,10 @@ As a result, three types of files are generated:
   Please check the security profile for your SoC to determine which version of
   the MBN format should be used.
 
-- `ChainedTableOfDigests<n>.bin` - contains left digests, split on
-  multiple files with 255 digests + appended hash of next table.
+- `ChainedTableOfDigests<n>.bin` - contains the remaining digests, split across
+  multiple files of up to 255 digests each. Non-final files have the SHA256
+  hash of the next chained table appended. The final file has a trailing zero
+  byte appended to ensure its size is not a multiple of the sector size.
 
 To flash a board using VIP mode, provide the path where the previously generated
 and signed tables are stored using the `--vip-table-path` option:
@@ -170,6 +173,8 @@ and signed tables are stored using the `--vip-table-path` option:
 ```bash
 qdl --vip-table-path=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
+
+Note that `--vip-table-path` and `--create-digests` are mutually exclusive.
 
 ### Multi-programmer targets
 
