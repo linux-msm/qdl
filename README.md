@@ -105,13 +105,13 @@ qdl prog_firehose_ddr.elf [read | write] [address specifier] <binary>...
 Multiple read and write commands can be specified at once. The ***address
 specifier*** can take the forms:
 
-- N - single number, specifies the physical partition number N to write the
-  ***binary*** into, starting at sector 0 (currently reading a whole physical
-  partition is not supported).
+- N - single number, specifies the physical partition number N, starting at
+  sector 0. To read data, the number of sectors must be specified explicitly
+  using the N/S+L form.
 
-- N/S - two numbers, specifies the physical partition number N, and the start
-  sector S, to write the ***binary*** into (reading with an offset is not
-  supported)
+- N/S - two numbers, specifies the physical partition number N and the start
+  sector S. To read data, the number of sectors must be specified explicitly
+  using the N/S+L form.
 
 - N/S+L - three numbers, specifies the physical partition number N, the start
   sector S and the number of sectors L, that ***binary*** should be written to,
