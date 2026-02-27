@@ -73,7 +73,7 @@ Run QDL with the `--help` option to view detailed usage information.
 Below is an example of how to invoke QDL to flash a FLAT build:
 
 ```bash
-qdl --dry-run prog_firehose_ddr.elf rawprogram*.xml patch*.xml
+qdl prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
 
 If you have multiple boards connected the host, provide the serial number of
@@ -81,6 +81,16 @@ the board to flash through `--serial` param:
 
 ```bash
 qdl --serial=0AA94EFD prog_firehose_ddr.elf rawprogram*.xml patch*.xml
+```
+
+### Flash simulation (dry run)
+
+Use the `--dry-run` option to run QDL without connecting to or flashing any
+device. This is useful for validating your XML descriptors and programmer
+arguments, or for generating VIP digest tables (see below):
+
+```bash
+qdl --dry-run prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
 
 ### Reading and writing raw binaries
