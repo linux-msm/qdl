@@ -3,8 +3,8 @@
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 [![Build on push](https://github.com/linux-msm/qdl/actions/workflows/build.yml/badge.svg)](https://github.com/linux-msm/qdl/actions/workflows/build.yml/badge.svg)
 
-This tool communicates with USB devices of id `05c6:9008` to upload a flash
-loader and use it to flash images.
+This tool communicates with Qualcomm EDL USB devices (Vendor ID `05c6`, Product
+IDs `9008`, `900e`, `901d`) to upload a flash loader and use it to flash images.
 
 ## Build
 
