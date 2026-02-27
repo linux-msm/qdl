@@ -4,7 +4,7 @@
 [![Build on push](https://github.com/linux-msm/qdl/actions/workflows/build.yml/badge.svg)](https://github.com/linux-msm/qdl/actions/workflows/build.yml/badge.svg)
 
 This tool communicates with USB devices of id `05c6:9008` to upload a flash
-loader and use this to flash images.
+loader and use it to flash images.
 
 ## Build
 
@@ -17,14 +17,14 @@ make
 
 ### MacOS
 
-For Homebrew users,
+For Homebrew users:
 
 ```bash
 brew install libxml2 pkg-config libusb help2man
 make
 ```
 
-For MacPorts users
+For MacPorts users:
 
 ```bash
 sudo port install libxml2 pkgconfig libusb help2man
@@ -76,8 +76,8 @@ Below is an example of how to invoke QDL to flash a FLAT build:
 qdl prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
 
-If you have multiple boards connected the host, provide the serial number of
-the board to flash through `--serial` param:
+If you have multiple boards connected to the host, provide the serial number of
+the board to flash through the `--serial` option:
 
 ```bash
 qdl --serial=0AA94EFD prog_firehose_ddr.elf rawprogram*.xml patch*.xml
@@ -106,53 +106,52 @@ Multiple read and write commands can be specified at once. The ***address
 specifier*** can take the forms:
 
 - N - single number, specifies the physical partition number N to write the
-  ***binary** into, starting at sector 0 (currently reading a whole physical
+  ***binary*** into, starting at sector 0 (currently reading a whole physical
   partition is not supported).
 
 - N/S - two numbers, specifies the physical partition number N, and the start
   sector S, to write the ***binary*** into (reading with an offset is not
   supported)
 
-- N/S+L - three numbers, specified the physical partition number N, the start
+- N/S+L - three numbers, specifies the physical partition number N, the start
   sector S and the number of sectors L, that ***binary*** should be written to,
   or which should be read into ***binary***.
 
 - partition name - a string, will match against partition names across the GPT
   partition tables on all physical partitions.
 
-- N/partition_name - single number, followed by string - will match against
+- N/partition_name - a number followed by a string, will match against
   partition names of the GPT partition table in the specified physical
   partition N.
 
 ### Validated Image Programming (VIP)
 
-QDL now supports **Validated Image Programming (VIP)** mode , which is activated
-when Secure Boot is enabled on the target. VIP controls which packets are allowed
-to be issued to the target. Controlling the packets that can be sent to the target
-is done through hashing. The target applies a hashing function to all received data,
-comparing the resulting hash digest against an existing digest table in memory.
-If the calculated hash digest matches the next entry in the table, the packet
-(data or command) is accepted; otherwise, the packet is rejected,and the target halts.
+QDL supports **Validated Image Programming (VIP)** mode, which is activated
+when Secure Boot is enabled on the target. VIP controls which packets are
+allowed to be issued to the target by hashing all received data and comparing
+each resulting digest against the next entry in a pre-loaded digest table.
+If the digest matches, the packet is accepted; otherwise, the packet is
+rejected, and the target halts.
 
 To use VIP programming, a digest table must be generated prior to flashing the device.
-To generate table of digests run QDL with `--create-digests` param,
-providing a path to store VIP tables. For example:
+To generate a table of digests, run QDL with the `--create-digests` option,
+providing a path to store the VIP tables. For example:
 
 ```bash
 mkdir vip
 qdl --create-digests=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
 
-As a result 3 types of files are generated:
+As a result, three types of files are generated:
 
-- `DIGEST_TABLE.bin` - contains the SHA256 table of digests for all firehose
+- `DIGEST_TABLE.bin` - contains the SHA256 table of digests for all Firehose
   packets to be sent to the target. It is an intermediary table and is
   used only for the subsequent generation of `DigestsToSign.bin` and
-  `ChainedTableOfDigests\<n\>.bin` files. It is not used by QDL for VIP
-  programming.
+  `ChainedTableOfDigests<n>.bin` files, and is not used directly by QDL for
+  VIP programming.
 
 - `DigestsToSign.bin` - first 53 digests + digest of `ChainedTableOfDigests.bin`.
-  This file has to be converted to MBN format and then signed with sectools:
+  This file must be converted to MBN format and then signed with sectools:
 
   ```bash
   sectools mbn-tool generate --data DigestsToSign.bin --mbn-version 6 --outfile DigestsToSign.bin.mbn
@@ -162,11 +161,11 @@ As a result 3 types of files are generated:
   Please check the security profile for your SoC to determine which version of
   the MBN format should be used.
 
-- `ChainedTableOfDigests\<n\>.bin` - contains left digests, split on
+- `ChainedTableOfDigests<n>.bin` - contains left digests, split on
   multiple files with 255 digests + appended hash of next table.
 
-To flash board using VIP mode provide a path where previously generated and signed
-table of digests are stored using `--vip-table-path` param:
+To flash a board using VIP mode, provide the path where the previously generated
+and signed tables are stored using the `--vip-table-path` option:
 
 ```bash
 qdl --vip-table-path=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
@@ -175,12 +174,12 @@ qdl --vip-table-path=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ### Multi-programmer targets
 
 On some targets multiple files need to be loaded in order to reach the
-Firehose programmer, these targets will request multiple images over Sahara.
+Firehose programmer; these targets will request multiple images over Sahara.
 Three mechanisms for providing these images are provided:
 
 #### Command line argument
 
-The *programmer* argument, allows specifying a comma-separated list of
+The *programmer* argument allows specifying a comma-separated list of
 colon-separated "id" and "filename" pairs. Each filename should refer to the
 Sahara image of the specified Sahara image id.
 
@@ -190,12 +189,12 @@ qdl 13:prog_firehose_ddr.elf,42:the-answer rawprogram.xml
 
 #### Sahara configuration XML file
 
-Flattened METAs does include the various images that need to be loaded to
+Flattened METAs include the various images that need to be loaded to
 enter Firehose mode, as well as a sahara_config XML file, which defines the
 Sahara image id for each of these images.
 
 If the specified device programmer is determined to be a Sahara configuration
-XML file, it will be parsed and the referred to files will be loaded and
+XML file, it will be parsed and the referenced files will be loaded and
 serviced to the device upon request.
 
 ```bash
@@ -204,8 +203,8 @@ qdl sahara_programmer.xml rawprogram.xml
 
 #### Programmer archive
 
-Directly providing a list of ids and filenames is cumbersome and error prone,
-QDL therefore accepts a "*programmer archive*". This allows the user to use the
+Directly providing a list of ids and filenames is cumbersome and error-prone,
+so QDL accepts a "*programmer archive*". This allows the user to use the
 tool in the same fashion as was done for single-programmer targets.
 
 The *programmer archive* is a CPIO archive containing the Sahara images to be
@@ -214,14 +213,14 @@ but useful for debugging). Each included file will be used to serve requests
 for the given Sahara *id*.
 
 Such an archive can be created by putting the target's programmer images in an
-empty directory, then in that directory execute the command:
+empty directory, then executing the following command from that directory:
 
 ```bash
 ls | cpio -o -H newc > ../programmer.cpio
 ```
 
 *programmer.cpio* can now be passed to QDL and the included images will be
-served, in order to reach Firehose mode.
+served in order to reach Firehose mode.
 
 ## Run tests
 
@@ -277,5 +276,5 @@ Your patch has style problems, please review.
 
 ## License
 
-This tool is licensed under the BSD 3-Clause licensed. Check out [LICENSE](LICENSE)
-for more detais.
+This tool is licensed under the BSD 3-Clause license. Check out [LICENSE](LICENSE)
+for more details.
