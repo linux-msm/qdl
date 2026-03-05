@@ -38,6 +38,7 @@ enum {
 	QDL_FILE_CONTENTS,
 	QDL_CMD_READ,
 	QDL_CMD_WRITE,
+	QDL_CMD_ERASE,
 };
 
 bool qdl_debug;
@@ -53,6 +54,8 @@ static int detect_type(const char *verb)
 		return QDL_CMD_READ;
 	if (!strcmp(verb, "write"))
 		return QDL_CMD_WRITE;
+	if (!strcmp(verb, "erase"))
+		return QDL_CMD_ERASE;
 
 	if (access(verb, F_OK)) {
 		ux_err("%s is not a verb and not a XML file\n", verb);
@@ -426,6 +429,7 @@ static void print_usage(FILE *out)
 
 	fprintf(out, "Usage: %s [options] <prog.mbn> (<program-xml> | <patch-xml> | <read-xml>)...\n", __progname);
 	fprintf(out, "       %s [options] <prog.mbn> ((read | write) <address> <binary>)...\n", __progname);
+	fprintf(out, "       %s [options] <prog.mbn> (erase <address>)...\n", __progname);
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
@@ -730,6 +734,14 @@ static int qdl_flash(int argc, char **argv)
 			if (ret < 0)
 				errx(1, "failed to add write command");
 			optind += 2;
+			break;
+		case QDL_CMD_ERASE:
+			if (optind + 1 >= argc)
+				errx(1, "erase command missing address");
+			ret = erase_cmd_add(argv[optind + 1]);
+			if (ret < 0)
+				errx(1, "failed to add erase command");
+			optind += 1;
 			break;
 		default:
 			errx(1, "%s type not yet supported", argv[optind]);
