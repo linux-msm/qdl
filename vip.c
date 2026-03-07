@@ -143,6 +143,7 @@ void vip_gen_chunk_store(struct qdl_device *qdl)
 
 out_cleanup:
 	fclose(vip_gen->digest_table_fd);
+	vip_gen->digest_table_fd = NULL;
 }
 
 static int write_output_file(const char *filename, bool append, const void *data, size_t len)
@@ -403,10 +404,8 @@ out_cleanup:
 void vip_transfer_deinit(struct qdl_device *qdl)
 {
 	close(qdl->vip_data.signed_table_fd);
-	if (qdl->vip_data.chained_num > 0) {
-		for (size_t i = 0; i < qdl->vip_data.chained_num - 1; ++i)
-			close(qdl->vip_data.chained_fds[i]);
-	}
+	for (size_t i = 0; i < qdl->vip_data.chained_num; ++i)
+		close(qdl->vip_data.chained_fds[i]);
 }
 
 static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
@@ -429,13 +428,13 @@ static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
 	}
 
 	n = read(table_fd, buf, sb.st_size);
-	if (n < 0) {
+	if (n < 0 || n != sb.st_size) {
 		ux_err("failed to read binary\n");
 		ret = -1;
 		goto out;
 	}
 
-	n = qdl_write(qdl, buf, sb.st_size, 1000);
+	n = qdl_write(qdl, buf, n, 1000);
 	if (n < 0) {
 		ux_err("USB write failed for data chunk\n");
 		ret = -1;
