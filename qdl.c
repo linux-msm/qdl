@@ -755,20 +755,24 @@ static int qdl_flash(int argc, char **argv)
 		goto out_cleanup;
 
 out_cleanup:
-	if (vip_generate_dir)
-		vip_gen_finalize(qdl);
+	if (qdl) {
+		if (vip_generate_dir)
+			vip_gen_finalize(qdl);
 
-	qdl_close(qdl);
+		qdl_close(qdl);
+	}
 
 	sahara_images_free(sahara_images, MAPPING_SZ);
 
 	free_programs();
 	free_patches();
 
-	if (qdl->vip_data.state != VIP_DISABLED)
-		vip_transfer_deinit(qdl);
+	if (qdl) {
+		if (qdl->vip_data.state != VIP_DISABLED)
+			vip_transfer_deinit(qdl);
 
-	qdl_deinit(qdl);
+		qdl_deinit(qdl);
+	}
 
 	return !!ret;
 }
