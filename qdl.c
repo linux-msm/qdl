@@ -207,6 +207,10 @@ static int decode_programmer_archive(struct sahara_image *blob, struct sahara_im
 			break;
 
 		tok = strtok_r(name, ":", &save);
+		if (!tok) {
+			ux_err("missing image id in programmer archive entry\n");
+			goto err;
+		}
 		id = strtoul(tok, NULL, 0);
 		if (id == 0 || id >= MAPPING_SZ) {
 			ux_err("invalid image id \"%s\" in programmer archive\n", tok);
