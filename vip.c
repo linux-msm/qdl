@@ -429,13 +429,13 @@ static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
 	}
 
 	n = read(table_fd, buf, sb.st_size);
-	if (n < 0) {
+	if (n < 0 || n != sb.st_size) {
 		ux_err("failed to read binary\n");
 		ret = -1;
 		goto out;
 	}
 
-	n = qdl_write(qdl, buf, sb.st_size, 1000);
+	n = qdl_write(qdl, buf, n, 1000);
 	if (n < 0) {
 		ux_err("USB write failed for data chunk\n");
 		ret = -1;
