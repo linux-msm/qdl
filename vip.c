@@ -404,10 +404,8 @@ out_cleanup:
 void vip_transfer_deinit(struct qdl_device *qdl)
 {
 	close(qdl->vip_data.signed_table_fd);
-	if (qdl->vip_data.chained_num > 0) {
-		for (size_t i = 0; i < qdl->vip_data.chained_num - 1; ++i)
-			close(qdl->vip_data.chained_fds[i]);
-	}
+	for (size_t i = 0; i < qdl->vip_data.chained_num; ++i)
+		close(qdl->vip_data.chained_fds[i]);
 }
 
 static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
