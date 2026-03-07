@@ -248,7 +248,7 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 	if (device_count == 0)
 		return NULL;
 
-	result = calloc(device_count, sizeof(struct qdl_device));
+	result = calloc(device_count, sizeof(struct qdl_device_desc));
 	if (!result)
 		err(1, "failed to allocate devices array\n");
 
