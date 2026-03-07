@@ -143,6 +143,7 @@ void vip_gen_chunk_store(struct qdl_device *qdl)
 
 out_cleanup:
 	fclose(vip_gen->digest_table_fd);
+	vip_gen->digest_table_fd = NULL;
 }
 
 static int write_output_file(const char *filename, bool append, const void *data, size_t len)
