@@ -435,6 +435,37 @@ int program_cmd_add(const char *address, const char *filename)
 	return 0;
 }
 
+int erase_cmd_add(const char *address)
+{
+	unsigned int start_sector;
+	unsigned int num_sectors;
+	struct program *program;
+	char *gpt_partition;
+	int partition;
+	char buf[20];
+	int ret;
+
+	ret = parse_storage_address(address, &partition, &start_sector, &num_sectors, &gpt_partition);
+	if (ret < 0)
+		return ret;
+
+	program = calloc(1, sizeof(struct program));
+
+	if (!program)
+		err(1, "failed to allocate program\n");
+
+	program->num_sectors = num_sectors;
+	program->partition = partition;
+	sprintf(buf, "%u", start_sector);
+	program->start_sector = strdup(buf);
+	program->is_erase = true;
+	program->gpt_partition = gpt_partition;
+
+	list_add(&programs, &program->node);
+
+	return 0;
+}
+
 int program_resolve_gpt_deferrals(struct qdl_device *qdl)
 {
 	struct program *program;
