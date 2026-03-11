@@ -248,7 +248,7 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 	if (device_count == 0)
 		return NULL;
 
-	result = calloc(device_count, sizeof(struct qdl_device));
+	result = calloc(device_count, sizeof(struct qdl_device_desc));
 	if (!result)
 		err(1, "failed to allocate devices array\n");
 
@@ -275,6 +275,7 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 		ret = libusb_get_string_descriptor_ascii(handle, desc.iProduct, buf, sizeof(buf) - 1);
 		if (ret < 0) {
 			warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
+			libusb_close(handle);
 			continue;
 		}
 		buf[ret] = '\0';
@@ -282,6 +283,7 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 		serial = strstr((char *)buf, "_SN:");
 		if (!serial) {
 			ux_err("ignoring device with no serial number\n");
+			libusb_close(handle);
 			continue;
 		}
 
@@ -289,6 +291,7 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 		serial_len = strcspn(serial, " _");
 		if (serial_len + 1 > sizeof(result[count].serial)) {
 			ux_err("ignoring device with unexpectedly long serial number\n");
+			libusb_close(handle);
 			continue;
 		}
 
@@ -297,6 +300,7 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 
 		result[count].vid = desc.idVendor;
 		result[count].pid = desc.idProduct;
+		libusb_close(handle);
 		count++;
 	}
 

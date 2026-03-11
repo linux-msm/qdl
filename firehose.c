@@ -197,6 +197,32 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 	return resp;
 }
 
+static int firehose_vip_send_table(struct qdl_device *qdl)
+{
+	int ret;
+
+	ret = vip_transfer_handle_tables(qdl);
+	if (ret) {
+		ux_err("VIP: error occurred during VIP table transmission\n");
+		return -1;
+	}
+
+	if (!vip_transfer_status_check_needed(qdl))
+		return 0;
+
+	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+	if (ret) {
+		ux_err("VIP: sending of digest table failed\n");
+		return -1;
+	}
+
+	ux_info("VIP: digest table has been sent successfully\n");
+
+	vip_transfer_clear_status(qdl);
+
+	return 0;
+}
+
 static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 {
 	int saved_errno;
@@ -206,22 +232,9 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 
 	xmlDocDumpMemory(doc, &s, &len);
 
-	ret = vip_transfer_handle_tables(qdl);
-	if (ret) {
-		ux_err("VIP: error occurred during VIP table transmission\n");
+	ret = firehose_vip_send_table(qdl);
+	if (ret)
 		return -1;
-	}
-	if (vip_transfer_status_check_needed(qdl)) {
-		ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
-		if (ret) {
-			ux_err("VIP: sending of digest table failed\n");
-			return -1;
-		}
-
-		ux_info("VIP: digest table has been sent successfully\n");
-
-		vip_transfer_clear_status(qdl);
-	}
 
 	vip_gen_chunk_init(qdl);
 
@@ -575,22 +588,10 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 
 		vip_gen_chunk_update(qdl, buf, chunk_size * sector_size);
 
-		ret = vip_transfer_handle_tables(qdl);
-		if (ret) {
-			ux_err("VIP: error occurred during VIP table transmission\n");
+		ret = firehose_vip_send_table(qdl);
+		if (ret)
 			return -1;
-		}
-		if (vip_transfer_status_check_needed(qdl)) {
-			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
-			if (ret) {
-				ux_err("VIP: sending of digest table failed\n");
-				return -1;
-			}
 
-			ux_info("VIP: digest table has been sent successfully\n");
-
-			vip_transfer_clear_status(qdl);
-		}
 		n = qdl_write(qdl, buf, chunk_size * sector_size, zlp_timeout);
 		if (n < 0) {
 			ux_err("USB write failed for data chunk\n");
