@@ -203,13 +203,20 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 	const size_t elem_size = SHA256_DIGEST_LENGTH;
 	unsigned char buf[MAX_DIGESTS_PER_BUF * SHA256_DIGEST_LENGTH];
 	size_t written = 0;
-	int ret;
+	FILE *out = NULL;
+	int ret = -1;
 
 	int fd = open(src_table, O_RDONLY | O_BINARY);
 
 	if (fd < 0) {
 		ux_err("Failed to open %s for reading\n", src_table);
 		return -1;
+	}
+
+	out = fopen(dest_table, "wb");
+	if (!out) {
+		ux_err("Failed to open %s for writing\n", dest_table);
+		goto out_cleanup;
 	}
 
 	/* Seek to offset of start_digest */
@@ -233,21 +240,21 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 			goto out_cleanup;
 		}
 
-		ret = write_output_file(dest_table, (written != 0), buf, bytes);
-		if (ret < 0) {
+		if (fwrite(buf, 1, bytes, out) != (size_t)bytes) {
 			ux_err("Can't write digests to %s\n", dest_table);
 			goto out_cleanup;
 		}
 
 		written += to_read;
 	}
-	close(fd);
+	ret = 0;
 
-	return 0;
 out_cleanup:
+	if (out)
+		fclose(out);
 	close(fd);
 
-	return -1;
+	return ret;
 }
 
 static int create_chained_tables(struct vip_table_generator *vip_gen)
