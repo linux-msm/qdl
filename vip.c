@@ -171,34 +171,8 @@ static int write_output_file(const char *filename, bool append, const void *data
 	return 0;
 }
 
-static int calculate_hash_of_file(const char *filename, unsigned char *hash)
-{
-	unsigned char buf[1024];
-	SHA2_CTX ctx;
-
-	FILE *fp = fopen(filename, "rb");
-
-	if (!fp) {
-		ux_err("Failed to open file for hashing\n");
-		return -1;
-	}
-
-	SHA256Init(&ctx);
-
-	size_t bytes;
-
-	while ((bytes = fread(buf, 1, sizeof(buf), fp)) > 0) {
-		SHA256Update(&ctx, (uint8_t *)buf, bytes);
-	}
-
-	fclose(fp);
-
-	SHA256Final(hash, &ctx);
-
-	return 0;
-}
-
-static int write_digests_to_table(char *src_table, char *dest_table, size_t start_digest, size_t count)
+static int write_digests_to_table(char *src_table, char *dest_table, size_t start_digest,
+				  size_t count, SHA2_CTX *out_ctx)
 {
 	const size_t elem_size = SHA256_DIGEST_LENGTH;
 	unsigned char buf[MAX_DIGESTS_PER_BUF * SHA256_DIGEST_LENGTH];
@@ -218,6 +192,9 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 		ux_err("Failed to open %s for writing\n", dest_table);
 		goto out_cleanup;
 	}
+
+	if (out_ctx)
+		SHA256Init(out_ctx);
 
 	/* Seek to offset of start_digest */
 	off_t offset = elem_size * start_digest;
@@ -245,6 +222,9 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 			goto out_cleanup;
 		}
 
+		if (out_ctx)
+			SHA256Update(out_ctx, buf, bytes);
+
 		written += to_read;
 	}
 	ret = 0;
@@ -259,31 +239,46 @@ out_cleanup:
 
 static int create_chained_tables(struct vip_table_generator *vip_gen)
 {
-	size_t chained_num = 0;
-	size_t tosign_count = 0;
 	size_t total_digests = vip_gen->digest_num_written;
 	char src_table[PATH_MAX];
 	char dest_table[PATH_MAX];
 	unsigned char hash[SHA256_DIGEST_LENGTH];
-	int ret;
+	SHA2_CTX *chain_ctxs = NULL;
+	size_t chained_num = 0;
+	int ret = 0;
 
 	snprintf(src_table, sizeof(src_table), "%s/%s", vip_gen->path, DIGEST_FULL_TABLE_FILE);
+
+	/* Pre-compute the number of chained tables so we can allocate contexts */
+	if (total_digests > MAX_DIGESTS_PER_SIGNED_TABLE) {
+		size_t remaining = total_digests - MAX_DIGESTS_PER_SIGNED_TABLE;
+
+		chained_num = (remaining + MAX_DIGESTS_PER_CHAINED_TABLE - 1) /
+			      MAX_DIGESTS_PER_CHAINED_TABLE;
+		chain_ctxs = calloc(chained_num, sizeof(SHA2_CTX));
+		if (!chain_ctxs)
+			return -1;
+	}
 
 	/* Step 1: Write digest table to DigestsToSign.bin */
 	snprintf(dest_table, sizeof(dest_table), "%s/%s",
 		 vip_gen->path, DIGEST_TABLE_TO_SIGN_FILE);
-	tosign_count = total_digests < MAX_DIGESTS_PER_SIGNED_TABLE ? total_digests :
-		       MAX_DIGESTS_PER_SIGNED_TABLE;
+	size_t tosign_count = total_digests < MAX_DIGESTS_PER_SIGNED_TABLE ? total_digests :
+			      MAX_DIGESTS_PER_SIGNED_TABLE;
 
-	ret = write_digests_to_table(src_table, dest_table, 0, tosign_count);
+	ret = write_digests_to_table(src_table, dest_table, 0, tosign_count, NULL);
 	if (ret) {
 		ux_err("Writing digests to %s failed\n", dest_table);
-		return ret;
+		goto out;
 	}
 
-	/* Step 2: Write remaining digests to ChainedTableOfDigests<n>.bin */
+	/* Step 2: Write remaining digests to ChainedTableOfDigests<n>.bin, capturing
+	 * a SHA2 context after writing each table's digest payload so Step 3 can
+	 * compute the final hashes without re-reading the files.
+	 */
 	if (total_digests > MAX_DIGESTS_PER_SIGNED_TABLE) {
 		size_t remaining_digests = total_digests - MAX_DIGESTS_PER_SIGNED_TABLE;
+		size_t chain_idx = 0;
 
 		while (remaining_digests > 0) {
 			size_t table_digests = remaining_digests > MAX_DIGESTS_PER_CHAINED_TABLE ?
@@ -291,14 +286,14 @@ static int create_chained_tables(struct vip_table_generator *vip_gen)
 
 			snprintf(dest_table, sizeof(dest_table),
 				 "%s/%s%zu.bin", vip_gen->path,
-				 CHAINED_TABLE_FILE_PREF, chained_num);
+				 CHAINED_TABLE_FILE_PREF, chain_idx);
 
 			ret = write_digests_to_table(src_table, dest_table,
 						     total_digests - remaining_digests,
-						     table_digests);
+						     table_digests, &chain_ctxs[chain_idx]);
 			if (ret) {
 				ux_err("Writing digests to %s failed\n", dest_table);
-				return ret;
+				goto out;
 			}
 
 			remaining_digests -= table_digests;
@@ -307,45 +302,46 @@ static int create_chained_tables(struct vip_table_generator *vip_gen)
 				ret = write_output_file(dest_table, true, "\0", 1);
 				if (ret < 0) {
 					ux_err("Can't write 0 to %s\n", dest_table);
-					return ret;
+					goto out;
 				}
+				SHA256Update(&chain_ctxs[chain_idx], (const uint8_t *)"\0", 1);
 			}
-			chained_num++;
+			chain_idx++;
 		}
 	}
 
-	/* Step 3: Recursively hash and append backwards */
+	/* Step 3: Hash and append backwards.  Each file's final content is the
+	 * digest payload written in Step 2 plus the hash of the next file appended
+	 * in the previous iteration.  Finalize a copy of the cached context (updated
+	 * with the appended hash where applicable) instead of re-reading the file.
+	 */
 	for (ssize_t i = chained_num - 1; i >= 0; --i) {
-		snprintf(src_table, sizeof(src_table),
-			 "%s/%s%zd.bin", vip_gen->path,
-			 CHAINED_TABLE_FILE_PREF, i);
-		ret = calculate_hash_of_file(src_table, hash);
-		if (ret < 0) {
-			ux_err("Failed to hash %s\n", src_table);
-			return ret;
-		}
+		SHA2_CTX ctx = chain_ctxs[i];
+
+		if (i < (ssize_t)chained_num - 1)
+			SHA256Update(&ctx, hash, SHA256_DIGEST_LENGTH);
+
+		SHA256Final(hash, &ctx);
 
 		if (i == 0) {
 			snprintf(dest_table, sizeof(dest_table), "%s/%s",
 				 vip_gen->path, DIGEST_TABLE_TO_SIGN_FILE);
-			ret = write_output_file(dest_table, true, hash, SHA256_DIGEST_LENGTH);
-			if (ret < 0) {
-				ux_err("Failed to append hash to %s\n", dest_table);
-				return ret;
-			}
 		} else {
 			snprintf(dest_table, sizeof(dest_table),
 				 "%s/%s%zd.bin", vip_gen->path,
 				 CHAINED_TABLE_FILE_PREF, (i - 1));
-			ret = write_output_file(dest_table, true, hash, SHA256_DIGEST_LENGTH);
-			if (ret < 0) {
-				ux_err("Failed to append hash to %s\n", dest_table);
-				return ret;
-			}
+		}
+
+		ret = write_output_file(dest_table, true, hash, SHA256_DIGEST_LENGTH);
+		if (ret < 0) {
+			ux_err("Failed to append hash to %s\n", dest_table);
+			goto out;
 		}
 	}
 
-	return 0;
+out:
+	free(chain_ctxs);
+	return ret;
 }
 
 void vip_gen_finalize(struct qdl_device *qdl)
