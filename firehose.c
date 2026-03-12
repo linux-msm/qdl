@@ -693,11 +693,15 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 
 		n = qdl_read(qdl, buf, chunk_size * sector_size, 30000);
 		if (n < 0) {
-			err(1, "failed to read");
+			ux_err("failed to read sector data\n");
+			ret = -1;
+			goto out;
 		}
 
 		if ((size_t)n != chunk_size * sector_size) {
-			err(1, "failed to read full sector");
+			ux_err("failed to read full sector\n");
+			ret = -1;
+			goto out;
 		}
 
 		if (out_buf) {
@@ -710,7 +714,9 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 			n = write(fd, buf, n);
 
 			if (n < 0 || (size_t)n != chunk_size * sector_size) {
-				err(1, "failed to write");
+				ux_err("failed to write sector data\n");
+				ret = -1;
+				goto out;
 			}
 		}
 
