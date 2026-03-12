@@ -108,8 +108,7 @@ static enum qdl_storage_type decode_storage(const char *storage)
 	if (!strcmp(storage, "ufs"))
 		return QDL_STORAGE_UFS;
 
-	fprintf(stderr, "Unknown storage type \"%s\"\n", storage);
-	exit(1);
+	return QDL_STORAGE_UNKNOWN;
 }
 
 #define CPIO_MAGIC "070701"
@@ -627,6 +626,8 @@ static int qdl_flash(int argc, char **argv)
 			break;
 		case 's':
 			storage_type = decode_storage(optarg);
+			if (storage_type == QDL_STORAGE_UNKNOWN)
+				errx(1, "unknown storage type \"%s\"", optarg);
 			break;
 		case 'S':
 			serial = optarg;
