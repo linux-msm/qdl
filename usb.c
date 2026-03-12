@@ -189,13 +189,18 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 	int i;
 
 	ret = libusb_init(NULL);
-	if (ret < 0)
-		err(1, "failed to initialize libusb");
+	if (ret < 0) {
+		ux_err("failed to initialize libusb: %s\n", libusb_strerror(ret));
+		return -1;
+	}
 
 	for (;;) {
 		n = libusb_get_device_list(NULL, &devs);
-		if (n < 0)
-			err(1, "failed to list USB devices");
+		if (n < 0) {
+			ux_err("failed to list USB devices: %s\n", libusb_strerror(n));
+			libusb_exit(NULL);
+			return -1;
+		}
 
 		for (i = 0; devs[i]; i++) {
 			dev = devs[i];
@@ -239,18 +244,27 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 	int i;
 
 	ret = libusb_init(NULL);
-	if (ret < 0)
-		err(1, "failed to initialize libusb");
+	if (ret < 0) {
+		ux_err("failed to initialize libusb: %s\n", libusb_strerror(ret));
+		return NULL;
+	}
 
 	device_count = libusb_get_device_list(NULL, &devices);
-	if (device_count < 0)
-		err(1, "failed to list USB devices");
+	if (device_count < 0) {
+		ux_err("failed to list USB devices: %s\n", libusb_strerror(device_count));
+		libusb_exit(NULL);
+		return NULL;
+	}
 	if (device_count == 0)
 		return NULL;
 
 	result = calloc(device_count, sizeof(struct qdl_device_desc));
-	if (!result)
-		err(1, "failed to allocate devices array\n");
+	if (!result) {
+		ux_err("failed to allocate devices array\n");
+		libusb_free_device_list(devices, 1);
+		libusb_exit(NULL);
+		return NULL;
+	}
 
 	for (i = 0; i < device_count; i++) {
 		dev = devices[i];
