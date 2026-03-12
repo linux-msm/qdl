@@ -684,7 +684,7 @@ static int qdl_flash(int argc, char **argv)
 
 	ret = decode_programmer(argv[optind++], sahara_images);
 	if (ret < 0)
-		exit(1);
+		goto out_cleanup;
 
 	do {
 		type = detect_type(argv[optind]);
