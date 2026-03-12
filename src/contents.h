@@ -15,7 +15,7 @@ struct pathbuf;
 struct contents_filter;
 
 int contents_load(struct list_head *ops, const char *filename, char *specifier,
-		  struct sahara_image *images, const char *incdir);
+		  struct sahara_image *images, struct list_head *incdirs);
 int contents_load_programmers(const char *filename, char *specifier,
 			      struct sahara_image *images);
 int contents_resolve_path(struct contents_filter *filter, const char *filename, struct pathbuf *path);

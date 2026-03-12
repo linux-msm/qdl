@@ -452,7 +452,7 @@ static int qdl_ensure_configured(struct list_head *ops, enum qdl_storage_type st
 }
 
 static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
-			 const char *incdir, struct sahara_image *images)
+			 struct list_head *incdirs, struct sahara_image *images)
 {
 	struct qdl_file flashmap;
 	struct qdl_zip *zip = NULL;
@@ -497,10 +497,10 @@ static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
 
 	switch (file_type) {
 	case QDL_FILE_CONTENTS:
-		ret = contents_load(firehose_ops, filename, specifier, images, incdir);
+		ret = contents_load(firehose_ops, filename, specifier, images, incdirs);
 		break;
 	case QDL_CMD_FLASH:
-		ret = flashmap_load(firehose_ops, filename, specifier, images, incdir);
+		ret = flashmap_load(firehose_ops, filename, specifier, images, incdirs);
 		break;
 	default:
 		if (qdl_zip_supported())
@@ -737,7 +737,7 @@ static int qdl_build_op_list(int argc, char **argv, int start,
 		case QDL_FILE_PROGRAM:
 			ret = program_load(ops, argv[idx],
 					   opts->storage_type == QDL_STORAGE_NAND,
-					   opts->allow_missing, NULL, opts->incdir);
+					   opts->allow_missing, NULL, &opts->incdirs);
 			if (ret < 0)
 				ux_diex(1, "program_load %s failed", argv[idx]);
 
@@ -746,7 +746,7 @@ static int qdl_build_op_list(int argc, char **argv, int start,
 					" changes. Allow explicitly with --allow-fusing parameter");
 			break;
 		case QDL_FILE_READ:
-			ret = read_op_load(ops, argv[idx], opts->incdir);
+			ret = read_op_load(ops, argv[idx], &opts->incdirs);
 			if (ret < 0)
 				ux_diex(1, "read_op_load %s failed", argv[idx]);
 			break;
@@ -793,7 +793,7 @@ static int qdl_build_op_list(int argc, char **argv, int start,
 		case QDL_CMD_FLASH:
 			if (idx + 1 >= argc)
 				ux_diex(1, "flash command missing operands");
-			ret = qdl_cmd_flash(ops, argv[idx + 1], opts->incdir, images);
+			ret = qdl_cmd_flash(ops, argv[idx + 1], &opts->incdirs, images);
 			if (ret < 0)
 				return -1;
 			idx += 1;
@@ -827,10 +827,10 @@ static int qdl_flash(int argc, char **argv)
 	ufs_provisioning_init(&ufs);
 
 	ret = qdl_parse_args(argc, argv, &opts);
-	if (ret == QDL_ARGS_DONE)
-		return 0;
-	if (ret == QDL_ARGS_ERROR)
-		return 1;
+	if (ret != QDL_ARGS_OK) {
+		qdl_free_opts(&opts);
+		return ret == QDL_ARGS_ERROR;
+	}
 
 	qdl = qdl_init(opts.dev_type);
 	if (!qdl) {
@@ -917,6 +917,8 @@ out_cleanup:
 	firehose_free_ops(&firehose_ops);
 
 	ufs_provisioning_cleanup(&ufs);
+
+	qdl_free_opts(&opts);
 
 	if (qdl) {
 		if (qdl->vip_data.state != VIP_DISABLED)

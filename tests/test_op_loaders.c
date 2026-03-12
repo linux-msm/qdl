@@ -52,6 +52,8 @@ struct firehose_op *firehose_alloc_op(int type)
 }
 
 /* --- helpers --- */
+static struct list_head no_incdirs = LIST_INIT(no_incdirs);
+
 static void free_ops(struct list_head *ops)
 {
 	struct firehose_op *op;
@@ -161,7 +163,7 @@ static int load_read_file(struct list_head *ops, const char *xml)
 	fputs(xml, f);
 	fclose(f);
 
-	ret = read_op_load(ops, path, NULL);
+	ret = read_op_load(ops, path, &no_incdirs);
 
 	unlink(path);
 	rmdir(dir);
@@ -206,7 +208,7 @@ static void test_read_missing_file_fails(void **state)
 	struct list_head ops = LIST_INIT(ops);
 	(void)state;
 
-	assert_true(read_op_load(&ops, "/nonexistent/qdl/read.xml", NULL) < 0);
+	assert_true(read_op_load(&ops, "/nonexistent/qdl/read.xml", &no_incdirs) < 0);
 	free_ops(&ops);
 }
 

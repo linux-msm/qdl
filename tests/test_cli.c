@@ -91,7 +91,7 @@ static void test_defaults(void **state)
 	assert_int_equal(o.dev_type, QDL_DEVICE_AUTO);
 	assert_int_equal(o.skipblock_mode, QDL_SKIPBLOCK_NONE);
 	assert_int_equal(o.slot, UINT_MAX);
-	assert_null(o.incdir);
+	assert_true(list_empty(&o.incdirs));
 	assert_null(o.serial);
 	assert_false(o.allow_missing);
 	assert_false(o.allow_fusing);
@@ -153,7 +153,7 @@ static void test_flags_and_values(void **state)
 	assert_true(o.allow_fusing);
 	assert_true(o.finalize_provisioning);
 	assert_true(o.skip_reset);
-	assert_string_equal(o.incdir, "incdir");
+	assert_string_equal(list_entry_first(&o.incdirs, struct qdl_incdir, node)->path, "incdir");
 	assert_string_equal(o.serial, "0AA94EFD");
 	assert_int_equal(o.slot, 3);
 	assert_int_equal(o.out_chunk_size, 4096);
@@ -161,6 +161,7 @@ static void test_flags_and_values(void **state)
 	assert_string_equal(o.vip_generate_dir, "vipdir");
 	/* --create-digests also enforces dry-run. */
 	assert_int_equal(o.dev_type, QDL_DEVICE_SIM);
+	qdl_free_opts(&o);
 }
 
 static void test_help_version_and_usage(void **state)

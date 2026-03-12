@@ -18,12 +18,13 @@
 #include "firehose.h"
 #include "gpt.h"
 
-int read_op_load(struct list_head *ops, const char *read_op_file, const char *incdir)
+int read_op_load(struct list_head *ops, const char *read_op_file, struct list_head *incdirs)
 {
 	struct firehose_op *read_op;
 	xmlNode *node;
 	xmlNode *root;
 	xmlDoc *doc;
+	struct qdl_incdir *incdir;
 	int errors;
 	char tmp[PATH_MAX];
 
@@ -67,11 +68,14 @@ int read_op_load(struct list_head *ops, const char *read_op_file, const char *in
 			return -EINVAL;
 		}
 
-		if (incdir && read_op->filename) {
-			snprintf(tmp, PATH_MAX, "%s/%s", incdir, read_op->filename);
+		list_for_each_entry(incdir, incdirs, node) {
+			if (!read_op->filename)
+				break;
+			snprintf(tmp, PATH_MAX, "%s/%s", incdir->path, read_op->filename);
 			if (access(tmp, F_OK) != -1) {
 				free((void *)read_op->filename);
 				read_op->filename = strdup(tmp);
+				break;
 			}
 		}
 

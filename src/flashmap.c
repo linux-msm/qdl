@@ -22,26 +22,29 @@ enum {
 	QDL_FILE_PROGRAM,
 };
 
-static int flashmap_resolve_path(char *path, size_t path_size, const char *filename, const char *incdir)
+static int flashmap_resolve_path(char *path, size_t path_size, const char *filename,
+				 struct list_head *incdirs)
 {
+	struct qdl_incdir *incdir;
+
 	if (!filename) {
 		ux_err_tag(UX_TAG_FLASHMAP, "filename is null\n");
 		return -1;
 	}
 
-	if (incdir) {
-		snprintf(path, path_size, "%s/%s", incdir, filename);
-		if (access(path, F_OK))
-			snprintf(path, path_size, "%s", filename);
-	} else {
-		snprintf(path, path_size, "%s", filename);
+	list_for_each_entry(incdir, incdirs, node) {
+		snprintf(path, path_size, "%s/%s", incdir->path, filename);
+		if (!access(path, F_OK))
+			return 0;
 	}
+
+	snprintf(path, path_size, "%s", filename);
 
 	return 0;
 }
 
 static int flashmap_get_legacy_programmer(struct qdl_zip *zip, struct json_value *layout,
-					  struct sahara_image *images, const char *incdir)
+					  struct sahara_image *images, struct list_head *incdirs)
 {
 	struct json_value *programmers;
 	const char *filename;
@@ -66,7 +69,7 @@ static int flashmap_get_legacy_programmer(struct qdl_zip *zip, struct json_value
 		return -1;
 	}
 
-	if (flashmap_resolve_path(path, sizeof(path), filename, incdir))
+	if (flashmap_resolve_path(path, sizeof(path), filename, incdirs))
 		return -1;
 
 	ux_debug_tag(UX_TAG_FLASHMAP, "selected programmer: %s\n", path);
@@ -75,7 +78,7 @@ static int flashmap_get_legacy_programmer(struct qdl_zip *zip, struct json_value
 }
 
 static int flashmap_get_programmer_map(struct qdl_zip *zip, struct json_value *layout,
-				       struct sahara_image *images, const char *incdir)
+				       struct sahara_image *images, struct list_head *incdirs)
 {
 	struct json_value *programmers;
 	struct json_value *entry;
@@ -106,7 +109,7 @@ static int flashmap_get_programmer_map(struct qdl_zip *zip, struct json_value *l
 		}
 
 		filename = entry->u.string;
-		ret = flashmap_resolve_path(path, sizeof(path), filename, incdir);
+		ret = flashmap_resolve_path(path, sizeof(path), filename, incdirs);
 		if (ret)
 			return ret;
 
@@ -128,17 +131,17 @@ static int flashmap_get_programmer_map(struct qdl_zip *zip, struct json_value *l
 }
 
 static int flashmap_get_programmers(struct qdl_zip *zip, struct json_value *layout,
-				    struct sahara_image *images, const char *incdir,
+				    struct sahara_image *images, struct list_head *incdirs,
 				    bool uses_programmer_map)
 {
 	if (uses_programmer_map)
-		return flashmap_get_programmer_map(zip, layout, images, incdir);
+		return flashmap_get_programmer_map(zip, layout, images, incdirs);
 
-	return flashmap_get_legacy_programmer(zip, layout, images, incdir);
+	return flashmap_get_legacy_programmer(zip, layout, images, incdirs);
 }
 
 static int flashmap_load_xml(struct list_head *ops, struct qdl_zip *zip, const char *filename,
-			     bool is_nand, const char *incdir)
+			     bool is_nand, struct list_head *incdirs)
 {
 	struct qdl_file file;
 	xmlNode *node;
@@ -199,7 +202,7 @@ static int flashmap_load_xml(struct list_head *ops, struct qdl_zip *zip, const c
 
 	switch (type) {
 	case QDL_FILE_PROGRAM:
-		ret = program_load_xml(ops, doc, zip, filename, is_nand, false, NULL, incdir);
+		ret = program_load_xml(ops, doc, zip, filename, is_nand, false, NULL, incdirs);
 		break;
 	case QDL_FILE_PATCH:
 		ret = patch_load_xml(ops, doc, filename);
@@ -221,7 +224,7 @@ out_close_file:
 }
 
 static int flashmap_enumerate_programmables(struct json_value *list, struct list_head *ops,
-					    struct qdl_zip *zip, const char *incdir)
+					    struct qdl_zip *zip, struct list_head *incdirs)
 {
 	struct json_value *programmable;
 	struct json_value *files;
@@ -280,10 +283,10 @@ static int flashmap_enumerate_programmables(struct json_value *list, struct list
 				return -1;
 			}
 
-			if (flashmap_resolve_path(path, sizeof(path), file, incdir))
+			if (flashmap_resolve_path(path, sizeof(path), file, incdirs))
 				return -1;
 
-			ret = flashmap_load_xml(ops, zip, path, is_nand, incdir);
+			ret = flashmap_load_xml(ops, zip, path, is_nand, incdirs);
 			if (ret)
 				return ret;
 		}
@@ -412,9 +415,10 @@ static struct json_value *flashmap_select_layout(struct json_value *layouts, con
 }
 
 int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
-		  struct sahara_image *images, const char *incdir)
+		  struct sahara_image *images, struct list_head *incdirs)
 {
 	struct list_head flashmap_ops = LIST_INIT(flashmap_ops);
+	struct list_head no_incdirs = LIST_INIT(no_incdirs);
 	enum qdl_storage_type current_type = QDL_STORAGE_UNKNOWN;
 	struct json_value *programmable;
 	struct json_value *product;
@@ -448,6 +452,10 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 		ux_err("unable to create zip reference\n");
 		return -1;
 	}
+
+	/* Include directories don't apply to files inside a zip */
+	if (zip || !incdirs)
+		incdirs = &no_incdirs;
 
 	ret = qdl_file_open(zip, zip ? "flashmap.json" : filename, &flashmap);
 	if (ret < 0) {
@@ -508,7 +516,7 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 		goto out_free_json;
 	}
 
-	ret = flashmap_get_programmers(zip, layout, images, zip ? NULL : incdir, uses_programmer_map);
+	ret = flashmap_get_programmers(zip, layout, images, incdirs, uses_programmer_map);
 	if (ret)
 		goto out_free_json;
 
@@ -520,7 +528,7 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 		goto out_free_json;
 	}
 
-	ret = flashmap_enumerate_programmables(programmable, &flashmap_ops, zip, zip ? NULL : incdir);
+	ret = flashmap_enumerate_programmables(programmable, &flashmap_ops, zip, incdirs);
 	if (ret < 0) {
 		firehose_free_ops(&flashmap_ops);
 		sahara_images_free(images, MAPPING_SZ);

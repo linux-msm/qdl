@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "list.h"
+
 /* Long-only option ids, distinct from any short option character. */
 enum {
 	OPT_BACKEND = 0x100,
@@ -20,7 +22,7 @@ struct qdl_opts {
 	enum qdl_storage_type storage_type;
 	enum QDL_DEVICE_TYPE dev_type;
 	enum qdl_skipblock_mode skipblock_mode;
-	char *incdir;
+	struct list_head incdirs;
 	char *serial;
 	const char *vip_generate_dir;
 	const char *vip_table_path;
@@ -41,6 +43,7 @@ enum {
 
 int qdl_parse_args(int argc, char **argv, struct qdl_opts *opts);
 int qdl_take_color_option(int *argc, char **argv);
+void qdl_free_opts(struct qdl_opts *opts);
 void print_usage(FILE *out);
 void print_version(void);
 
