@@ -561,7 +561,7 @@ static int qdl_flash(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
 	struct sahara_image sahara_images[MAPPING_SZ] = {};
-	char *incdir = NULL;
+	const char *incdir[32] = {0};
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
 	const char *vip_table_path = NULL;
@@ -575,6 +575,7 @@ static int qdl_flash(int argc, char **argv)
 	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
 	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
+	int incdir_count = 0;
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
@@ -614,7 +615,12 @@ static int qdl_flash(int argc, char **argv)
 			allow_missing = true;
 			break;
 		case 'i':
-			incdir = optarg;
+			if (incdir_count < sizeof(incdir) / sizeof(incdir[0])) {
+				incdir[incdir_count] = optarg;
+				incdir_count++;
+			} else {
+				errx(1, "maximum number of include directories exceeded");
+			}
 			break;
 		case 'l':
 			qdl_finalize_provisioning = true;
@@ -698,7 +704,7 @@ static int qdl_flash(int argc, char **argv)
 				errx(1, "patch_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_PROGRAM:
-			ret = program_load(argv[optind], storage_type == QDL_STORAGE_NAND, allow_missing, incdir);
+			ret = program_load(argv[optind], storage_type == QDL_STORAGE_NAND, allow_missing, incdir, incdir_count);
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[optind]);
 
@@ -707,7 +713,7 @@ static int qdl_flash(int argc, char **argv)
 					" changes. Allow explicitly with --allow-fusing parameter");
 			break;
 		case QDL_FILE_READ:
-			ret = read_op_load(argv[optind], incdir);
+			ret = read_op_load(argv[optind], incdir, incdir_count);
 			if (ret < 0)
 				errx(1, "read_op_load %s failed", argv[optind]);
 			break;

@@ -148,13 +148,14 @@ static int program_load_sparse(struct program *program, int fd)
 	return 0;
 }
 
-static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, const char *incdir)
+static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, const char *incdir[], int incdir_count)
 {
 	struct program *program;
 	char tmp[PATH_MAX];
 	int errors = 0;
 	int ret;
 	int fd = -1;
+	bool found = false;
 
 	program = calloc(1, sizeof(struct program));
 
@@ -184,11 +185,14 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 	}
 
 	if (program->filename) {
-		if (incdir) {
-			snprintf(tmp, PATH_MAX, "%s/%s", incdir, program->filename);
+		for (int i = 0; i < incdir_count && incdir[i]; ++i) {
+			snprintf(tmp, PATH_MAX, "%s/%s", incdir[i], program->filename);
 			if (access(tmp, F_OK) != -1) {
 				free((void *)program->filename);
 				program->filename = strdup(tmp);
+				if(found)
+					ux_info("multiple files found for %s, using %s\n", program->filename, tmp);
+				found = true;
 			}
 		}
 
@@ -227,7 +231,7 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 	return 0;
 }
 
-int program_load(const char *program_file, bool is_nand, bool allow_missing, const char *incdir)
+int program_load(const char *program_file, bool is_nand, bool allow_missing, const char *incdir[], int incdir_count)
 {
 	xmlNode *node;
 	xmlNode *root;
@@ -248,7 +252,7 @@ int program_load(const char *program_file, bool is_nand, bool allow_missing, con
 		if (!xmlStrcmp(node->name, (xmlChar *)"erase"))
 			errors = load_erase_tag(node, is_nand);
 		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
-			errors = load_program_tag(node, is_nand, allow_missing, incdir);
+			errors = load_program_tag(node, is_nand, allow_missing, incdir, incdir_count);
 		else {
 			ux_err("unrecognized tag \"%s\" in program-type file \"%s\"\n", node->name, program_file);
 			errors = -EINVAL;
