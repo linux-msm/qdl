@@ -165,7 +165,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 		/* Timeout after seeing a response, we're done waiting for logs */
 		if (n == -ETIMEDOUT && resp >= 0)
 			break;
-		/* We want to return resp on error, to not loose the reset resposne */
+		/* We want to return resp on error, to not lose the reset response */
 		else if (n == -EIO)
 			break;
 

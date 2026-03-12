@@ -142,7 +142,7 @@ bool attr_as_bool(xmlNode *node, const char *attr, int *errors)
  *
  * @physical_partition is either the requested physical partition, or -1 if
  * none is specified. Either @start_sector and @num_sectors, or @gpt_partition
- * will represent the equested address, the other(s) will be zeroed.
+ * will represent the requested address, the other(s) will be zeroed.
  *
  * Returns: 0 on success, -1 on failure
  */
