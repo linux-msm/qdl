@@ -108,8 +108,7 @@ static enum qdl_storage_type decode_storage(const char *storage)
 	if (!strcmp(storage, "ufs"))
 		return QDL_STORAGE_UFS;
 
-	fprintf(stderr, "Unknown storage type \"%s\"\n", storage);
-	exit(1);
+	return QDL_STORAGE_UNKNOWN;
 }
 
 #define CPIO_MAGIC "070701"
@@ -198,7 +197,7 @@ static int decode_programmer_archive(struct sahara_image *blob, struct sahara_im
 		}
 
 		if (namesize > sizeof(name)) {
-			ux_err("unexpected filename length in progammer archive\n");
+			ux_err("unexpected filename length in programmer archive\n");
 			goto err;
 		}
 		memcpy(name, ptr, namesize);
@@ -361,11 +360,11 @@ err_free_doc:
  * @s: programmer specifier, from the user
  * @images: array of images to populate
  *
- * This parses the progammer specifier @s, which can either be a single
+ * This parses the programmer specifier @s, which can either be a single
  * filename, or a comma-separated series of <id>:<filename> entries.
  *
  * In the first case an attempt will be made to decode the Sahara archive and
- * each programmer part will be loaded into their requestd @images entry. If
+ * each programmer part will be loaded into their requested @images entry. If
  * the file isn't an archive @images[SAHARA_ID_EHOSTDL_IMG] is assigned. In the
  * second case, each comma-separated entry will be split on ':' and the given
  * <filename> will be assigned to the @image entry indicated by the given <id>.
@@ -627,6 +626,8 @@ static int qdl_flash(int argc, char **argv)
 			break;
 		case 's':
 			storage_type = decode_storage(optarg);
+			if (storage_type == QDL_STORAGE_UNKNOWN)
+				errx(1, "unknown storage type \"%s\"", optarg);
 			break;
 		case 'S':
 			serial = optarg;
@@ -684,7 +685,7 @@ static int qdl_flash(int argc, char **argv)
 
 	ret = decode_programmer(argv[optind++], sahara_images);
 	if (ret < 0)
-		exit(1);
+		goto out_cleanup;
 
 	do {
 		type = detect_type(argv[optind]);

@@ -144,8 +144,8 @@ static void sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	qdl_write(qdl, &resp, resp.length, SAHARA_CMD_TIMEOUT_MS);
 }
 
-static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
-			const struct sahara_image *images)
+static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
+		       const struct sahara_image *images)
 {
 	const struct sahara_image *image;
 	unsigned int image_idx;
@@ -163,7 +163,7 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		ux_err("device requested unknown image id %u, ensure that all Sahara images are provided\n",
 		       image_idx);
 		sahara_send_reset(qdl);
-		return;
+		return -1;
 	}
 
 	offset = pkt->read_req.offset;
@@ -172,15 +172,19 @@ static void sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	image = &images[image_idx];
 	if (offset > image->len || offset + len > image->len) {
 		ux_err("device requested invalid range of image %d\n", image_idx);
-		return;
+		return -1;
 	}
 
 	ret = qdl_write(qdl, image->ptr + offset, len, SAHARA_CMD_TIMEOUT_MS);
-	if (ret < 0 || ((size_t)ret != len))
-		err(1, "failed to write %zu bytes to sahara", len);
+	if (ret < 0 || ((size_t)ret != len)) {
+		ux_err("failed to write %zu bytes to sahara\n", len);
+		return -1;
+	}
+
+	return 0;
 }
 
-static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
+static int sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 			  const struct sahara_image *images)
 {
 	const struct sahara_image *image;
@@ -199,7 +203,7 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		ux_err("device requested unknown image id %u, ensure that all Sahara images are provided\n",
 		       image_idx);
 		sahara_send_reset(qdl);
-		return;
+		return -1;
 	}
 
 	offset = pkt->read64_req.offset;
@@ -208,12 +212,16 @@ static void sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	image = &images[image_idx];
 	if (offset > image->len || offset + len > image->len) {
 		ux_err("device requested invalid range of image %d\n", image_idx);
-		return;
+		return -1;
 	}
 
 	ret = qdl_write(qdl, image->ptr + offset, len, SAHARA_CMD_TIMEOUT_MS);
-	if (ret < 0 || ((size_t)ret != len))
-		err(1, "failed to write %zu bytes to sahara", len);
+	if (ret < 0 || ((size_t)ret != len)) {
+		ux_err("failed to write %zu bytes to sahara\n", len);
+		return -1;
+	}
+
+	return 0;
 }
 
 static void sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
@@ -478,7 +486,8 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 			sahara_hello(qdl, pkt);
 			break;
 		case SAHARA_READ_DATA_CMD:
-			sahara_read(qdl, pkt, images);
+			if (sahara_read(qdl, pkt, images) < 0)
+				return -1;
 			break;
 		case SAHARA_END_OF_IMAGE_CMD:
 			sahara_eoi(qdl, pkt);
@@ -494,7 +503,8 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 			sahara_debug64(qdl, pkt, ramdump_path, ramdump_filter);
 			break;
 		case SAHARA_READ_DATA64_CMD:
-			sahara_read64(qdl, pkt, images);
+			if (sahara_read64(qdl, pkt, images) < 0)
+				return -1;
 			break;
 		case SAHARA_RESET_RESP_CMD:
 			assert(pkt->length == SAHARA_RESET_LENGTH);

@@ -55,6 +55,10 @@ int patch_load(const char *patch_file)
 
 		if (errors) {
 			ux_err("errors while parsing patch-type file \"%s\"\n", patch_file);
+			free((void *)patch->filename);
+			free((void *)patch->start_sector);
+			free((void *)patch->value);
+			free((void *)patch->what);
 			free(patch);
 			continue;
 		}
