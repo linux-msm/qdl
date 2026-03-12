@@ -142,6 +142,7 @@ static int program_load_sparse(struct program *program, int fd)
 		start_sector = (unsigned int)strtoul(program->start_sector, NULL, 0);
 		start_sector += chunk_size / program->sector_size;
 		sprintf(tmp, "%u", start_sector);
+		free((void *)program->start_sector);
 		program->start_sector = strdup(tmp);
 	}
 
