@@ -320,15 +320,27 @@ static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *
 		}
 
 		image_path_len = strlen(image_path);
-		if (base_path_len + 1 + image_path_len + 1 > PATH_MAX) {
-			free((void *)image_path);
-			goto err_free_doc;
-		}
 
-		memcpy(image_path_full, base_path, base_path_len);
-		image_path_full[base_path_len] = '/';
-		memcpy(image_path_full + base_path_len + 1, image_path, image_path_len);
-		image_path_full[base_path_len + 1 + image_path_len] = '\0';
+#ifdef _WIN32
+		/* On Windows, absolute paths (e.g. "C:\...") are used as-is */
+		if (isalpha(image_path[0]) && image_path[1] == ':') {
+			if (image_path_len + 1 > PATH_MAX) {
+				free((void *)image_path);
+				goto err_free_doc;
+			}
+			memcpy(image_path_full, image_path, image_path_len + 1);
+		} else
+#endif
+		{
+			if (base_path_len + 1 + image_path_len + 1 > PATH_MAX) {
+				free((void *)image_path);
+				goto err_free_doc;
+			}
+			memcpy(image_path_full, base_path, base_path_len);
+			image_path_full[base_path_len] = '/';
+			memcpy(image_path_full + base_path_len + 1, image_path, image_path_len);
+			image_path_full[base_path_len + 1 + image_path_len] = '\0';
+		}
 
 		free((void *)image_path);
 
