@@ -188,11 +188,11 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 	int ret;
 	int i;
 
-	ret = libusb_init(NULL);
-	if (ret < 0)
-		err(1, "failed to initialize libusb");
-
 	for (;;) {
+		ret = libusb_init(NULL);
+		if (ret < 0)
+			err(1, "failed to initialize libusb");
+
 		n = libusb_get_device_list(NULL, &devs);
 		if (n < 0)
 			err(1, "failed to list USB devices");
@@ -211,6 +211,16 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 
 		if (found)
 			return 0;
+
+		/*
+		 * Tear down libusb before retrying so the next iteration
+		 * builds a fresh device list from scratch. Without this,
+		 * libusb's udev-based backend caches the enumeration and
+		 * never notices newly attached devices - a problem in
+		 * containerised environments where udev events are not
+		 * available.
+		 */
+		libusb_exit(NULL);
 
 		if (!wait_printed) {
 			ux_info("Waiting for EDL device\n");
