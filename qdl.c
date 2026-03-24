@@ -445,6 +445,7 @@ static void print_usage(FILE *out)
 	fprintf(out, " -T, --slot=T\t\t\tSet slot number T for multiple storage devices\n");
 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
 	fprintf(out, " -R  --skip-reset\t\tDo not send reset command after flashing\n");
+	fprintf(out, " -P  --skip-sahara\t\tSkip Sahara phase, connect to already-running programmer\n");
 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
 	fprintf(out, " <program-xml>\t\txml file containing <program> or <erase> directives\n");
 	fprintf(out, " <patch-xml>\t\txml file containing <patch> directives\n");
@@ -573,6 +574,7 @@ static int qdl_flash(int argc, char **argv)
 	bool allow_fusing = false;
 	bool allow_missing = false;
 	bool skip_reset = false;
+	bool skip_sahara = false;
 	long out_chunk_size = 0;
 	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
@@ -593,11 +595,12 @@ static int qdl_flash(int argc, char **argv)
 		{"create-digests", required_argument, 0, 't'},
 		{"slot", required_argument, 0, 'T'},
 		{"skip-reset", no_argument, 0, 'R'},
+		{"skip-sahara", no_argument, 0, 'P'},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:Rh", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:RPh", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -643,6 +646,9 @@ static int qdl_flash(int argc, char **argv)
 		case 'R':
 			skip_reset = true;
 			break;
+		case 'P':
+			skip_sahara = true;
+			break;
 		case 'h':
 			print_usage(stdout);
 			return 0;
@@ -652,8 +658,8 @@ static int qdl_flash(int argc, char **argv)
 		}
 	}
 
-	/* at least 2 non optional args required */
-	if ((optind + 2) > argc) {
+	/* programmer + at least one XML required, unless Sahara is skipped */
+	if ((optind + (skip_sahara ? 1 : 2)) > argc) {
 		print_usage(stderr);
 		return 1;
 	}
@@ -689,9 +695,11 @@ static int qdl_flash(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	ret = decode_programmer(argv[optind++], sahara_images);
-	if (ret < 0)
-		exit(1);
+	if (!skip_sahara) {
+		ret = decode_programmer(argv[optind++], sahara_images);
+		if (ret < 0)
+			exit(1);
+	}
 
 	do {
 		type = detect_type(argv[optind]);
@@ -754,9 +762,11 @@ static int qdl_flash(int argc, char **argv)
 
 	qdl->storage_type = storage_type;
 
-	ret = sahara_run(qdl, sahara_images, NULL, NULL);
-	if (ret < 0)
-		goto out_cleanup;
+	if (!skip_sahara) {
+		ret = sahara_run(qdl, sahara_images, NULL, NULL);
+		if (ret < 0)
+			goto out_cleanup;
+	}
 
 	if (ufs_need_provisioning())
 		ret = firehose_provision(qdl);
