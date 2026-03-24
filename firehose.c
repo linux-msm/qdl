@@ -465,7 +465,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 {
 	unsigned int num_sectors;
 	unsigned int sector_size;
-	unsigned int zlp_timeout = 10000;
+	unsigned int zlp_timeout;
 	struct stat sb;
 	size_t chunk_size;
 	xmlNode *root;
@@ -480,12 +480,17 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	size_t i;
 	uint32_t fill_value;
 
-	/*
-	 * ZLP has been measured to take up to 15 seconds on SPINOR devices,
-	 * let's double it to be on the safe side...
-	 */
-	if (qdl->storage_type == QDL_STORAGE_SPINOR)
+	if (qdl->zlp_timeout) {
+		zlp_timeout = qdl->zlp_timeout;
+	} else if (qdl->storage_type == QDL_STORAGE_SPINOR) {
+		/*
+		 * ZLP has been measured to take up to 15 seconds on SPINOR
+		 * devices, let's double it to be on the safe side...
+		 */
 		zlp_timeout = 60000;
+	} else {
+		zlp_timeout = 10000;
+	}
 
 	num_sectors = program->num_sectors;
 	sector_size = program->sector_size ? : qdl->sector_size;
