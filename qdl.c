@@ -444,6 +444,7 @@ static void print_usage(FILE *out)
 	fprintf(out, " -t, --create-digests=T\t\tGenerate table of digests in the T folder\n");
 	fprintf(out, " -T, --slot=T\t\t\tSet slot number T for multiple storage devices\n");
 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
+	fprintf(out, " -R  --skip-reset\t\tDo not send reset command after flashing\n");
 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
 	fprintf(out, " <program-xml>\t\txml file containing <program> or <erase> directives\n");
 	fprintf(out, " <patch-xml>\t\txml file containing <patch> directives\n");
@@ -571,6 +572,7 @@ static int qdl_flash(int argc, char **argv)
 	bool qdl_finalize_provisioning = false;
 	bool allow_fusing = false;
 	bool allow_missing = false;
+	bool skip_reset = false;
 	long out_chunk_size = 0;
 	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
@@ -590,11 +592,12 @@ static int qdl_flash(int argc, char **argv)
 		{"dry-run", no_argument, 0, 'n'},
 		{"create-digests", required_argument, 0, 't'},
 		{"slot", required_argument, 0, 'T'},
+		{"skip-reset", no_argument, 0, 'R'},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:h", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:Rh", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -637,6 +640,9 @@ static int qdl_flash(int argc, char **argv)
 		case 'T':
 			slot = (unsigned int)strtoul(optarg, NULL, 10);
 			break;
+		case 'R':
+			skip_reset = true;
+			break;
 		case 'h':
 			print_usage(stdout);
 			return 0;
@@ -659,6 +665,7 @@ static int qdl_flash(int argc, char **argv)
 	}
 
 	qdl->slot = slot;
+	qdl->skip_reset = skip_reset;
 
 	if (vip_table_path) {
 		if (vip_generate_dir)

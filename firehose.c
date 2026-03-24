@@ -1031,7 +1031,8 @@ int firehose_provision(struct qdl_device *qdl)
 	else
 		ux_info("UFS provisioning failed\n");
 
-	firehose_reset(qdl);
+	if (!qdl->skip_reset)
+		firehose_reset(qdl);
 
 	return ret;
 
@@ -1084,7 +1085,8 @@ int firehose_run(struct qdl_device *qdl)
 		firehose_set_bootable(qdl, bootable);
 	}
 
-	firehose_reset(qdl);
+	if (!qdl->skip_reset)
+		firehose_reset(qdl);
 
 	return 0;
 }
