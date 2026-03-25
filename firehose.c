@@ -165,7 +165,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 		/* Timeout after seeing a response, we're done waiting for logs */
 		if (n == -ETIMEDOUT && resp >= 0)
 			break;
-		/* We want to return resp on error, to not loose the reset resposne */
+		/* We want to return resp on error, to not lose the reset response */
 		else if (n == -EIO)
 			break;
 
@@ -491,8 +491,10 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	sector_size = program->sector_size ? : qdl->sector_size;
 
 	ret = fstat(fd, &sb);
-	if (ret < 0)
-		err(1, "failed to stat \"%s\"\n", program->filename);
+	if (ret < 0) {
+		ux_err("failed to stat \"%s\": %m\n", program->filename);
+		return -1;
+	}
 
 	if (!program->sparse) {
 		num_sectors = (sb.st_size + sector_size - 1) / sector_size;
@@ -507,8 +509,10 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	}
 
 	buf = malloc(qdl->max_payload_size);
-	if (!buf)
-		err(1, "failed to allocate sector buffer");
+	if (!buf) {
+		ux_err("failed to allocate sector buffer\n");
+		return -1;
+	}
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
 	root = xmlNewNode(NULL, (xmlChar *)"data");
@@ -652,8 +656,10 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 	int n;
 
 	buf = malloc(qdl->max_payload_size);
-	if (!buf)
-		err(1, "failed to allocate sector buffer");
+	if (!buf) {
+		ux_err("failed to allocate sector buffer\n");
+		return -1;
+	}
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
 	root = xmlNewNode(NULL, (xmlChar *)"data");
@@ -693,11 +699,15 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 
 		n = qdl_read(qdl, buf, chunk_size * sector_size, 30000);
 		if (n < 0) {
-			err(1, "failed to read");
+			ux_err("failed to read sector data\n");
+			ret = -1;
+			goto out;
 		}
 
 		if ((size_t)n != chunk_size * sector_size) {
-			err(1, "failed to read full sector");
+			ux_err("failed to read full sector\n");
+			ret = -1;
+			goto out;
 		}
 
 		if (out_buf) {
@@ -710,7 +720,9 @@ static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
 			n = write(fd, buf, n);
 
 			if (n < 0 || (size_t)n != chunk_size * sector_size) {
-				err(1, "failed to write");
+				ux_err("failed to write sector data\n");
+				ret = -1;
+				goto out;
 			}
 		}
 
