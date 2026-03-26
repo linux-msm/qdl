@@ -349,7 +349,9 @@ bool pattern_match(const char *pattern, const char *string)
 
 static bool sahara_debug64_filter(const char *filename, const char *filter)
 {
+	char stem[PATH_MAX] = {};
 	bool anymatch = false;
+	const char *dot;
 	char *ptr;
 	char *tmp;
 	char *s;
@@ -357,9 +359,19 @@ static bool sahara_debug64_filter(const char *filename, const char *filter)
 	if (!filter)
 		return false;
 
+	/* Build a stem (filename without extension) for bare-name filter tokens */
+	dot = strrchr(filename, '.');
+	if (dot && dot != filename) {
+		size_t len = dot - filename;
+
+		if (len < sizeof(stem)) {
+			memcpy(stem, filename, len);
+		}
+	}
+
 	tmp = strdup(filter);
 	for (s = strtok_r(tmp, ",", &ptr); s; s = strtok_r(NULL, ",", &ptr)) {
-		if (pattern_match(s, filename)) {
+		if (pattern_match(s, filename) || (stem[0] && pattern_match(s, stem))) {
 			anymatch = true;
 			break;
 		}
