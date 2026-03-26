@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
  */
-#include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
