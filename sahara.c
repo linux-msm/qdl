@@ -391,11 +391,21 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	if (n < 0)
 		return;
 
+	if (read_req.debug64_req.length > 64 * 1024) {
+		ux_err("DEBUG64 table length 0x%" PRIx64 " exceeds limit\n",
+		       read_req.debug64_req.length);
+		return;
+	}
+
 	table = malloc(read_req.debug64_req.length);
+	if (!table)
+		return;
 
 	n = qdl_read(qdl, table, pkt->debug64_req.length, SAHARA_CMD_TIMEOUT_MS);
-	if (n < 0)
+	if (n < 0) {
+		free(table);
 		return;
+	}
 
 	for (i = 0; i < pkt->debug64_req.length / sizeof(table[0]); i++) {
 		if (sahara_debug64_filter(table[i].filename, filter)) {
