@@ -8,7 +8,6 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <assert.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <inttypes.h>
