@@ -33,7 +33,7 @@ struct program {
 
 struct qdl_device;
 
-int program_load(const char *program_file, bool is_nand, bool allow_missing, const char *incdir[], int incdir_count);
+int program_load(const char *program_file, bool is_nand, bool allow_missing, struct list_head *incdirs);
 int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd));
 int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program));
 int program_find_bootable_partition(bool *multiple_found);
