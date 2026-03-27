@@ -36,16 +36,13 @@ struct qdl_device_usb {
 #define LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK LIBUSB_TRANSFER_TYPE_BULK
 #endif
 
-static bool usb_match_usb_serial(struct libusb_device_handle *handle, const char *serial,
-				 const struct libusb_device_descriptor *desc)
+static bool usb_read_serial(struct libusb_device_handle *handle,
+			    const struct libusb_device_descriptor *desc,
+			    char *out, size_t out_len)
 {
 	char buf[128];
 	char *p;
 	int ret;
-
-	/* If no serial is requested, consider everything a match */
-	if (!serial)
-		return true;
 
 	ret = libusb_get_string_descriptor_ascii(handle, desc->iProduct, (unsigned char *)buf, sizeof(buf));
 	if (ret < 0) {
@@ -60,7 +57,23 @@ static bool usb_match_usb_serial(struct libusb_device_handle *handle, const char
 	p += strlen("_SN:");
 	p[strcspn(p, " _")] = '\0';
 
-	return strcmp(p, serial) == 0;
+	snprintf(out, out_len, "%s", p);
+	return true;
+}
+
+static bool usb_match_usb_serial(struct libusb_device_handle *handle, const char *serial,
+				 const struct libusb_device_descriptor *desc)
+{
+	char buf[64];
+
+	/* If no serial is requested, consider everything a match */
+	if (!serial)
+		return true;
+
+	if (!usb_read_serial(handle, desc, buf, sizeof(buf)))
+		return false;
+
+	return strcmp(buf, serial) == 0;
 }
 
 static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const char *serial)
@@ -177,13 +190,22 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
 	return !!qdl->usb_handle;
 }
 
+static bool usb_is_edl_pid(uint16_t pid)
+{
+	return pid == 0x9008 || pid == 0x900e || pid == 0x901d;
+}
+
 static int usb_open(struct qdl_device *qdl, const char *serial)
 {
+	struct qdl_device_usb *qdl_usb = container_of(qdl, struct qdl_device_usb, base);
+	struct libusb_device_descriptor desc;
 	struct libusb_device **devs;
 	struct libusb_device *dev;
-	struct qdl_device_usb *qdl_usb = container_of(qdl, struct qdl_device_usb, base);
-	bool wait_printed = false;
+	char matched_serial[64];
+	uint16_t matched_pid = 0;
+	int visible_prev = -1;
 	bool found = false;
+	int visible;
 	ssize_t n;
 	int ret;
 	int i;
@@ -191,7 +213,7 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 	for (;;) {
 		ret = libusb_init(NULL);
 		if (ret < 0)
-		  ux_err("failed to initialize libusb: %s\n", libusb_strerror(ret));
+			ux_err("failed to initialize libusb: %s\n", libusb_strerror(ret));
 
 		n = libusb_get_device_list(NULL, &devs);
 		if (n < 0) {
@@ -200,20 +222,66 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 			return -1;
 		}
 
+		visible = 0;
 		for (i = 0; devs[i]; i++) {
 			dev = devs[i];
+
+			if (libusb_get_device_descriptor(dev, &desc) < 0)
+				continue;
+			if (desc.idVendor != 0x05c6 || !usb_is_edl_pid(desc.idProduct))
+				continue;
+
+			visible++;
 
 			ret = usb_try_open(dev, qdl_usb, serial);
 			if (ret == 1) {
 				found = true;
+				matched_pid = desc.idProduct;
+				if (!usb_read_serial(qdl_usb->usb_handle, &desc,
+						     matched_serial, sizeof(matched_serial)))
+					matched_serial[0] = '\0';
 				break;
 			}
 		}
 
-		libusb_free_device_list(devs, 1);
+		if (found) {
+			const char *action = matched_pid == 0x900e ? "Collecting crash dump from" : "Flashing";
 
-		if (found)
+			libusb_free_device_list(devs, 1);
+			if (matched_serial[0])
+				ux_info("%s device (PID 0x%04x, serial: %s)\n",
+					action, matched_pid, matched_serial);
+			else
+				ux_info("%s device (PID 0x%04x)\n", action, matched_pid);
 			return 0;
+		}
+
+		if (visible != visible_prev) {
+			if (visible == 0) {
+				ux_info("Waiting for EDL device\n");
+			} else {
+				if (serial)
+					ux_info("%d EDL device(s) visible, none match serial \"%s\":\n",
+						visible, serial);
+				else
+					ux_info("%d EDL device(s) visible, none could be opened:\n",
+						visible);
+				for (i = 0; devs[i]; i++) {
+					dev = devs[i];
+					if (libusb_get_device_descriptor(dev, &desc) < 0)
+						continue;
+					if (desc.idVendor != 0x05c6 || !usb_is_edl_pid(desc.idProduct))
+						continue;
+					ux_info("  [bus %u, addr %u] PID 0x%04x\n",
+						libusb_get_bus_number(dev),
+						libusb_get_device_address(dev),
+						desc.idProduct);
+				}
+			}
+			visible_prev = visible;
+		}
+
+		libusb_free_device_list(devs, 1);
 
 		/*
 		 * Tear down libusb before retrying so the next iteration
@@ -224,11 +292,6 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 		 * available.
 		 */
 		libusb_exit(NULL);
-
-		if (!wait_printed) {
-			ux_info("Waiting for EDL device\n");
-			wait_printed = true;
-		}
 
 		usleep(250000);
 	}
