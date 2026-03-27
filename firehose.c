@@ -1054,7 +1054,7 @@ int firehose_run(struct qdl_device *qdl)
 	int bootable;
 	int ret;
 
-	ux_info("waiting for programmer...\n");
+	ux_info("waiting for Firehose programmer...\n");
 
 	ret = firehose_detect_and_configure(qdl, false, qdl->storage_type, 5);
 	if (ret)
