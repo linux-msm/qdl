@@ -22,6 +22,7 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include "qdl.h"
+#include "firehose.h"
 #include "ufs.h"
 #include "oscompat.h"
 #include "vip.h"
@@ -407,7 +408,7 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 	return 0;
 }
 
-static int firehose_erase(struct qdl_device *qdl, struct program *program)
+static int firehose_erase(struct qdl_device *qdl, struct firehose_op *program)
 {
 	unsigned int sector_size;
 	xmlNode *root;
@@ -450,7 +451,7 @@ out:
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
-static int firehose_program(struct qdl_device *qdl, struct program *program, int fd)
+static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 {
 	unsigned int num_sectors;
 	unsigned int sector_size;
@@ -465,6 +466,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	time_t t;
 	size_t left;
 	int ret;
+	int fd;
 	int n;
 	size_t i;
 	uint32_t fill_value;
@@ -476,13 +478,22 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	if (qdl->storage_type == QDL_STORAGE_SPINOR)
 		zlp_timeout = 60000;
 
+	if (!program->filename)
+		return 0;
+
+	fd = open(program->filename, O_RDONLY | O_BINARY);
+	if (fd < 0) {
+		ux_err("unable to open %s\n", program->filename);
+		return -1;
+	}
+
 	num_sectors = program->num_sectors;
 	sector_size = program->sector_size ? : qdl->sector_size;
 
 	ret = fstat(fd, &sb);
 	if (ret < 0) {
 		ux_err("failed to stat \"%s\": %m\n", program->filename);
-		return -1;
+		goto err_close_fd;
 	}
 
 	if (!program->sparse) {
@@ -500,7 +511,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	buf = malloc(qdl->max_payload_size);
 	if (!buf) {
 		ux_err("failed to allocate sector buffer\n");
-		return -1;
+		goto err_close_fd;
 	}
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
@@ -526,13 +537,13 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	ret = firehose_write(qdl, doc);
 	if (ret < 0) {
 		ux_err("failed to send program request\n");
-		goto out;
+		goto err_free_doc;
 	}
 
 	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
 	if (ret) {
 		ux_err("failed to setup programming\n");
-		goto out;
+		goto err_free_doc;
 	}
 
 	t0 = time(NULL);
@@ -551,7 +562,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 			break;
 		default:
 			ux_err("[SPARSE] invalid chunk type\n");
-			goto out;
+			goto err_free_doc;
 		}
 	}
 
@@ -572,7 +583,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 			n = read(fd, buf, chunk_size * sector_size);
 			if (n < 0) {
 				ux_err("failed to read %s\n", program->filename);
-				goto out;
+				goto err_free_doc;
 			}
 
 			if ((size_t)n < qdl->max_payload_size)
@@ -592,13 +603,13 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 			if (ret)
 				ux_err("flashing of chunk failed\n");
 
-			goto out;
+			goto err_free_doc;
 		}
 
 		if ((size_t)n != chunk_size * sector_size) {
 			ux_err("USB write truncated\n");
 			ret = -1;
-			goto out;
+			goto err_free_doc;
 		}
 
 		left -= chunk_size;
@@ -610,7 +621,7 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 	t = time(NULL) - t0;
 
 	ret = firehose_read(qdl, 120000, firehose_generic_parser, NULL);
-	if (ret) {
+	if (ret != FIREHOSE_ACK) {
 		ux_err("flashing of %s failed\n", program->label);
 	} else if (t) {
 		ux_info("flashed \"%s\" successfully at %lukB/s\n",
@@ -621,11 +632,19 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
 			program->label);
 	}
 
-out:
 	xmlFreeDoc(doc);
 	free(buf);
+	close(fd);
 
-	return ret == FIREHOSE_ACK ? 0 : -1;
+	return 0;
+
+err_free_doc:
+	xmlFreeDoc(doc);
+	free(buf);
+err_close_fd:
+	close(fd);
+
+	return -1;
 }
 
 static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
@@ -1038,7 +1057,60 @@ int firehose_provision(struct qdl_device *qdl)
 
 }
 
-int firehose_run(struct qdl_device *qdl)
+struct firehose_op *firehose_alloc_op(int type)
+{
+	struct firehose_op *op;
+
+	op = calloc(1, sizeof(*op));
+	if (!op)
+		return NULL;
+
+	op->type = type;
+	return op;
+}
+
+void firehose_free_ops(struct list_head *ops)
+{
+	struct firehose_op *next;
+	struct firehose_op *op;
+
+	list_for_each_entry_safe(op, next, ops, node) {
+		list_del(&op->node);
+		free((void *)op->filename);
+		free((void *)op->label);
+		free((void *)op->start_sector);
+		free((void *)op->gpt_partition);
+		free(op);
+	}
+}
+
+static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
+{
+	struct firehose_op *op;
+	int ret;
+
+	list_for_each_entry(op, ops, node) {
+		switch (op->type) {
+		case FIREHOSE_OP_PROGRAM:
+			ret = firehose_program(qdl, op);
+			if (ret < 0)
+				return ret;
+			break;
+		case FIREHOSE_OP_ERASE:
+			ret = firehose_erase(qdl, op);
+			if (ret < 0)
+				return ret;
+			break;
+		default:
+			ux_err("internal error: unknown firehose operation %d\n", op->type);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 {
 	bool multiple;
 	int bootable;
@@ -1054,15 +1126,11 @@ int firehose_run(struct qdl_device *qdl)
 	if (ret)
 		return ret;
 
-	ret = program_resolve_gpt_deferrals(qdl);
+	ret = program_resolve_gpt_deferrals(qdl, ops);
 	if (ret)
 		return ret;
 
-	ret = erase_execute(qdl, firehose_erase);
-	if (ret)
-		return ret;
-
-	ret = program_execute(qdl, firehose_program);
+	ret = firehose_execute_ops(qdl, ops);
 	if (ret)
 		return ret;
 
@@ -1074,7 +1142,7 @@ int firehose_run(struct qdl_device *qdl)
 	if (ret)
 		return ret;
 
-	bootable = program_find_bootable_partition(&multiple);
+	bootable = program_find_bootable_partition(ops, &multiple);
 	if (bootable < 0) {
 		ux_debug("no boot partition found\n");
 	} else {
