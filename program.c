@@ -3,6 +3,7 @@
  * Copyright (c) 2016-2017, Linaro Ltd.
  * All rights reserved.
  */
+#include <assert.h>
 #define _FILE_OFFSET_BITS 64
 #include <errno.h>
 #include <fcntl.h>
@@ -17,20 +18,20 @@
 #include "program.h"
 #include "qdl.h"
 #include "oscompat.h"
+#include "firehose.h"
 #include "sparse.h"
 #include "gpt.h"
 
-static struct list_head programs = LIST_INIT(programs);
-
-static int load_erase_tag(xmlNode *node, bool is_nand)
+static int load_erase_tag(struct list_head *ops, xmlNode *node, bool is_nand)
 {
-	struct program *program;
+	struct firehose_op *program;
 	int errors = 0;
 
-	program = calloc(1, sizeof(struct program));
+	program = firehose_alloc_op(FIREHOSE_OP_ERASE);
+	if (!program)
+		return -1;
 
 	program->is_nand = is_nand;
-	program->is_erase = true;
 
 	program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
 	program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
@@ -46,14 +47,14 @@ static int load_erase_tag(xmlNode *node, bool is_nand)
 		return -EINVAL;
 	}
 
-	list_append(&programs, &program->node);
+	list_append(ops, &program->node);
 
 	return 0;
 }
 
-static int program_load_sparse(struct program *program, int fd)
+static int program_load_sparse(struct list_head *ops, struct firehose_op *program, int fd)
 {
-	struct program *program_sparse = NULL;
+	struct firehose_op *program_sparse = NULL;
 	char tmp[PATH_MAX];
 
 	sparse_header_t sparse_header;
@@ -75,7 +76,7 @@ static int program_load_sparse(struct program *program, int fd)
 		if ((off_t)program->sector_size * program->num_sectors ==
 		    lseek(fd, 0, SEEK_END)) {
 			program->sparse = false;
-			list_append(&programs, &program->node);
+			list_append(ops, &program->node);
 			return 0;
 		}
 
@@ -115,7 +116,8 @@ static int program_load_sparse(struct program *program, int fd)
 		}
 
 		if (chunk_type == CHUNK_TYPE_RAW || chunk_type == CHUNK_TYPE_FILL) {
-			program_sparse = calloc(1, sizeof(struct program));
+			program_sparse = firehose_alloc_op(FIREHOSE_OP_PROGRAM);
+
 			program_sparse->pages_per_block = program->pages_per_block;
 			program_sparse->sector_size = program->sector_size;
 			program_sparse->file_offset = program->file_offset;
@@ -126,7 +128,6 @@ static int program_load_sparse(struct program *program, int fd)
 			program_sparse->start_sector = strdup(program->start_sector);
 			program_sparse->last_sector = program->last_sector;
 			program_sparse->is_nand = program->is_nand;
-			program_sparse->is_erase = false;
 
 			program_sparse->sparse_chunk_type = chunk_type;
 			program_sparse->num_sectors = chunk_size / program->sector_size;
@@ -136,7 +137,7 @@ static int program_load_sparse(struct program *program, int fd)
 			else
 				program_sparse->sparse_fill_value = sparse_fill_value;
 
-			list_append(&programs, &program_sparse->node);
+			list_append(ops, &program_sparse->node);
 		}
 
 		start_sector = (unsigned int)strtoul(program->start_sector, NULL, 0);
@@ -149,15 +150,17 @@ static int program_load_sparse(struct program *program, int fd)
 	return 0;
 }
 
-static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, const char *incdir)
+static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand, bool allow_missing, const char *incdir)
 {
-	struct program *program;
+	struct firehose_op *program;
 	char tmp[PATH_MAX];
 	int errors = 0;
 	int ret;
 	int fd = -1;
 
-	program = calloc(1, sizeof(struct program));
+	program = firehose_alloc_op(FIREHOSE_OP_PROGRAM);
+	if (!program)
+		return -1;
 
 	program->is_nand = is_nand;
 
@@ -208,7 +211,7 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 	}
 
 	if (fd >= 0 && program->sparse) {
-		ret = program_load_sparse(program, fd);
+		ret = program_load_sparse(ops, program, fd);
 		if (ret < 0)
 			return -1;
 
@@ -220,7 +223,7 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 		program->filename = NULL;
 	}
 
-	list_append(&programs, &program->node);
+	list_append(ops, &program->node);
 
 	if (fd >= 0)
 		close(fd);
@@ -228,7 +231,7 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 	return 0;
 }
 
-int program_load(const char *program_file, bool is_nand, bool allow_missing, const char *incdir)
+int program_load(struct list_head *ops, const char *program_file, bool is_nand, bool allow_missing, const char *incdir)
 {
 	xmlNode *node;
 	xmlNode *root;
@@ -247,9 +250,9 @@ int program_load(const char *program_file, bool is_nand, bool allow_missing, con
 			continue;
 
 		if (!xmlStrcmp(node->name, (xmlChar *)"erase"))
-			errors = load_erase_tag(node, is_nand);
+			errors = load_erase_tag(ops, node, is_nand);
 		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
-			errors = load_program_tag(node, is_nand, allow_missing, incdir);
+			errors = load_program_tag(ops, node, is_nand, allow_missing, incdir);
 		else {
 			ux_err("unrecognized tag \"%s\" in program-type file \"%s\"\n", node->name, program_file);
 			errors = -EINVAL;
@@ -265,55 +268,29 @@ out:
 	return errors;
 }
 
-int program_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program, int fd))
+int erase_execute(struct qdl_device *qdl, struct firehose_op *op,
+		  int (*apply)(struct qdl_device *qdl, struct firehose_op *op))
 {
-	struct program *program;
 	int ret;
-	int fd;
 
-	list_for_each_entry(program, &programs, node) {
-		if (program->is_erase || !program->filename)
-			continue;
+	assert(op->type == FIREHOSE_OP_ERASE);
 
-		fd = open(program->filename, O_RDONLY | O_BINARY);
-
-		if (fd < 0) {
-			ux_err("unable to open %s\n", program->filename);
-			return -1;
-		}
-
-		ret = apply(qdl, program, fd);
-		close(fd);
-		if (ret)
-			return ret;
-	}
+	ret = apply(qdl, op);
+	if (ret)
+		return ret;
 
 	return 0;
 }
 
-int erase_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct program *program))
+static struct firehose_op *program_find_partition(struct list_head *ops, const char *partition)
 {
-	struct program *program;
-	int ret;
-
-	list_for_each_entry(program, &programs, node) {
-		if (!program->is_erase)
-			continue;
-
-		ret = apply(qdl, program);
-		if (ret)
-			return ret;
-	}
-
-	return 0;
-}
-
-static struct program *program_find_partition(const char *partition)
-{
-	struct program *program;
+	struct firehose_op *program;
 	const char *label;
 
-	list_for_each_entry(program, &programs, node) {
+	list_for_each_entry(program, ops, node) {
+		if (program->type != FIREHOSE_OP_PROGRAM)
+			continue;
+
 		label = program->label;
 		if (!label)
 			continue;
@@ -335,18 +312,18 @@ static struct program *program_find_partition(const char *partition)
  * we're informing the caller so that they can warn the user about the
  * uncertainty of this logic.
  */
-int program_find_bootable_partition(bool *multiple_found)
+int program_find_bootable_partition(struct list_head *ops, bool *multiple_found)
 {
-	struct program *program;
+	struct firehose_op *program;
 	int part = -ENOENT;
 
 	*multiple_found = false;
 
-	program = program_find_partition("xbl");
+	program = program_find_partition(ops, "xbl");
 	if (program)
 		part = program->partition;
 
-	program = program_find_partition("xbl_a");
+	program = program_find_partition(ops, "xbl_a");
 	if (program) {
 		if (part != -ENOENT)
 			*multiple_found = true;
@@ -354,7 +331,7 @@ int program_find_bootable_partition(bool *multiple_found)
 			part = program->partition;
 	}
 
-	program = program_find_partition("sbl1");
+	program = program_find_partition(ops, "sbl1");
 	if (program) {
 		if (part != -ENOENT)
 			*multiple_found = true;
@@ -371,11 +348,11 @@ int program_find_bootable_partition(bool *multiple_found)
  * Returns true if filename for secdata is set in program*.xml,
  * or false otherwise.
  */
-int program_is_sec_partition_flashed(void)
+int program_is_sec_partition_flashed(struct list_head *ops)
 {
-	struct program *program;
+	struct firehose_op *program;
 
-	program = program_find_partition("secdata");
+	program = program_find_partition(ops, "secdata");
 	if (!program)
 		return false;
 
@@ -385,27 +362,11 @@ int program_is_sec_partition_flashed(void)
 	return false;
 }
 
-void free_programs(void)
-{
-	struct program *program;
-	struct program *next;
-
-	list_for_each_entry_safe(program, next, &programs, node) {
-		free((void *)program->filename);
-		free((void *)program->label);
-		free((void *)program->start_sector);
-		free((void *)program->gpt_partition);
-		free(program);
-	}
-
-	list_init(&programs);
-}
-
-int program_cmd_add(const char *address, const char *filename)
+int program_cmd_add(struct list_head *ops, const char *address, const char *filename)
 {
 	unsigned int start_sector;
 	unsigned int num_sectors;
-	struct program *program;
+	struct firehose_op *program;
 	char *gpt_partition;
 	int partition;
 	char buf[20];
@@ -415,7 +376,7 @@ int program_cmd_add(const char *address, const char *filename)
 	if (ret < 0)
 		return ret;
 
-	program = calloc(1, sizeof(struct program));
+	program = firehose_alloc_op(FIREHOSE_OP_PROGRAM);
 	if (!program) {
 		ux_err("failed to allocate program command\n");
 		return -1;
@@ -432,19 +393,18 @@ int program_cmd_add(const char *address, const char *filename)
 	program->start_sector = strdup(buf);
 	program->last_sector = 0;
 	program->is_nand = false;
-	program->is_erase = false;
 	program->gpt_partition = gpt_partition;
 
-	list_append(&programs, &program->node);
+	list_append(ops, &program->node);
 
 	return 0;
 }
 
-int erase_cmd_add(const char *address)
+int erase_cmd_add(struct list_head *ops, const char *address)
 {
 	unsigned int start_sector;
 	unsigned int num_sectors;
-	struct program *program;
+	struct firehose_op *program;
 	char *gpt_partition;
 	int partition;
 	char buf[20];
@@ -454,7 +414,7 @@ int erase_cmd_add(const char *address)
 	if (ret < 0)
 		return ret;
 
-	program = calloc(1, sizeof(struct program));
+	program = firehose_alloc_op(FIREHOSE_OP_ERASE);
 	if (!program) {
 		ux_err("failed to allocate erase command\n");
 		return -1;
@@ -464,32 +424,33 @@ int erase_cmd_add(const char *address)
 	program->partition = partition;
 	sprintf(buf, "%u", start_sector);
 	program->start_sector = strdup(buf);
-	program->is_erase = true;
 	program->gpt_partition = gpt_partition;
 
-	list_append(&programs, &program->node);
+	list_append(ops, &program->node);
 
 	return 0;
 }
 
-int program_resolve_gpt_deferrals(struct qdl_device *qdl)
+int program_resolve_gpt_deferrals(struct qdl_device *qdl, struct list_head *ops)
 {
-	struct program *program;
 	unsigned int start_sector;
+	struct firehose_op *op;
 	char buf[20];
 	int ret;
 
-	list_for_each_entry(program, &programs, node) {
-		if (!program->gpt_partition)
+	list_for_each_entry(op, ops, node) {
+		if (op->type != FIREHOSE_OP_PROGRAM)
+			continue;
+		if (!op->gpt_partition)
 			continue;
 
-		ret = gpt_find_by_name(qdl, program->gpt_partition, &program->partition,
-				       &start_sector, &program->num_sectors);
+		ret = gpt_find_by_name(qdl, op->gpt_partition, &op->partition,
+				       &start_sector, &op->num_sectors);
 		if (ret < 0)
 			return -1;
 
 		sprintf(buf, "%u", start_sector);
-		program->start_sector = strdup(buf);
+		op->start_sector = strdup(buf);
 	}
 
 	return 0;

@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #include "qdl.h"
+#include "firehose.h"
 #include "patch.h"
 #include "program.h"
 #include "ufs.h"
@@ -572,6 +573,7 @@ static int qdl_flash(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
 	struct sahara_image sahara_images[MAPPING_SZ] = {};
+	struct list_head firehose_ops = LIST_INIT(firehose_ops);
 	char *incdir = NULL;
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
@@ -711,11 +713,13 @@ static int qdl_flash(int argc, char **argv)
 				errx(1, "patch_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_PROGRAM:
-			ret = program_load(argv[optind], storage_type == QDL_STORAGE_NAND, allow_missing, incdir);
+			ret = program_load(&firehose_ops, argv[optind],
+					   storage_type == QDL_STORAGE_NAND,
+					   allow_missing, incdir);
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[optind]);
 
-			if (!allow_fusing && program_is_sec_partition_flashed())
+			if (!allow_fusing && program_is_sec_partition_flashed(&firehose_ops))
 				errx(1, "secdata partition to be programmed, which can lead to irreversible"
 					" changes. Allow explicitly with --allow-fusing parameter");
 			break;
@@ -743,7 +747,7 @@ static int qdl_flash(int argc, char **argv)
 		case QDL_CMD_WRITE:
 			if (optind + 2 >= argc)
 				errx(1, "write command missing arguments");
-			ret = program_cmd_add(argv[optind + 1], argv[optind + 2]);
+			ret = program_cmd_add(&firehose_ops, argv[optind + 1], argv[optind + 2]);
 			if (ret < 0)
 				errx(1, "failed to add write command");
 			optind += 2;
@@ -751,7 +755,7 @@ static int qdl_flash(int argc, char **argv)
 		case QDL_CMD_ERASE:
 			if (optind + 1 >= argc)
 				errx(1, "erase command missing address");
-			ret = erase_cmd_add(argv[optind + 1]);
+			ret = erase_cmd_add(&firehose_ops, argv[optind + 1]);
 			if (ret < 0)
 				errx(1, "failed to add erase command");
 			optind += 1;
@@ -775,7 +779,7 @@ static int qdl_flash(int argc, char **argv)
 	if (ufs_need_provisioning())
 		ret = firehose_provision(qdl);
 	else
-		ret = firehose_run(qdl);
+		ret = firehose_run(qdl, &firehose_ops);
 	if (ret < 0)
 		goto out_cleanup;
 
@@ -789,7 +793,7 @@ out_cleanup:
 
 	sahara_images_free(sahara_images, MAPPING_SZ);
 
-	free_programs();
+	firehose_free_ops(&firehose_ops);
 	free_patches();
 
 	if (qdl) {
