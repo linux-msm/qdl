@@ -788,12 +788,18 @@ static int firehose_read_op(struct qdl_device *qdl, struct firehose_op *op)
 	return ret;
 }
 
-static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
+static int firehose_apply_patch(struct qdl_device *qdl, struct firehose_op *patch)
 {
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
 	int ret;
+
+	if (!patch->filename)
+		return 0;
+
+	if (strcmp(patch->filename, "DISK"))
+		return 0;
 
 	ux_debug("applying patch \"%s\"\n", patch->what);
 
@@ -1093,14 +1099,25 @@ void firehose_free_ops(struct list_head *ops)
 		free((void *)op->label);
 		free((void *)op->start_sector);
 		free((void *)op->gpt_partition);
+		free((void *)op->value);
+		free((void *)op->what);
 		free(op);
 	}
 }
 
 static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 {
+	unsigned int patch_count = 0;
 	struct firehose_op *op;
+	unsigned int patch_idx = 0;
 	int ret;
+
+	list_for_each_entry(op, ops, node) {
+		if (op->type != FIREHOSE_OP_PATCH)
+			continue;
+		if (op->filename && !strcmp(op->filename, "DISK"))
+			patch_count++;
+	}
 
 	list_for_each_entry(op, ops, node) {
 		switch (op->type) {
@@ -1119,14 +1136,22 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 			if (ret < 0)
 				return ret;
 			break;
+		case FIREHOSE_OP_PATCH:
+			ret = firehose_apply_patch(qdl, op);
+			if (ret)
+				return ret;
+
+			if (op->filename && !strcmp(op->filename, "DISK"))
+				ux_progress("Applying patches", patch_idx++, patch_count);
+			break;
 		default:
 			ux_err("internal error: unknown firehose operation %d\n", op->type);
 			return -1;
 		}
-
-		if (ret)
-			return ret;
 	}
+
+	if (patch_count)
+		ux_info("%d patches applied\n", patch_idx);
 
 	return 0;
 }
@@ -1152,10 +1177,6 @@ int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 		return ret;
 
 	ret = firehose_execute_ops(qdl, ops);
-	if (ret)
-		return ret;
-
-	ret = patch_execute(qdl, firehose_apply_patch);
 	if (ret)
 		return ret;
 

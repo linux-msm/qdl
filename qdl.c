@@ -708,7 +708,7 @@ static int qdl_flash(int argc, char **argv)
 
 		switch (type) {
 		case QDL_FILE_PATCH:
-			ret = patch_load(argv[optind]);
+			ret = patch_load(&firehose_ops, argv[optind]);
 			if (ret < 0)
 				errx(1, "patch_load %s failed", argv[optind]);
 			break;
@@ -794,7 +794,6 @@ out_cleanup:
 	sahara_images_free(sahara_images, MAPPING_SZ);
 
 	firehose_free_ops(&firehose_ops);
-	free_patches();
 
 	if (qdl) {
 		if (qdl->vip_data.state != VIP_DISABLED)

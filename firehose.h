@@ -13,18 +13,21 @@ enum firehose_op_type {
 	FIREHOSE_OP_PROGRAM,
 	FIREHOSE_OP_ERASE,
 	FIREHOSE_OP_READ,
+	FIREHOSE_OP_PATCH,
 };
 
 struct firehose_op {
 	enum firehose_op_type type;
 	struct list_head node;
 
-	/* program, read */
+	/* program, read, patch */
 	unsigned int sector_size;
 	const char *filename;
 	int partition;
-	unsigned int num_sectors;
 	const char *start_sector;
+
+	/* program, read */
+	unsigned int num_sectors;
 	const char *gpt_partition;
 
 	/* program, erase */
@@ -38,6 +41,12 @@ struct firehose_op {
 	unsigned int sparse_chunk_type;
 	uint32_t sparse_fill_value;
 	off_t sparse_offset;
+
+	/* patch */
+	unsigned int byte_offset;
+	unsigned int size_in_bytes;
+	const char *value;
+	const char *what;
 };
 
 struct firehose_op *firehose_alloc_op(int type);
