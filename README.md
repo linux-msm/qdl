@@ -176,6 +176,24 @@ qdl --vip-table-path=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 
 Note that `--vip-table-path` and `--create-digests` are mutually exclusive.
 
+#### Validating VIP tables without hardware
+
+Before flashing a real device it is possible to verify that the signed digest
+tables match the data that will be sent, using `--dry-run` together with
+`--vip-table-path`:
+
+```bash
+qdl --dry-run --vip-table-path=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
+```
+
+QDL will simulate the full Firehose session, compute SHA256 over every packet
+it would send, and compare each hash against the corresponding entry in the
+loaded digest tables. Any mismatch is reported to stderr. All mismatches are
+printed before the run exits so that every problem is visible at once.
+
+This catches table/data mismatches early -- before committing to a real flash --
+and is useful both as a local sanity check and as a step in CI pipelines.
+
 ### Multi-programmer targets
 
 On some targets multiple files need to be loaded in order to reach the
