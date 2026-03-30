@@ -416,6 +416,10 @@ int program_cmd_add(const char *address, const char *filename)
 		return ret;
 
 	program = calloc(1, sizeof(struct program));
+	if (!program) {
+		ux_err("failed to allocate program command\n");
+		return -1;
+	}
 
 	program->sector_size = 0;
 	program->file_offset = 0;
@@ -451,9 +455,10 @@ int erase_cmd_add(const char *address)
 		return ret;
 
 	program = calloc(1, sizeof(struct program));
-
-	if (!program)
-		err(1, "failed to allocate program\n");
+	if (!program) {
+		ux_err("failed to allocate erase command\n");
+		return -1;
+	}
 
 	program->num_sectors = num_sectors;
 	program->partition = partition;
