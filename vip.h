@@ -9,6 +9,16 @@
 
 struct vip_table_generator;
 
+/*
+ * Capacity of each VIP digest table file.
+ *
+ * Each table holds at most FILE entries: the last slot is reserved for a
+ * chain hash linking to the next table.  The TABLE constant is therefore
+ * FILE - 1 and represents the number of actual data-chunk hashes per table.
+ */
+#define MAX_DIGESTS_PER_SIGNED_FILE	54
+#define MAX_DIGESTS_PER_CHAINED_FILE	256
+
 enum vip_state {
 	VIP_DISABLED,
 	VIP_INIT,
@@ -30,6 +40,7 @@ struct vip_transfer_data {
 	size_t frames_left;
 	size_t chained_table_size;
 	bool fh_parse_status;
+	bool sending_table; /* set during vip_transfer_send_raw() */
 };
 
 int vip_transfer_init(struct qdl_device *qdl, const char *vip_table_path);
