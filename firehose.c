@@ -346,7 +346,7 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 {
 	size_t max_sector_size;
 	size_t sector_sizes[] = { 512, 4096 };
-	struct read_op op;
+	struct firehose_op op;
 	size_t size = 0;
 	void *buf;
 	int ret;
@@ -647,7 +647,7 @@ err_close_fd:
 	return -1;
 }
 
-static int firehose_issue_read(struct qdl_device *qdl, struct read_op *read_op,
+static int firehose_issue_read(struct qdl_device *qdl, struct firehose_op *read_op,
 			       int fd, void *out_buf, size_t out_len, bool quiet)
 {
 	unsigned int sector_size;
@@ -765,14 +765,27 @@ out:
 	return ret;
 }
 
-int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size)
+int firehose_read_buf(struct qdl_device *qdl, struct firehose_op *read_op, void *out_buf, size_t out_size)
 {
 	return firehose_issue_read(qdl, read_op, -1, out_buf, out_size, true);
 }
 
-static int firehose_read_op(struct qdl_device *qdl, struct read_op *read_op, int fd)
+static int firehose_read_op(struct qdl_device *qdl, struct firehose_op *op)
 {
-	return firehose_issue_read(qdl, read_op, fd, NULL, 0, false);
+	int ret;
+	int fd;
+
+	fd = open(op->filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
+	if (fd < 0) {
+		ux_info("unable to open %s...\n", op->filename);
+		return -1;
+	}
+
+	ret = firehose_issue_read(qdl, op, fd, NULL, 0, false);
+
+	close(fd);
+
+	return ret;
 }
 
 static int firehose_apply_patch(struct qdl_device *qdl, struct patch *patch)
@@ -1101,10 +1114,18 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 			if (ret < 0)
 				return ret;
 			break;
+		case FIREHOSE_OP_READ:
+			ret = firehose_read_op(qdl, op);
+			if (ret < 0)
+				return ret;
+			break;
 		default:
 			ux_err("internal error: unknown firehose operation %d\n", op->type);
 			return -1;
 		}
+
+		if (ret)
+			return ret;
 	}
 
 	return 0;
@@ -1122,7 +1143,7 @@ int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 	if (ret)
 		return ret;
 
-	ret = read_resolve_gpt_deferrals(qdl);
+	ret = read_resolve_gpt_deferrals(qdl, ops);
 	if (ret)
 		return ret;
 
@@ -1135,10 +1156,6 @@ int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 		return ret;
 
 	ret = patch_execute(qdl, firehose_apply_patch);
-	if (ret)
-		return ret;
-
-	ret = read_op_execute(qdl, firehose_read_op);
 	if (ret)
 		return ret;
 

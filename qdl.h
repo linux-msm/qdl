@@ -108,7 +108,7 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found);
 
 int firehose_run(struct qdl_device *qdl, struct list_head *ops);
 int firehose_provision(struct qdl_device *qdl);
-int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);
+int firehose_read_buf(struct qdl_device *qdl, struct firehose_op *read_op, void *out_buf, size_t out_size);
 int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	       const char *ramdump_path,
 	       const char *ramdump_filter);
