@@ -2,6 +2,7 @@
 /*
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
+#include "firehose.h"
 #include <stdlib.h>
 #include <string.h>
 #define _FILE_OFFSET_BITS 64
@@ -138,7 +139,7 @@ static int gpt_load_table_from_partition(struct qdl_device *qdl, unsigned int ph
 	struct gpt_entry *entry;
 	struct gpt_header gpt;
 	uint8_t buf[4096];
-	struct read_op op;
+	struct firehose_op op;
 	unsigned int offset;
 	uint64_t lba;
 	char lba_buf[21];
@@ -149,6 +150,7 @@ static int gpt_load_table_from_partition(struct qdl_device *qdl, unsigned int ph
 
 	memset(&op, 0, sizeof(op));
 
+	op.type = FIREHOSE_OP_READ;
 	op.sector_size = qdl->sector_size;
 	op.start_sector = "1";
 	op.num_sectors = 1;

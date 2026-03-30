@@ -724,7 +724,7 @@ static int qdl_flash(int argc, char **argv)
 					" changes. Allow explicitly with --allow-fusing parameter");
 			break;
 		case QDL_FILE_READ:
-			ret = read_op_load(argv[optind], incdir);
+			ret = read_op_load(&firehose_ops, argv[optind], incdir);
 			if (ret < 0)
 				errx(1, "read_op_load %s failed", argv[optind]);
 			break;
@@ -739,7 +739,7 @@ static int qdl_flash(int argc, char **argv)
 		case QDL_CMD_READ:
 			if (optind + 2 >= argc)
 				errx(1, "read command missing arguments");
-			ret = read_cmd_add(argv[optind + 1], argv[optind + 2]);
+			ret = read_cmd_add(&firehose_ops, argv[optind + 1], argv[optind + 2]);
 			if (ret < 0)
 				errx(1, "failed to add read command");
 			optind += 2;
