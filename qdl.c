@@ -569,6 +569,33 @@ out_cleanup:
 	return ret;
 }
 
+static int qdl_determine_bootable(struct list_head *ops)
+{
+	struct firehose_op *op;
+	bool multiple;
+	int bootable;
+
+	bootable = program_find_bootable_partition(ops, &multiple);
+	if (bootable < 0) {
+		ux_debug("no boot partition found\n");
+		return 0;
+	}
+
+	if (multiple)
+		ux_info("Multiple candidates for primary bootloader found, using partition %d\n",
+			bootable);
+
+	op = firehose_alloc_op(FIREHOSE_OP_SET_BOOTABLE);
+	if (!op)
+		return -1;
+
+	op->partition = bootable;
+
+	list_append(ops, &op->node);
+
+	return 0;
+}
+
 static int qdl_flash(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
@@ -765,6 +792,10 @@ static int qdl_flash(int argc, char **argv)
 			break;
 		}
 	} while (++optind < argc);
+
+	ret = qdl_determine_bootable(&firehose_ops);
+	if (ret)
+		goto out_cleanup;
 
 	ret = qdl_open(qdl, serial);
 	if (ret)

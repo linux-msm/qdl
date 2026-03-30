@@ -1145,6 +1145,9 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 			if (op->filename && !strcmp(op->filename, "DISK"))
 				ux_progress("Applying patches", patch_idx++, patch_count);
 			break;
+		case FIREHOSE_OP_SET_BOOTABLE:
+			firehose_set_bootable(qdl, op->partition);
+			break;
 		default:
 			ux_err("internal error: unknown firehose operation %d\n", op->type);
 			return -1;
@@ -1159,8 +1162,6 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 
 int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 {
-	bool multiple;
-	int bootable;
 	int ret;
 
 	ux_info("waiting for Firehose programmer...\n");
@@ -1176,17 +1177,6 @@ int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 	ret = firehose_execute_ops(qdl, ops);
 	if (ret)
 		return ret;
-
-	bootable = program_find_bootable_partition(ops, &multiple);
-	if (bootable < 0) {
-		ux_debug("no boot partition found\n");
-	} else {
-		if (multiple) {
-			ux_info("Multiple candidates for primary bootloader found, using partition %d\n",
-				bootable);
-		}
-		firehose_set_bootable(qdl, bootable);
-	}
 
 	firehose_reset(qdl);
 

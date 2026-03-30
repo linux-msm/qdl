@@ -14,16 +14,19 @@ enum firehose_op_type {
 	FIREHOSE_OP_ERASE,
 	FIREHOSE_OP_READ,
 	FIREHOSE_OP_PATCH,
+	FIREHOSE_OP_SET_BOOTABLE,
 };
 
 struct firehose_op {
 	enum firehose_op_type type;
 	struct list_head node;
 
+	/* program, read, patch, set_bootable */
+	int partition;
+
 	/* program, read, patch */
 	unsigned int sector_size;
 	const char *filename;
-	int partition;
 	const char *start_sector;
 
 	/* program, read */
