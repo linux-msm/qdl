@@ -3,6 +3,7 @@
  * Copyright (c) 2016-2017, Linaro Ltd.
  * All rights reserved.
  */
+#include <assert.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
@@ -11,14 +12,14 @@
 #include <unistd.h>
 
 #include "patch.h"
+#include "firehose.h"
 #include "qdl.h"
 
-static struct list_head patches = LIST_INIT(patches);
 static bool patches_loaded;
 
-int patch_load(const char *patch_file)
+int patch_load(struct list_head *ops, const char *patch_file)
 {
-	struct patch *patch;
+	struct firehose_op *patch;
 	xmlNode *node;
 	xmlNode *root;
 	xmlDoc *doc;
@@ -42,7 +43,7 @@ int patch_load(const char *patch_file)
 
 		errors = 0;
 
-		patch = calloc(1, sizeof(struct patch));
+		patch = firehose_alloc_op(FIREHOSE_OP_PATCH);
 
 		patch->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
 		patch->byte_offset = attr_as_unsigned(node, "byte_offset", &errors);
@@ -63,7 +64,7 @@ int patch_load(const char *patch_file)
 			continue;
 		}
 
-		list_append(&patches, &patch->node);
+		list_append(ops, &patch->node);
 	}
 
 	xmlFreeDoc(doc);
@@ -71,57 +72,4 @@ int patch_load(const char *patch_file)
 	patches_loaded = true;
 
 	return 0;
-}
-
-int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch))
-{
-	struct patch *patch;
-	unsigned int count = 0;
-	unsigned int idx = 0;
-	int ret;
-
-	if (!patches_loaded)
-		return 0;
-
-	list_for_each_entry(patch, &patches, node) {
-		if (!patch->filename)
-			continue;
-
-		if (!strcmp(patch->filename, "DISK"))
-			count++;
-	}
-
-	list_for_each_entry(patch, &patches, node) {
-		if (!patch->filename)
-			continue;
-
-		if (strcmp(patch->filename, "DISK"))
-			continue;
-
-		ret = apply(qdl, patch);
-		if (ret)
-			return ret;
-
-		ux_progress("Applying patches", idx++, count);
-	}
-
-	ux_info("%d patches applied\n", idx);
-
-	return 0;
-}
-
-void free_patches(void)
-{
-	struct patch *patch;
-	struct patch *next;
-
-	list_for_each_entry_safe(patch, next, &patches, node) {
-		free((void *)patch->filename);
-		free((void *)patch->start_sector);
-		free((void *)patch->value);
-		free((void *)patch->what);
-		free(patch);
-	}
-
-	list_init(&patches);
 }
