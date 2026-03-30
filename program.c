@@ -430,28 +430,3 @@ int erase_cmd_add(struct list_head *ops, const char *address)
 
 	return 0;
 }
-
-int program_resolve_gpt_deferrals(struct qdl_device *qdl, struct list_head *ops)
-{
-	unsigned int start_sector;
-	struct firehose_op *op;
-	char buf[20];
-	int ret;
-
-	list_for_each_entry(op, ops, node) {
-		if (op->type != FIREHOSE_OP_PROGRAM)
-			continue;
-		if (!op->gpt_partition)
-			continue;
-
-		ret = gpt_find_by_name(qdl, op->gpt_partition, &op->partition,
-				       &start_sector, &op->num_sectors);
-		if (ret < 0)
-			return -1;
-
-		sprintf(buf, "%u", start_sector);
-		op->start_sector = strdup(buf);
-	}
-
-	return 0;
-}
