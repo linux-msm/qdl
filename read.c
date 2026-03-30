@@ -109,29 +109,3 @@ int read_cmd_add(struct list_head *ops, const char *address, const char *filenam
 
 	return 0;
 }
-
-int read_resolve_gpt_deferrals(struct qdl_device *qdl, struct list_head *ops)
-{
-	struct firehose_op *read_op;
-	unsigned int start_sector;
-	char buf[20];
-	int ret;
-
-	list_for_each_entry(read_op, ops, node) {
-		if (read_op->type != FIREHOSE_OP_READ)
-			continue;
-
-		if (!read_op->gpt_partition)
-			continue;
-
-		ret = gpt_find_by_name(qdl, read_op->gpt_partition, &read_op->partition,
-				       &start_sector, &read_op->num_sectors);
-		if (ret < 0)
-			return -1;
-
-		sprintf(buf, "%u", start_sector);
-		read_op->start_sector = strdup(buf);
-	}
-
-	return 0;
-}

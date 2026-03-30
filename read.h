@@ -11,6 +11,5 @@ struct firehose_op;
 
 int read_op_load(struct list_head *ops, const char *read_op_file, const char *incdir);
 int read_cmd_add(struct list_head *ops, const char *address, const char *filename);
-int read_resolve_gpt_deferrals(struct qdl_device *qdl, struct list_head *ops);
 
 #endif

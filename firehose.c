@@ -27,6 +27,7 @@
 #include "oscompat.h"
 #include "vip.h"
 #include "sparse.h"
+#include "gpt.h"
 
 enum {
 	FIREHOSE_ACK = 0,
@@ -1168,11 +1169,7 @@ int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 	if (ret)
 		return ret;
 
-	ret = read_resolve_gpt_deferrals(qdl, ops);
-	if (ret)
-		return ret;
-
-	ret = program_resolve_gpt_deferrals(qdl, ops);
+	ret = gpt_resolve_deferrals(qdl, ops);
 	if (ret)
 		return ret;
 
