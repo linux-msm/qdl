@@ -18,9 +18,7 @@
 #define CHAINED_TABLE_FILE_MAX_NAME		64
 #define DIGEST_TABLE_TO_SIGN_FILE		"DigestsToSign.bin"
 #define DIGEST_TABLE_TO_SIGN_FILE_MBN		(DIGEST_TABLE_TO_SIGN_FILE ".mbn")
-#define MAX_DIGESTS_PER_SIGNED_FILE		54
 #define MAX_DIGESTS_PER_SIGNED_TABLE		(MAX_DIGESTS_PER_SIGNED_FILE - 1)
-#define MAX_DIGESTS_PER_CHAINED_FILE		256
 #define MAX_DIGESTS_PER_CHAINED_TABLE		(MAX_DIGESTS_PER_CHAINED_FILE - 1)
 #define MAX_DIGESTS_PER_BUF			16
 
@@ -437,7 +435,9 @@ static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
 		goto out;
 	}
 
+	qdl->vip_data.sending_table = true;
 	n = qdl_write(qdl, buf, n, 1000);
+	qdl->vip_data.sending_table = false;
 	if (n < 0) {
 		ux_err("USB write failed for data chunk\n");
 		ret = -1;
