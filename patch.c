@@ -70,7 +70,7 @@ int patch_load(struct list_head *ops, const char *patch_file)
 	xmlDoc *doc;
 	int ret;
 
-	doc = xmlReadFile(patch_file, NULL, 0);
+	doc = xmlReadFile(patch_file, NULL, XML_PARSE_NOWARNING | XML_PARSE_NOERROR);
 	if (!doc) {
 		ux_err("failed to parse patch-type file \"%s\"\n", patch_file);
 		return -EINVAL;
