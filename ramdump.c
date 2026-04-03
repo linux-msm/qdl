@@ -82,7 +82,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	ux_init();
+	qdl_ux_set_ops(NULL);
 
 	if (qdl_debug)
 		print_version();
