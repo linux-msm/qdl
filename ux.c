@@ -8,7 +8,17 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include <libxml/xmlerror.h>
+#include <libxml/xmlversion.h>
+
 #include "qdl.h"
+
+/* libxml2 2.12 const-qualified the xmlError pointer in this callback. */
+#if LIBXML_VERSION >= 21200
+typedef const xmlError * ux_xml_error_ptr;
+#else
+typedef xmlErrorPtr ux_xml_error_ptr;
+#endif
 
 #define UX_PROGRESS_REFRESH_RATE	10
 #define UX_PROGRESS_SIZE_MAX		80
@@ -42,6 +52,38 @@ static void ux_clear_line(void)
 	ux_cur_line_length = 0;
 }
 
+/*
+ * libxml2 emits parser diagnostics directly to stderr by default. Route them
+ * through ux_err() so the file:line context is preserved while keeping output
+ * consistent with the rest of the tool.
+ */
+static void ux_xml_error_handler(void *ctx __unused, ux_xml_error_ptr error)
+{
+	const char *level;
+
+	if (!error || error->level == XML_ERR_NONE)
+		return;
+
+	switch (error->level) {
+	case XML_ERR_WARNING:
+		level = "warning";
+		break;
+	case XML_ERR_ERROR:
+		level = "error";
+		break;
+	case XML_ERR_FATAL:
+	default:
+		level = "fatal";
+		break;
+	}
+
+	if (error->file)
+		ux_err("libxml2 %s: %s:%d: %s",
+		       level, error->file, error->line, error->message);
+	else
+		ux_err("libxml2 %s: %s", level, error->message);
+}
+
 #ifdef _WIN32
 
 void ux_init(void)
@@ -55,6 +97,8 @@ void ux_init(void)
 		columns = csbi.srWindow.Right - csbi.srWindow.Left + 1;
 		ux_width = MIN(columns, UX_PROGRESS_SIZE_MAX);
 	}
+
+	xmlSetStructuredErrorFunc(NULL, ux_xml_error_handler);
 }
 
 #else
@@ -67,6 +111,8 @@ void ux_init(void)
 	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 	if (!ret)
 		ux_width = MIN(w.ws_col, UX_PROGRESS_SIZE_MAX);
+
+	xmlSetStructuredErrorFunc(NULL, ux_xml_error_handler);
 }
 
 #endif
