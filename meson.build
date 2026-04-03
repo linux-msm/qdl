@@ -17,7 +17,7 @@ libzip_dep = dependency('libzip')
 help2man = find_program('help2man', required: false)
 
 # Common include dirs
-inc = include_directories('.')
+inc = include_directories('.', 'lib')
 
 # Windows-specific link flags
 ws2_dep = []
@@ -37,36 +37,21 @@ version_h = configure_file(
   configuration: conf
 )
 
-common_sources = files(
-  'sahara.c', 'util.c', 'ux.c', 'oscompat.c', 'file.c'
-)
-
-shared_lib = static_library('qdl_common', common_sources, dependencies: common_dep)
+subdir('lib')
 
 # --- qdl executable ---
-qdl_sources = files(
-  'firehose.c',
-  'io.c', 'qdl.c', 'patch.c',
-  'program.c', 'read.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
-  'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c'
-)
-
 qdl_exe = executable('qdl',
-  sources : qdl_sources + [version_h],
-  link_with: shared_lib,
+  sources : ['qdl.c', version_h],
+  link_with: libqdl,
   dependencies : common_dep,
   include_directories : inc,
   install : true
 )
 
 # --- qdl-ramdump executable ---
-ramdump_sources = files(
-  'ramdump.c', 'io.c', 'sha2.c', 'sim.c', 'usb.c'
-)
-
 qdl_ramdump_exe = executable('qdl-ramdump',
-  sources : ramdump_sources + [version_h],
-  link_with: shared_lib,
+  sources : ['ramdump.c', version_h],
+  link_with: libqdl,
   dependencies : common_dep,
   include_directories : inc,
   install : true
@@ -77,7 +62,7 @@ ks_sources = files('ks.c')
 
 qdl_ks_exe = executable('qdl-ks',
   sources : ks_sources + [version_h],
-  link_with: shared_lib,
+  link_with: libqdl,
   dependencies : common_dep,
   include_directories : inc,
   install : true
