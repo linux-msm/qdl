@@ -35,6 +35,13 @@ CHECKPATCH_SP_URL := $(CHECKPATCH_ROOT)/spelling.txt
 CHECKPATCH := ./.scripts/checkpatch.pl
 CHECKPATCH_SP := ./.scripts/spelling.txt
 
+TEST_CFLAGS := `$(PKG_CONFIG) --cflags cmocka`
+TEST_LDFLAGS := `$(PKG_CONFIG) --libs cmocka`
+
+TEST_PATCH_SRCS := tests/test_patch.c
+TEST_PATCH_OBJS := $(TEST_PATCH_SRCS:.c=.o)
+TEST_PATCH := tests/test_patch
+
 MANPAGES := ks.1 qdl-ramdump.1 qdl.1
 
 default: $(QDL) $(RAMDUMP) $(KS_OUT)
@@ -50,6 +57,12 @@ $(RAMDUMP): $(RAMDUMP_OBJS) $(LIBQDL)
 
 $(KS_OUT): $(KS_OBJS) $(LIBQDL)
 	$(CC) -o $@ $(KS_OBJS) $(LIBQDL) $(LDFLAGS)
+
+$(TEST_PATCH_OBJS): $(TEST_PATCH_SRCS)
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -c -o $@ $<
+
+$(TEST_PATCH): $(TEST_PATCH_OBJS) $(LIBQDL)
+	$(CC) -o $@ $(TEST_PATCH_OBJS) $(LIBQDL) $(LDFLAGS) $(TEST_LDFLAGS)
 
 compile_commands.json: $(LIB_SRCS) $(QDL_SRCS) $(KS_SRCS)
 	@echo -n $^ | jq -snR "[inputs|split(\" \")[]|{directory:\"$(PWD)\", command: \"$(CC) $(CFLAGS) -c \(.)\", file:.}]" > $@
@@ -70,6 +83,7 @@ clean:
 	rm -f $(RAMDUMP) $(RAMDUMP_OBJS)
 	rm -f $(KS_OUT) $(KS_OBJS)
 	rm -f $(LIBQDL) $(LIB_OBJS)
+	rm -f $(TEST_PATCH) $(TEST_PATCH_OBJS)
 	rm -f $(MANPAGES)
 	rm -f compile_commands.json
 	rm -f lib/version.h .version.h
@@ -81,9 +95,9 @@ install: $(QDL) $(RAMDUMP) $(KS_OUT)
 	install -d $(DESTDIR)$(prefix)/bin
 	install -m 755 $^ $(DESTDIR)$(prefix)/bin
 
-tests: default
-tests:
+tests: default $(TEST_PATCH)
 	@./tests/run_tests.sh
+	@./$(TEST_PATCH)
 
 # Target to download checkpatch.pl if not present
 $(CHECKPATCH):
