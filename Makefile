@@ -10,14 +10,22 @@ LDFLAGS += -lws2_32
 endif
 prefix := /usr/local
 
-QDL_SRCS := lib/firehose.c lib/io.c qdl.c lib/sahara.c lib/util.c lib/patch.c lib/program.c lib/read.c lib/sha2.c lib/sim.c lib/ufs.c lib/usb.c lib/ux.c lib/oscompat.c lib/vip.c lib/sparse.c lib/gpt.c
+# Common library sources (protocol logic + transport)
+LIB_SRCS := lib/firehose.c lib/io.c lib/sahara.c lib/util.c lib/patch.c \
+	    lib/program.c lib/read.c lib/sha2.c lib/sim.c lib/ufs.c lib/usb.c \
+	    lib/ux.c lib/oscompat.c lib/vip.c lib/sparse.c lib/gpt.c
+LIB_OBJS := $(LIB_SRCS:.c=.o)
+LIBQDL   := lib/libqdl.a
+
+# Per-binary sources (CLI entry points only)
+QDL_SRCS := qdl.c
 QDL_OBJS := $(QDL_SRCS:.c=.o)
 
-RAMDUMP_SRCS := ramdump.c lib/sahara.c lib/io.c lib/sim.c lib/usb.c lib/util.c lib/ux.c lib/oscompat.c
+RAMDUMP_SRCS := ramdump.c
 RAMDUMP_OBJS := $(RAMDUMP_SRCS:.c=.o)
 
 KS_OUT := ks
-KS_SRCS := ks.c lib/sahara.c lib/util.c lib/ux.c lib/oscompat.c
+KS_SRCS := ks.c
 KS_OBJS := $(KS_SRCS:.c=.o)
 
 CHECKPATCH_SOURCES := $(shell find . -type f \( -name "*.c" -o -name "*.h" -o -name "*.sh" \) ! -name "sha2.c" ! -name "sha2.h" ! -name "*version.h" ! -name "list.h")
@@ -31,16 +39,19 @@ MANPAGES := ks.1 qdl-ramdump.1 qdl.1
 
 default: $(QDL) $(RAMDUMP) $(KS_OUT)
 
-$(QDL): $(QDL_OBJS)
-	$(CC) -o $@ $^ $(LDFLAGS)
+$(LIBQDL): $(LIB_OBJS)
+	$(AR) rcs $@ $^
 
-$(RAMDUMP): $(RAMDUMP_OBJS)
-	$(CC) -o $@ $^ $(LDFLAGS)
+$(QDL): $(QDL_OBJS) $(LIBQDL)
+	$(CC) -o $@ $(QDL_OBJS) $(LIBQDL) $(LDFLAGS)
 
-$(KS_OUT): $(KS_OBJS)
-	$(CC) -o $@ $^ $(LDFLAGS)
+$(RAMDUMP): $(RAMDUMP_OBJS) $(LIBQDL)
+	$(CC) -o $@ $(RAMDUMP_OBJS) $(LIBQDL) $(LDFLAGS)
 
-compile_commands.json: $(QDL_SRCS) $(KS_SRCS)
+$(KS_OUT): $(KS_OBJS) $(LIBQDL)
+	$(CC) -o $@ $(KS_OBJS) $(LIBQDL) $(LDFLAGS)
+
+compile_commands.json: $(LIB_SRCS) $(QDL_SRCS) $(KS_SRCS)
 	@echo -n $^ | jq -snR "[inputs|split(\" \")[]|{directory:\"$(PWD)\", command: \"$(CC) $(CFLAGS) -c \(.)\", file:.}]" > $@
 
 manpages: $(KS_OUT) $(RAMDUMP) $(QDL)
@@ -58,6 +69,7 @@ clean:
 	rm -f $(QDL) $(QDL_OBJS)
 	rm -f $(RAMDUMP) $(RAMDUMP_OBJS)
 	rm -f $(KS_OUT) $(KS_OBJS)
+	rm -f $(LIBQDL) $(LIB_OBJS)
 	rm -f $(MANPAGES)
 	rm -f compile_commands.json
 	rm -f lib/version.h .version.h
