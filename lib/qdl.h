@@ -77,6 +77,8 @@ struct qdl_device {
 				 const char *chained_table);
 
 	struct vip_transfer_data vip_data;
+
+	struct patch_ctx patch_ctx;
 };
 
 struct sahara_image {
