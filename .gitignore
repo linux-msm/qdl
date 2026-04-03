@@ -10,3 +10,4 @@ compile_commands.json
 version.h
 scripts
 .checkpatch-camelcase.git.
+lib/libqdl.a
