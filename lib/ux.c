@@ -22,17 +22,8 @@ static const char * const progress_dashes = DASHES;
 static unsigned int ux_width;
 static unsigned int ux_cur_line_length;
 
-/*
- * Levels of output:
- *
- * error: used to signal errors to the user
- * info: used to inform the user about progress
- * logs: log prints from the device
- * debug: protocol logs
- */
-
 /* Clear ux_cur_line_length characters of the progress bar from the screen */
-static void ux_clear_line(void)
+static void term_clear_line(void)
 {
 	if (!ux_cur_line_length)
 		return;
@@ -42,90 +33,22 @@ static void ux_clear_line(void)
 	ux_cur_line_length = 0;
 }
 
-#ifdef _WIN32
-
-void ux_init(void)
+static void term_err(const char *fmt, va_list ap)
 {
-	CONSOLE_SCREEN_BUFFER_INFO csbi;
-	int columns;
-
-	HANDLE stdoutHandle = GetStdHandle(STD_OUTPUT_HANDLE);
-
-	if (GetConsoleScreenBufferInfo(stdoutHandle, &csbi)) {
-		columns = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-		ux_width = MIN(columns, UX_PROGRESS_SIZE_MAX);
-	}
-}
-
-#else
-
-void ux_init(void)
-{
-	struct winsize w;
-	int ret;
-
-	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-	if (!ret)
-		ux_width = MIN(w.ws_col, UX_PROGRESS_SIZE_MAX);
-}
-
-#endif
-
-void ux_err(const char *fmt, ...)
-{
-	va_list ap;
-
-	ux_clear_line();
-
-	va_start(ap, fmt);
+	term_clear_line();
 	vfprintf(stderr, fmt, ap);
-	va_end(ap);
 	fflush(stderr);
 }
 
-void ux_info(const char *fmt, ...)
+static void term_info(const char *fmt, va_list ap)
 {
-	va_list ap;
-
-	ux_clear_line();
-
-	va_start(ap, fmt);
+	term_clear_line();
 	vprintf(fmt, ap);
-	va_end(ap);
 	fflush(stdout);
 }
 
-void ux_log(const char *fmt, ...)
-{
-	va_list ap;
-
-	if (!qdl_debug)
-		return;
-
-	ux_clear_line();
-
-	va_start(ap, fmt);
-	vprintf(fmt, ap);
-	va_end(ap);
-	fflush(stdout);
-}
-
-void ux_debug(const char *fmt, ...)
-{
-	va_list ap;
-
-	if (!qdl_debug)
-		return;
-
-	ux_clear_line();
-
-	va_start(ap, fmt);
-	vprintf(fmt, ap);
-	va_end(ap);
-	fflush(stdout);
-}
-
-void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
+static void term_progress(const char *fmt, unsigned int value,
+			   unsigned int max, va_list ap)
 {
 	static struct timeval last_progress_update;
 	unsigned long elapsed_us;
@@ -135,9 +58,8 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 	struct timeval now;
 	char task_name[32];
 	float percent;
-	va_list ap;
 
-	/* Don't print progress is window is too narrow, or if stdout is redirected */
+	/* Don't print progress if window is too narrow, or if stdout is redirected */
 	if (ux_width < 30)
 		return;
 
@@ -154,9 +76,7 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 	if (value > max)
 		value = max;
 
-	va_start(ap, max);
 	vsnprintf(task_name, sizeof(task_name), fmt, ap);
-	va_end(ap);
 
 	bar_length = ux_width - (20 + 4 + 6);
 	percent = (float)value / max;
@@ -171,4 +91,104 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 	fflush(stdout);
 
 	gettimeofday(&last_progress_update, NULL);
+}
+
+static const struct qdl_ux_ops terminal_ops = {
+	.err      = term_err,
+	.info     = term_info,
+	.log      = term_info,
+	.debug    = term_info,
+	.progress = term_progress,
+};
+
+static const struct qdl_ux_ops *ux_ops = &terminal_ops;
+
+#ifdef _WIN32
+
+static void term_init(void)
+{
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	int columns;
+
+	HANDLE stdoutHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+
+	if (GetConsoleScreenBufferInfo(stdoutHandle, &csbi)) {
+		columns = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+		ux_width = MIN(columns, UX_PROGRESS_SIZE_MAX);
+	}
+}
+
+#else
+
+static void term_init(void)
+{
+	struct winsize w;
+	int ret;
+
+	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+	if (!ret)
+		ux_width = MIN(w.ws_col, UX_PROGRESS_SIZE_MAX);
+}
+
+#endif
+
+void qdl_ux_set_ops(const struct qdl_ux_ops *ops)
+{
+	if (ops) {
+		ux_ops = ops;
+	} else {
+		term_init();
+		ux_ops = &terminal_ops;
+	}
+}
+
+void ux_err(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_ops->err(fmt, ap);
+	va_end(ap);
+}
+
+void ux_info(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_ops->info(fmt, ap);
+	va_end(ap);
+}
+
+void ux_log(const char *fmt, ...)
+{
+	va_list ap;
+
+	if (!qdl_debug)
+		return;
+
+	va_start(ap, fmt);
+	ux_ops->log(fmt, ap);
+	va_end(ap);
+}
+
+void ux_debug(const char *fmt, ...)
+{
+	va_list ap;
+
+	if (!qdl_debug)
+		return;
+
+	va_start(ap, fmt);
+	ux_ops->debug(fmt, ap);
+	va_end(ap);
+}
+
+void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
+{
+	va_list ap;
+
+	va_start(ap, max);
+	ux_ops->progress(fmt, value, max, ap);
+	va_end(ap);
 }
