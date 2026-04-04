@@ -540,7 +540,7 @@ static int qdl_ramdump(int argc, char **argv)
 		return 1;
 	}
 
-	ux_init();
+	qdl_ux_set_ops(NULL);
 
 	qdl = qdl_init(QDL_DEVICE_USB);
 	if (!qdl)
@@ -672,6 +672,7 @@ static int qdl_flash(int argc, char **argv)
 	}
 
 	qdl->slot = slot;
+	patch_init(qdl);
 
 	if (vip_table_path) {
 		if (vip_generate_dir)
@@ -690,7 +691,7 @@ static int qdl_flash(int argc, char **argv)
 			goto out_cleanup;
 	}
 
-	ux_init();
+	qdl_ux_set_ops(NULL);
 
 	if (qdl_debug)
 		print_version();
@@ -706,7 +707,7 @@ static int qdl_flash(int argc, char **argv)
 
 		switch (type) {
 		case QDL_FILE_PATCH:
-			ret = patch_load(argv[optind]);
+			ret = patch_load(qdl, argv[optind]);
 			if (ret < 0)
 				errx(1, "patch_load %s failed", argv[optind]);
 			break;
@@ -790,7 +791,7 @@ out_cleanup:
 	sahara_images_free(sahara_images, MAPPING_SZ);
 
 	free_programs();
-	free_patches();
+	patch_free(qdl);
 
 	if (qdl) {
 		if (qdl->vip_data.state != VIP_DISABLED)

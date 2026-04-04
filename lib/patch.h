@@ -19,8 +19,15 @@ struct patch {
 	struct list_head node;
 };
 
-int patch_load(const char *patch_file);
-int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch));
-void free_patches(void);
+struct patch_ctx {
+	struct list_head patches;
+	bool loaded;
+};
+
+void patch_init(struct qdl_device *qdl);
+int patch_load(struct qdl_device *qdl, const char *patch_file);
+int patch_execute(struct qdl_device *qdl,
+		  int (*apply)(struct qdl_device *qdl, struct patch *patch));
+void patch_free(struct qdl_device *qdl);
 
 #endif

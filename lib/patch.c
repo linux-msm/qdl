@@ -13,18 +13,22 @@
 #include "patch.h"
 #include "qdl.h"
 
-static struct list_head patches = LIST_INIT(patches);
-static bool patches_loaded;
-
-int patch_load(const char *patch_file)
+void patch_init(struct qdl_device *qdl)
 {
+	list_init(&qdl->patch_ctx.patches);
+	qdl->patch_ctx.loaded = false;
+}
+
+int patch_load(struct qdl_device *qdl, const char *patch_file)
+{
+	struct patch_ctx *ctx = &qdl->patch_ctx;
 	struct patch *patch;
 	xmlNode *node;
 	xmlNode *root;
 	xmlDoc *doc;
 	int errors;
 
-	doc = xmlReadFile(patch_file, NULL, 0);
+	doc = xmlReadFile(patch_file, NULL, XML_PARSE_NOWARNING | XML_PARSE_NOERROR);
 	if (!doc) {
 		ux_err("failed to parse patch-type file \"%s\"\n", patch_file);
 		return -EINVAL;
@@ -63,27 +67,29 @@ int patch_load(const char *patch_file)
 			continue;
 		}
 
-		list_add(&patches, &patch->node);
+		list_add(&ctx->patches, &patch->node);
 	}
 
 	xmlFreeDoc(doc);
 
-	patches_loaded = true;
+	ctx->loaded = true;
 
 	return 0;
 }
 
-int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch))
+int patch_execute(struct qdl_device *qdl,
+		  int (*apply)(struct qdl_device *qdl, struct patch *patch))
 {
+	struct patch_ctx *ctx = &qdl->patch_ctx;
 	struct patch *patch;
 	unsigned int count = 0;
 	unsigned int idx = 0;
 	int ret;
 
-	if (!patches_loaded)
+	if (!ctx->loaded)
 		return 0;
 
-	list_for_each_entry(patch, &patches, node) {
+	list_for_each_entry(patch, &ctx->patches, node) {
 		if (!patch->filename)
 			continue;
 
@@ -91,7 +97,7 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 			count++;
 	}
 
-	list_for_each_entry(patch, &patches, node) {
+	list_for_each_entry(patch, &ctx->patches, node) {
 		if (!patch->filename)
 			continue;
 
@@ -110,12 +116,13 @@ int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, s
 	return 0;
 }
 
-void free_patches(void)
+void patch_free(struct qdl_device *qdl)
 {
+	struct patch_ctx *ctx = &qdl->patch_ctx;
 	struct patch *patch;
 	struct patch *next;
 
-	list_for_each_entry_safe(patch, next, &patches, node) {
+	list_for_each_entry_safe(patch, next, &ctx->patches, node) {
 		free((void *)patch->filename);
 		free((void *)patch->start_sector);
 		free((void *)patch->value);
@@ -123,5 +130,6 @@ void free_patches(void)
 		free(patch);
 	}
 
-	list_init(&patches);
+	list_init(&ctx->patches);
+	ctx->loaded = false;
 }

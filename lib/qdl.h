@@ -9,6 +9,7 @@
 #include <alloca.h>
 #endif
 
+#include <stdarg.h>
 #include <stdbool.h>
 
 #include "patch.h"
@@ -76,6 +77,8 @@ struct qdl_device {
 				 const char *chained_table);
 
 	struct vip_transfer_data vip_data;
+
+	struct patch_ctx patch_ctx;
 };
 
 struct sahara_image {
@@ -119,7 +122,18 @@ unsigned int attr_as_unsigned(xmlNode *node, const char *attr, int *errors);
 const char *attr_as_string(xmlNode *node, const char *attr, int *errors);
 bool attr_as_bool(xmlNode *node, const char *attr, int *errors);
 
-void ux_init(void);
+struct qdl_ux_ops {
+	void (*err)(const char *fmt, va_list ap);
+	void (*info)(const char *fmt, va_list ap);
+	void (*log)(const char *fmt, va_list ap);
+	void (*debug)(const char *fmt, va_list ap);
+	void (*progress)(const char *fmt, unsigned int value,
+			 unsigned int max, va_list ap);
+};
+
+/* Set output backend; NULL restores the default terminal implementation */
+void qdl_ux_set_ops(const struct qdl_ux_ops *ops);
+
 void ux_err(const char *fmt, ...);
 void ux_info(const char *fmt, ...);
 void ux_log(const char *fmt, ...);

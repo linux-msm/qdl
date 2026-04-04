@@ -3,21 +3,29 @@ RAMDUMP := qdl-ramdump
 VERSION := $(or $(VERSION), $(shell git describe --dirty --always --tags 2>/dev/null), "unknown-version")
 
 PKG_CONFIG ?= pkg-config
-CFLAGS += -O2 -Wall -g `$(PKG_CONFIG) --cflags libxml-2.0 libusb-1.0`
+CFLAGS += -O2 -Wall -g -Ilib `$(PKG_CONFIG) --cflags libxml-2.0 libusb-1.0`
 LDFLAGS += `$(PKG_CONFIG) --libs libxml-2.0 libusb-1.0`
 ifeq ($(OS),Windows_NT)
 LDFLAGS += -lws2_32
 endif
 prefix := /usr/local
 
-QDL_SRCS := firehose.c io.c qdl.c sahara.c util.c patch.c program.c read.c sha2.c sim.c ufs.c usb.c ux.c oscompat.c vip.c sparse.c gpt.c
+# Common library sources (protocol logic + transport)
+LIB_SRCS := lib/firehose.c lib/io.c lib/sahara.c lib/util.c lib/patch.c \
+	    lib/program.c lib/read.c lib/sha2.c lib/sim.c lib/ufs.c lib/usb.c \
+	    lib/ux.c lib/oscompat.c lib/vip.c lib/sparse.c lib/gpt.c
+LIB_OBJS := $(LIB_SRCS:.c=.o)
+LIBQDL   := lib/libqdl.a
+
+# Per-binary sources (CLI entry points only)
+QDL_SRCS := qdl.c
 QDL_OBJS := $(QDL_SRCS:.c=.o)
 
-RAMDUMP_SRCS := ramdump.c sahara.c io.c sim.c usb.c util.c ux.c oscompat.c
+RAMDUMP_SRCS := ramdump.c
 RAMDUMP_OBJS := $(RAMDUMP_SRCS:.c=.o)
 
 KS_OUT := ks
-KS_SRCS := ks.c sahara.c util.c ux.c oscompat.c
+KS_SRCS := ks.c
 KS_OBJS := $(KS_SRCS:.c=.o)
 
 CHECKPATCH_SOURCES := $(shell find . -type f \( -name "*.c" -o -name "*.h" -o -name "*.sh" \) ! -name "sha2.c" ! -name "sha2.h" ! -name "*version.h" ! -name "list.h")
@@ -27,20 +35,36 @@ CHECKPATCH_SP_URL := $(CHECKPATCH_ROOT)/spelling.txt
 CHECKPATCH := ./.scripts/checkpatch.pl
 CHECKPATCH_SP := ./.scripts/spelling.txt
 
+TEST_CFLAGS := `$(PKG_CONFIG) --cflags cmocka`
+TEST_LDFLAGS := `$(PKG_CONFIG) --libs cmocka`
+
+TEST_PATCH_SRCS := tests/test_patch.c
+TEST_PATCH_OBJS := $(TEST_PATCH_SRCS:.c=.o)
+TEST_PATCH := tests/test_patch
+
 MANPAGES := ks.1 qdl-ramdump.1 qdl.1
 
 default: $(QDL) $(RAMDUMP) $(KS_OUT)
 
-$(QDL): $(QDL_OBJS)
-	$(CC) -o $@ $^ $(LDFLAGS)
+$(LIBQDL): $(LIB_OBJS)
+	$(AR) rcs $@ $^
 
-$(RAMDUMP): $(RAMDUMP_OBJS)
-	$(CC) -o $@ $^ $(LDFLAGS)
+$(QDL): $(QDL_OBJS) $(LIBQDL)
+	$(CC) -o $@ $(QDL_OBJS) $(LIBQDL) $(LDFLAGS)
 
-$(KS_OUT): $(KS_OBJS)
-	$(CC) -o $@ $^ $(LDFLAGS)
+$(RAMDUMP): $(RAMDUMP_OBJS) $(LIBQDL)
+	$(CC) -o $@ $(RAMDUMP_OBJS) $(LIBQDL) $(LDFLAGS)
 
-compile_commands.json: $(QDL_SRCS) $(KS_SRCS)
+$(KS_OUT): $(KS_OBJS) $(LIBQDL)
+	$(CC) -o $@ $(KS_OBJS) $(LIBQDL) $(LDFLAGS)
+
+$(TEST_PATCH_OBJS): $(TEST_PATCH_SRCS)
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -c -o $@ $<
+
+$(TEST_PATCH): $(TEST_PATCH_OBJS) $(LIBQDL)
+	$(CC) -o $@ $(TEST_PATCH_OBJS) $(LIBQDL) $(LDFLAGS) $(TEST_LDFLAGS)
+
+compile_commands.json: $(LIB_SRCS) $(QDL_SRCS) $(KS_SRCS)
 	@echo -n $^ | jq -snR "[inputs|split(\" \")[]|{directory:\"$(PWD)\", command: \"$(CC) $(CFLAGS) -c \(.)\", file:.}]" > $@
 
 manpages: $(KS_OUT) $(RAMDUMP) $(QDL)
@@ -48,19 +72,21 @@ manpages: $(KS_OUT) $(RAMDUMP) $(QDL)
 	help2man -N -n "Qualcomm Download" -o qdl.1 ./qdl
 	help2man -N -n "Qualcomm Download Ramdump" -o qdl-ramdump.1 ./qdl-ramdump
 
-version.h::
+lib/version.h::
 	@echo "#define VERSION \"$(VERSION)\"" > .version.h
-	@cmp -s .version.h version.h || cp .version.h version.h
+	@cmp -s .version.h lib/version.h || cp .version.h lib/version.h
 
-util.o: version.h
+lib/util.o: lib/version.h
 
 clean:
 	rm -f $(QDL) $(QDL_OBJS)
 	rm -f $(RAMDUMP) $(RAMDUMP_OBJS)
 	rm -f $(KS_OUT) $(KS_OBJS)
+	rm -f $(LIBQDL) $(LIB_OBJS)
+	rm -f $(TEST_PATCH) $(TEST_PATCH_OBJS)
 	rm -f $(MANPAGES)
 	rm -f compile_commands.json
-	rm -f version.h .version.h
+	rm -f lib/version.h .version.h
 	rm -f $(CHECKPATCH)
 	rm -f $(CHECKPATCH_SP)
 	if [ -d .scripts ]; then rmdir .scripts; fi
@@ -69,9 +95,9 @@ install: $(QDL) $(RAMDUMP) $(KS_OUT)
 	install -d $(DESTDIR)$(prefix)/bin
 	install -m 755 $^ $(DESTDIR)$(prefix)/bin
 
-tests: default
-tests:
+tests: default $(TEST_PATCH)
 	@./tests/run_tests.sh
+	@./$(TEST_PATCH)
 
 # Target to download checkpatch.pl if not present
 $(CHECKPATCH):
