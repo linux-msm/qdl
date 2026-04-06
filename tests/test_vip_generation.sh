@@ -23,13 +23,14 @@ if [[ -z "${builddir}" ]]; then
     exit 1
 fi
 
-FLAT_BUILD=${SCRIPT_PATH}/data
+DATA_SRC=${SCRIPT_PATH}/data
+FLAT_BUILD=${builddir}/tests/data
 
-# Generate test fixtures
-${FLAT_BUILD}/generate_flat_build.sh
+# Generate test fixtures in the build directory
+${DATA_SRC}/generate_flat_build.sh "${FLAT_BUILD}"
 
 cleanup() {
-	rm -f ${FLAT_BUILD}/*.bin ${FLAT_BUILD}/*.img ${FLAT_BUILD}/*.elf
+	rm -rf "${FLAT_BUILD}"
 }
 trap cleanup EXIT
 
