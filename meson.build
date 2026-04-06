@@ -84,10 +84,11 @@ ks_exe = executable('ks',
 
 # -- tests ---
 test(
-  'Integration tests',
+  'VIP table generation',
   find_program('bash'),
-  args: [meson.current_source_dir() / 'tests/run_tests.sh', '--builddir', meson.current_build_dir()],
-  depends: [qdl_exe, qdl_ramdump_exe, ks_exe]
+  args: [meson.current_source_dir() / 'tests/test_vip_generation.sh', '--builddir', meson.current_build_dir()],
+  depends: [qdl_exe],
+  suite: 'integration',
 )
 
 # --- checkpatch targets  ---
