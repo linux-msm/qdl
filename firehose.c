@@ -4,6 +4,7 @@
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
  * All rights reserved.
  */
+#include "list.h"
 #define _FILE_OFFSET_BITS 64
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -1112,16 +1113,11 @@ void firehose_free_ops(struct list_head *ops)
 static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 {
 	unsigned int patch_count = 0;
+	struct firehose_op *status_patch = NULL;
+	struct firehose_op *tmp;
 	struct firehose_op *op;
 	unsigned int patch_idx = 0;
 	int ret;
-
-	list_for_each_entry(op, ops, node) {
-		if (op->type != FIREHOSE_OP_PATCH)
-			continue;
-		if (op->filename && !strcmp(op->filename, "DISK"))
-			patch_count++;
-	}
 
 	list_for_each_entry(op, ops, node) {
 		switch (op->type) {
@@ -1133,6 +1129,21 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 			ret = gpt_resolve_deferrals(qdl, ops);
 			if (ret)
 				return ret;
+
+			/* Update the number of patches for this storage device */
+			patch_count = 0;
+			patch_idx = 0;
+			tmp = op;
+			list_for_each_entry_continue(tmp, ops, node) {
+				if (tmp->type == FIREHOSE_OP_CONFIGURE)
+					break;
+				if (tmp->type != FIREHOSE_OP_PATCH)
+					continue;
+				if (tmp->filename && !strcmp(tmp->filename, "DISK")) {
+					patch_count++;
+					status_patch = tmp;
+				}
+			}
 			break;
 		case FIREHOSE_OP_PROGRAM:
 			ret = firehose_program(qdl, op);
@@ -1155,7 +1166,10 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 				return ret;
 
 			if (op->filename && !strcmp(op->filename, "DISK"))
-				ux_progress("Applying patches", patch_idx++, patch_count);
+				ux_progress("Applying patches", ++patch_idx, patch_count);
+
+			if (op == status_patch)
+				ux_info("%d patches applied\n", patch_idx);
 			break;
 		case FIREHOSE_OP_SET_BOOTABLE:
 			firehose_set_bootable(qdl, op->partition);
@@ -1165,9 +1179,6 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 			return -1;
 		}
 	}
-
-	if (patch_count)
-		ux_info("%d patches applied\n", patch_idx);
 
 	return 0;
 }
