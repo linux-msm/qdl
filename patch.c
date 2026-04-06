@@ -17,19 +17,12 @@
 
 static bool patches_loaded;
 
-int patch_load(struct list_head *ops, const char *patch_file)
+int patch_load_xml(struct list_head *ops, xmlDoc *doc, const char *patch_file)
 {
 	struct firehose_op *patch;
 	xmlNode *node;
 	xmlNode *root;
-	xmlDoc *doc;
 	int errors;
-
-	doc = xmlReadFile(patch_file, NULL, 0);
-	if (!doc) {
-		ux_err("failed to parse patch-type file \"%s\"\n", patch_file);
-		return -EINVAL;
-	}
 
 	root = xmlDocGetRootElement(doc);
 	for (node = root->children; node ; node = node->next) {
@@ -67,9 +60,25 @@ int patch_load(struct list_head *ops, const char *patch_file)
 		list_append(ops, &patch->node);
 	}
 
-	xmlFreeDoc(doc);
-
 	patches_loaded = true;
 
 	return 0;
+}
+
+int patch_load(struct list_head *ops, const char *patch_file)
+{
+	xmlDoc *doc;
+	int ret;
+
+	doc = xmlReadFile(patch_file, NULL, 0);
+	if (!doc) {
+		ux_err("failed to parse patch-type file \"%s\"\n", patch_file);
+		return -EINVAL;
+	}
+
+	ret = patch_load_xml(ops, doc, patch_file);
+
+	xmlFreeDoc(doc);
+
+	return ret;
 }

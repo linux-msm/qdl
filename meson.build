@@ -47,7 +47,7 @@ qdl_sources = files(
   'firehose.c',
   'io.c', 'qdl.c', 'patch.c',
   'program.c', 'read.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
-  'vip.c', 'sparse.c', 'gpt.c'
+  'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c'
 )
 
 qdl_exe = executable('qdl',
