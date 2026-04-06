@@ -476,7 +476,7 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	 * ZLP has been measured to take up to 15 seconds on SPINOR devices,
 	 * let's double it to be on the safe side...
 	 */
-	if (qdl->storage_type == QDL_STORAGE_SPINOR)
+	if (qdl->current_storage_type == QDL_STORAGE_SPINOR)
 		zlp_timeout = 60000;
 
 	if (!program->filename)
@@ -1012,6 +1012,9 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 	struct timeval now;
 	int ret;
 
+	/* Track the currently configured storage type */
+	qdl->current_storage_type = storage;
+
 	/*
 	 * The speculative retry loop below sends configure (and therefore the
 	 * VIP table) before the programmer has had a chance to start up and
@@ -1122,6 +1125,15 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 
 	list_for_each_entry(op, ops, node) {
 		switch (op->type) {
+		case FIREHOSE_OP_CONFIGURE:
+			ret = firehose_detect_and_configure(qdl, false, op->storage_type, 5);
+			if (ret)
+				return ret;
+
+			ret = gpt_resolve_deferrals(qdl, ops);
+			if (ret)
+				return ret;
+			break;
 		case FIREHOSE_OP_PROGRAM:
 			ret = firehose_program(qdl, op);
 			if (ret < 0)
@@ -1165,14 +1177,6 @@ int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 	int ret;
 
 	ux_info("waiting for Firehose programmer...\n");
-
-	ret = firehose_detect_and_configure(qdl, false, qdl->storage_type, 5);
-	if (ret)
-		return ret;
-
-	ret = gpt_resolve_deferrals(qdl, ops);
-	if (ret)
-		return ret;
 
 	ret = firehose_execute_ops(qdl, ops);
 	if (ret)

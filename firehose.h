@@ -7,9 +7,11 @@
 #include <sys/stat.h>
 
 #include "list.h"
+#include "qdl.h"
 
 enum firehose_op_type {
 	FIREHOSE_OP_NONE,
+	FIREHOSE_OP_CONFIGURE,
 	FIREHOSE_OP_PROGRAM,
 	FIREHOSE_OP_ERASE,
 	FIREHOSE_OP_READ,
@@ -50,6 +52,9 @@ struct firehose_op {
 	unsigned int size_in_bytes;
 	const char *value;
 	const char *what;
+
+	/* configure */
+	enum qdl_storage_type storage_type;
 };
 
 struct firehose_op *firehose_alloc_op(int type);
