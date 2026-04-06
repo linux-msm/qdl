@@ -191,7 +191,7 @@ struct mbn_header_v6 {
  * Sets @out_len to the payload byte count on success.
  */
 static const uint8_t *sim_vip_signed_payload(const uint8_t *buf, size_t len,
-					      size_t *out_len)
+					     size_t *out_len)
 {
 	struct mbn_header_v6 hdr;
 	size_t offset;
