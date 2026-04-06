@@ -315,7 +315,7 @@ static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *
 		image_id = attr_as_unsigned(image_node, "image_id", &errors);
 		image_path = attr_as_string(image_node, "image_path", &errors);
 
-		if (image_id == 0 || image_id >= MAPPING_SZ || errors) {
+		if (image_id == 0 || image_id >= MAPPING_SZ || !image_path || errors) {
 			ux_err("invalid sahara_config image in \"%s\"\n", blob->name);
 			free((void *)image_path);
 			goto err_free_doc;

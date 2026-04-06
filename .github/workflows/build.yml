@@ -129,6 +129,7 @@ jobs:
           msystem: MINGW64
           install: >
             base-devel
+            cpio
             git
             help2man
             mingw-w64-x86_64-gcc
