@@ -198,7 +198,7 @@ static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 }
 
 static int sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
-			  const struct sahara_image *images)
+			 const struct sahara_image *images)
 {
 	const struct sahara_image *image;
 	unsigned int image_idx;
