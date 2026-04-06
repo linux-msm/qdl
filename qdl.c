@@ -540,7 +540,7 @@ static int qdl_ramdump(int argc, char **argv)
 		return 1;
 	}
 
-	ux_init();
+	qdl_ux_set_ops(NULL);
 
 	qdl = qdl_init(QDL_DEVICE_USB);
 	if (!qdl)
@@ -690,7 +690,7 @@ static int qdl_flash(int argc, char **argv)
 			goto out_cleanup;
 	}
 
-	ux_init();
+	qdl_ux_set_ops(NULL);
 
 	if (qdl_debug)
 		print_version();
