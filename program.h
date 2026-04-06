@@ -3,6 +3,7 @@
 #define __PROGRAM_H__
 
 #include <sys/types.h>
+#include <libxml/parser.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include "list.h"
@@ -12,6 +13,8 @@ struct firehose_op;
 
 int program_load(struct list_head *ops, const char *program_file, bool is_nand,
 		 bool allow_missing, const char *incdir);
+int program_load_xml(struct list_head *ops, xmlDoc *doc, const char *program_file,
+		     bool is_nand, bool allow_missing, const char *incdir);
 int erase_execute(struct qdl_device *qdl, struct firehose_op *op,
 		  int (*apply)(struct qdl_device *qdl, struct firehose_op *op));
 int program_find_bootable_partition(struct list_head *ops, bool *multiple_found);

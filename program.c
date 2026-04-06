@@ -230,18 +230,12 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand, 
 	return 0;
 }
 
-int program_load(struct list_head *ops, const char *program_file, bool is_nand, bool allow_missing, const char *incdir)
+int program_load_xml(struct list_head *ops, xmlDoc *doc, const char *program_file,
+		     bool is_nand, bool allow_missing, const char *incdir)
 {
 	xmlNode *node;
 	xmlNode *root;
-	xmlDoc *doc;
 	int errors = 0;
-
-	doc = xmlReadFile(program_file, NULL, 0);
-	if (!doc) {
-		ux_err("failed to parse program-type file \"%s\"\n", program_file);
-		return -EINVAL;
-	}
 
 	root = xmlDocGetRootElement(doc);
 	for (node = root->children; node ; node = node->next) {
@@ -258,10 +252,25 @@ int program_load(struct list_head *ops, const char *program_file, bool is_nand, 
 		}
 
 		if (errors)
-			goto out;
+			break;
 	}
 
-out:
+	return errors;
+}
+
+int program_load(struct list_head *ops, const char *program_file, bool is_nand, bool allow_missing, const char *incdir)
+{
+	xmlDoc *doc;
+	int errors;
+
+	doc = xmlReadFile(program_file, NULL, 0);
+	if (!doc) {
+		ux_err("failed to parse program-type file \"%s\"\n", program_file);
+		return -EINVAL;
+	}
+
+	errors = program_load_xml(ops, doc, program_file, is_nand, allow_missing, incdir);
+
 	xmlFreeDoc(doc);
 
 	return errors;

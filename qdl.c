@@ -18,6 +18,7 @@
 
 #include "qdl.h"
 #include "firehose.h"
+#include "flashmap.h"
 #include "patch.h"
 #include "program.h"
 #include "ufs.h"
@@ -40,6 +41,7 @@ enum {
 	QDL_CMD_READ,
 	QDL_CMD_WRITE,
 	QDL_CMD_ERASE,
+	QDL_CMD_FLASH,
 };
 
 bool qdl_debug;
@@ -57,6 +59,8 @@ static int detect_type(const char *verb)
 		return QDL_CMD_WRITE;
 	if (!strcmp(verb, "erase"))
 		return QDL_CMD_ERASE;
+	if (!strcmp(verb, "flash"))
+		return QDL_CMD_FLASH;
 
 	if (access(verb, F_OK)) {
 		ux_err("%s is not a verb and not a XML file\n", verb);
@@ -98,7 +102,7 @@ static int detect_type(const char *verb)
 	return type;
 }
 
-static enum qdl_storage_type decode_storage(const char *storage)
+enum qdl_storage_type decode_storage(const char *storage)
 {
 
 	if (!strcmp(storage, "emmc"))
@@ -591,6 +595,72 @@ static int qdl_ensure_configured(struct list_head *ops, enum qdl_storage_type st
 	return 0;
 }
 
+static int qdl_cmd_flash(struct list_head *firehose_ops, char *param,
+			 const char *incdir, struct sahara_image *images)
+{
+	enum qdl_storage_type current_type = QDL_STORAGE_UNKNOWN;
+	struct list_head flashmap_ops = LIST_INIT(flashmap_ops);
+	enum qdl_storage_type type;
+	unsigned int type_filter = 0;
+	struct firehose_op *next;
+	struct firehose_op *op;
+	char *filename;
+	char *filter;
+	char *save;
+	char *tmp;
+	int ret;
+
+	filename = strdup(param);
+	if (!filename) {
+		ux_err("internal error: unable to allocate memory for argument\n");
+		return -1;
+	}
+
+	tmp = strstr(filename, "::");
+	if (tmp) {
+		*tmp = '\0';
+		filter = tmp + 2;
+
+		for (tmp = strtok_r(filter, ",", &save); tmp; tmp = strtok_r(NULL, ",", &save)) {
+			type = decode_storage(tmp);
+			if (type == QDL_STORAGE_UNKNOWN) {
+				ux_err("unknown storage type \"%s\"\n", tmp);
+				ret = -1;
+				goto out_free_filename;
+			}
+
+			type_filter |= 1 << type;
+		}
+	}
+
+	if (!type_filter)
+		type_filter = ~0U;
+
+	ret = flashmap_load(&flashmap_ops, filename, images, incdir);
+	if (ret < 0)
+		goto out_free_filename;
+
+	list_for_each_entry_safe(op, next, &flashmap_ops, node) {
+		if (op->storage_type != QDL_STORAGE_UNKNOWN)
+			current_type = op->storage_type;
+
+		if ((1 << current_type) & type_filter) {
+			list_del(&op->node);
+			list_append(firehose_ops, &op->node);
+		}
+	}
+
+	if (list_empty(firehose_ops)) {
+		ux_err("loaded flashmap does not contain any operations for selected storage type\n");
+		ret = -1;
+	}
+
+out_free_filename:
+	free(filename);
+
+	return ret;
+}
+
 static int qdl_determine_bootable(struct list_head *ops)
 {
 	struct firehose_op *op;
@@ -623,6 +693,7 @@ static int qdl_flash(int argc, char **argv)
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
 	struct sahara_image sahara_images[MAPPING_SZ] = {};
 	struct list_head firehose_ops = LIST_INIT(firehose_ops);
+	struct list_head flashmap_ops = LIST_INIT(flashmap_ops);
 	char *incdir = NULL;
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
@@ -746,9 +817,15 @@ static int qdl_flash(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	ret = decode_programmer(argv[optind++], sahara_images);
-	if (ret < 0)
-		goto out_cleanup;
+	/*
+	 * The programmer needs to either be selected explicitly or through the
+	 * "flash" subcommand. Handling of "flash" happens in the loop below.
+	 */
+	if (strcmp(argv[optind], "flash")) {
+		ret = decode_programmer(argv[optind++], sahara_images);
+		if (ret < 0)
+			goto out_cleanup;
+	}
 
 	do {
 		type = detect_type(argv[optind]);
@@ -809,6 +886,14 @@ static int qdl_flash(int argc, char **argv)
 				errx(1, "failed to add erase command");
 			optind += 1;
 			break;
+		case QDL_CMD_FLASH:
+			if (optind + 1 >= argc)
+				errx(1, "flash command missing operands");
+			ret = qdl_cmd_flash(&firehose_ops, argv[optind + 1], incdir, sahara_images);
+			if (ret < 0)
+				goto out_cleanup;
+			optind += 1;
+			break;
 		default:
 			errx(1, "%s type not yet supported", argv[optind]);
 			break;
@@ -849,6 +934,7 @@ out_cleanup:
 	sahara_images_free(sahara_images, MAPPING_SZ);
 
 	firehose_free_ops(&firehose_ops);
+	firehose_free_ops(&flashmap_ops);
 
 	if (qdl) {
 		if (qdl->vip_data.state != VIP_DISABLED)
