@@ -569,6 +569,28 @@ out_cleanup:
 	return ret;
 }
 
+static int qdl_ensure_configured(struct list_head *ops, enum qdl_storage_type storage_type)
+{
+	struct firehose_op *op;
+
+	if (list_empty(ops))
+		return 0;
+
+	op = list_entry_first(ops, struct firehose_op, node);
+	if (op->type == FIREHOSE_OP_CONFIGURE)
+		return 0;
+
+	op = firehose_alloc_op(FIREHOSE_OP_CONFIGURE);
+	if (!op)
+		return -1;
+
+	op->storage_type = storage_type;
+
+	list_prepend(ops, &op->node);
+
+	return 0;
+}
+
 static int qdl_determine_bootable(struct list_head *ops)
 {
 	struct firehose_op *op;
@@ -793,6 +815,10 @@ static int qdl_flash(int argc, char **argv)
 		}
 	} while (++optind < argc);
 
+	ret = qdl_ensure_configured(&firehose_ops, storage_type);
+	if (ret < 0)
+		goto out_cleanup;
+
 	ret = qdl_determine_bootable(&firehose_ops);
 	if (ret)
 		goto out_cleanup;
@@ -800,8 +826,6 @@ static int qdl_flash(int argc, char **argv)
 	ret = qdl_open(qdl, serial);
 	if (ret)
 		goto out_cleanup;
-
-	qdl->storage_type = storage_type;
 
 	ret = sahara_run(qdl, sahara_images, NULL, NULL);
 	if (ret < 0)
