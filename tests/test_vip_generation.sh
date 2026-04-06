@@ -25,7 +25,14 @@ fi
 
 FLAT_BUILD=${SCRIPT_PATH}/data
 
-REP_ROOT=${SCRIPT_PATH}/..
+# Generate test fixtures
+${FLAT_BUILD}/generate_flat_build.sh
+
+cleanup() {
+	rm -f ${FLAT_BUILD}/*.bin ${FLAT_BUILD}/*.img ${FLAT_BUILD}/*.elf
+}
+trap cleanup EXIT
+
 QDL_PATH=$builddir
 VIP_PATH=${FLAT_BUILD}/vip
 EXPECTED_DIGEST="d93fc596a037abe4977f50ca68e1bf57377299a496cb1436a9421579517cef13"
