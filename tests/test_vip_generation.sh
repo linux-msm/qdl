@@ -23,9 +23,17 @@ if [[ -z "${builddir}" ]]; then
     exit 1
 fi
 
-FLAT_BUILD=${SCRIPT_PATH}/data
+DATA_SRC=${SCRIPT_PATH}/data
+FLAT_BUILD=${builddir}/tests/data
 
-REP_ROOT=${SCRIPT_PATH}/..
+# Generate test fixtures in the build directory
+${DATA_SRC}/generate_flat_build.sh "${FLAT_BUILD}"
+
+cleanup() {
+	rm -rf "${FLAT_BUILD}"
+}
+trap cleanup EXIT
+
 QDL_PATH=$builddir
 VIP_PATH=${FLAT_BUILD}/vip
 EXPECTED_DIGEST="d93fc596a037abe4977f50ca68e1bf57377299a496cb1436a9421579517cef13"
