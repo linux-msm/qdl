@@ -8,6 +8,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#ifndef container_of
+#define container_of(ptr, typecast, member) ({                  \
+	void *_ptr = (void *)(ptr);		                \
+	((typeof(typecast) *)(_ptr - offsetof(typecast, member))); })
+#endif
+
 struct list_head {
 	struct list_head *prev;
 	struct list_head *next;
@@ -26,7 +32,18 @@ static inline bool list_empty(struct list_head *list)
 	return list->next == list;
 }
 
-static inline void list_add(struct list_head *list, struct list_head *item)
+static inline void list_prepend(struct list_head *list, struct list_head *item)
+{
+	struct list_head *first = list->next;
+
+	item->next = first;
+	item->prev = list;
+
+	list->next = item;
+	first->prev = item;
+}
+
+static inline void list_append(struct list_head *list, struct list_head *item)
 {
 	struct list_head *prev = list->prev;
 
@@ -60,6 +77,11 @@ static inline void list_del(struct list_head *item)
 
 #define list_for_each_entry(item, list, member) \
 	for (item = list_entry_first(list, typeof(*(item)), member); \
+	     &item->member != list; \
+	     item = list_entry_next(item, member))
+
+#define list_for_each_entry_continue(item, list, member) \
+	for (item = list_entry_next(item, member); \
 	     &item->member != list; \
 	     item = list_entry_next(item, member))
 

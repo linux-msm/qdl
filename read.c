@@ -67,7 +67,7 @@ int read_op_load(const char *read_op_file, const char *incdir)
 				read_op->filename = strdup(tmp);
 		}
 
-		list_add(&read_ops, &read_op->node);
+		list_append(&read_ops, &read_op->node);
 	}
 
 	xmlFreeDoc(doc);
@@ -127,7 +127,7 @@ int read_cmd_add(const char *address, const char *filename)
 	read_op->start_sector = strdup(buf);
 	read_op->gpt_partition = gpt_partition;
 
-	list_add(&read_ops, &read_op->node);
+	list_append(&read_ops, &read_op->node);
 
 	return 0;
 }

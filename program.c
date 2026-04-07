@@ -46,7 +46,7 @@ static int load_erase_tag(xmlNode *node, bool is_nand)
 		return -EINVAL;
 	}
 
-	list_add(&programs, &program->node);
+	list_append(&programs, &program->node);
 
 	return 0;
 }
@@ -75,7 +75,7 @@ static int program_load_sparse(struct program *program, int fd)
 		if ((off_t)program->sector_size * program->num_sectors ==
 		    lseek(fd, 0, SEEK_END)) {
 			program->sparse = false;
-			list_add(&programs, &program->node);
+			list_append(&programs, &program->node);
 			return 0;
 		}
 
@@ -136,7 +136,7 @@ static int program_load_sparse(struct program *program, int fd)
 			else
 				program_sparse->sparse_fill_value = sparse_fill_value;
 
-			list_add(&programs, &program_sparse->node);
+			list_append(&programs, &program_sparse->node);
 		}
 
 		start_sector = (unsigned int)strtoul(program->start_sector, NULL, 0);
@@ -220,7 +220,7 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 		program->filename = NULL;
 	}
 
-	list_add(&programs, &program->node);
+	list_append(&programs, &program->node);
 
 	if (fd >= 0)
 		close(fd);
@@ -435,7 +435,7 @@ int program_cmd_add(const char *address, const char *filename)
 	program->is_erase = false;
 	program->gpt_partition = gpt_partition;
 
-	list_add(&programs, &program->node);
+	list_append(&programs, &program->node);
 
 	return 0;
 }
@@ -467,7 +467,7 @@ int erase_cmd_add(const char *address)
 	program->is_erase = true;
 	program->gpt_partition = gpt_partition;
 
-	list_add(&programs, &program->node);
+	list_append(&programs, &program->node);
 
 	return 0;
 }
