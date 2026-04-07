@@ -19,7 +19,8 @@ enum {
 	QDL_FILE_PROGRAM,
 };
 
-static int flashmap_get_programmers(struct json_value *layout, struct sahara_image *images, const char *incdir)
+static int flashmap_get_programmers(struct qdl_zip *zip, struct json_value *layout,
+				    struct sahara_image *images, const char *incdir)
 {
 	struct json_value *programmers;
 	const char *filename;
@@ -49,10 +50,11 @@ static int flashmap_get_programmers(struct json_value *layout, struct sahara_ima
 
 	ux_debug("flashmap: selected programmer: %s\n", path);
 
-	return load_sahara_image(path, &images[SAHARA_ID_EHOSTDL_IMG]);
+	return load_sahara_image(zip, path, &images[SAHARA_ID_EHOSTDL_IMG]);
 }
 
-static int flashmap_load_xml(struct list_head *ops, const char *filename, bool is_nand, const char *incdir)
+static int flashmap_load_xml(struct list_head *ops, struct qdl_zip *zip, const char *filename,
+			     bool is_nand, const char *incdir)
 {
 	struct qdl_file file;
 	xmlNode *node;
@@ -63,7 +65,7 @@ static int flashmap_load_xml(struct list_head *ops, const char *filename, bool i
 	int type = QDL_FILE_UNKNOWN;
 	int ret;
 
-	ret = qdl_file_open(filename, &file);
+	ret = qdl_file_open(zip, filename, &file);
 	if (ret < 0) {
 		ux_err("unable to parse XML: %s\n", filename);
 		return -1;
@@ -111,7 +113,7 @@ static int flashmap_load_xml(struct list_head *ops, const char *filename, bool i
 
 	switch (type) {
 	case QDL_FILE_PROGRAM:
-		ret = program_load_xml(ops, doc, filename, is_nand, false, incdir);
+		ret = program_load_xml(ops, doc, zip, filename, is_nand, false, incdir);
 		break;
 	case QDL_FILE_PATCH:
 		ret = patch_load_xml(ops, doc, filename);
@@ -132,7 +134,8 @@ out_close_file:
 	return ret;
 }
 
-static int flashmap_enumerate_programmables(struct json_value *list, struct list_head *ops, const char *incdir)
+static int flashmap_enumerate_programmables(struct json_value *list, struct list_head *ops,
+					    struct qdl_zip *zip, const char *incdir)
 {
 	struct json_value *programmable;
 	struct json_value *files;
@@ -197,7 +200,7 @@ static int flashmap_enumerate_programmables(struct json_value *list, struct list
 				snprintf(path, PATH_MAX, "%s", file);
 			}
 
-			ret = flashmap_load_xml(ops, path, is_nand, incdir);
+			ret = flashmap_load_xml(ops, zip, path, is_nand, incdir);
 			if (ret)
 				return ret;
 		}
@@ -214,6 +217,7 @@ int flashmap_load(struct list_head *ops, const char *filename, struct sahara_ima
 	struct qdl_file flashmap;
 	struct json_value *json;
 	struct json_value *obj;
+	struct qdl_zip *zip;
 	const char *version;
 	const char *name;
 	size_t json_size;
@@ -221,21 +225,27 @@ int flashmap_load(struct list_head *ops, const char *filename, struct sahara_ima
 	int count;
 	int ret = -1;
 
-	ret = qdl_file_open(filename, &flashmap);
+	ret = qdl_zip_open(filename, &zip);
+	if (ret < 0) {
+		ux_err("unable to create zip reference\n");
+		return -1;
+	}
+
+	ret = qdl_file_open(zip, zip ? "flashmap.json" : filename, &flashmap);
 	if (ret < 0) {
 		ux_err("failed to open flashmap\n");
-		return -1;
+		goto out_put_zip;
 	}
 
 	json_blob = qdl_file_load(&flashmap, &json_size);
 	qdl_file_close(&flashmap);
 	if (!json_blob)
-		return -1;
+		goto out_put_zip;
 
 	json = json_parse_buf(json_blob, json_size);
 	if (!json) {
 		ux_err("failed to parse flashmap json\n");
-		goto out;
+		goto out_free_blob;
 	}
 
 	version = json_get_string(json, "version");
@@ -272,7 +282,7 @@ int flashmap_load(struct list_head *ops, const char *filename, struct sahara_ima
 
 	layout = json_get_element_object(obj, 0);
 
-	ret = flashmap_get_programmers(layout, images, incdir);
+	ret = flashmap_get_programmers(zip, layout, images, zip ? NULL : incdir);
 	if (ret)
 		goto out_free_json;
 
@@ -284,7 +294,7 @@ int flashmap_load(struct list_head *ops, const char *filename, struct sahara_ima
 		goto out_free_json;
 	}
 
-	ret = flashmap_enumerate_programmables(programmable, ops, incdir);
+	ret = flashmap_enumerate_programmables(programmable, ops, zip, zip ? NULL : incdir);
 	if (ret < 0) {
 		firehose_free_ops(ops);
 		sahara_images_free(images, MAPPING_SZ);
@@ -292,7 +302,10 @@ int flashmap_load(struct list_head *ops, const char *filename, struct sahara_ima
 
 out_free_json:
 	json_free(json);
-out:
+out_free_blob:
+	free(json_blob);
+out_put_zip:
+	qdl_zip_put(zip);
 
 	return ret;
 }

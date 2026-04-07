@@ -483,7 +483,7 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	if (!program->filename)
 		return 0;
 
-	ret = qdl_file_open(program->filename, &file);
+	ret = qdl_file_open(program->zip, program->filename, &file);
 	if (ret < 0) {
 		ux_err("unable to open %s\n", program->filename);
 		return -1;
@@ -1094,6 +1094,7 @@ void firehose_free_ops(struct list_head *ops)
 
 	list_for_each_entry_safe(op, next, ops, node) {
 		list_del(&op->node);
+		qdl_zip_put(op->zip);
 		free((void *)op->filename);
 		free((void *)op->label);
 		free((void *)op->start_sector);

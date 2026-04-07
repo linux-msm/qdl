@@ -103,7 +103,7 @@ int main(int argc, char **argv)
 				return 1;
 			}
 			filename = &optarg[colon - optarg + 1];
-			ret = load_sahara_image(filename, &mappings[file_id]);
+			ret = load_sahara_image(NULL, filename, &mappings[file_id]);
 			if (ret < 0)
 				return 1;
 

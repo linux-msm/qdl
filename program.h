@@ -10,10 +10,11 @@
 
 struct qdl_device;
 struct firehose_op;
+struct qdl_zip;
 
 int program_load(struct list_head *ops, const char *program_file, bool is_nand,
 		 bool allow_missing, const char *incdir);
-int program_load_xml(struct list_head *ops, xmlDoc *doc, const char *program_file,
+int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, const char *program_file,
 		     bool is_nand, bool allow_missing, const char *incdir);
 int erase_execute(struct qdl_device *qdl, struct firehose_op *op,
 		  int (*apply)(struct qdl_device *qdl, struct firehose_op *op));

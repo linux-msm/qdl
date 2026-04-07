@@ -28,6 +28,7 @@ struct firehose_op {
 
 	/* program, read, patch */
 	unsigned int sector_size;
+	struct qdl_zip *zip;
 	const char *filename;
 	const char *start_sector;
 
