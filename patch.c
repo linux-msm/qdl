@@ -63,7 +63,7 @@ int patch_load(const char *patch_file)
 			continue;
 		}
 
-		list_add(&patches, &patch->node);
+		list_append(&patches, &patch->node);
 	}
 
 	xmlFreeDoc(doc);
