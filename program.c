@@ -150,7 +150,8 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 	return 0;
 }
 
-static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand, bool allow_missing, const char *incdir)
+static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand,
+			    bool allow_missing, struct qdl_zip *zip, const char *incdir)
 {
 	struct firehose_op *program;
 	struct qdl_file file = {};
@@ -165,6 +166,7 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand, 
 	program->is_nand = is_nand;
 
 	program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
+	program->zip = qdl_zip_get(zip);
 	program->filename = attr_as_string(node, "filename", &errors);
 	program->label = attr_as_string(node, "label", &errors);
 	program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
@@ -196,7 +198,7 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand, 
 			}
 		}
 
-		ret = qdl_file_open(program->filename, &file);
+		ret = qdl_file_open(zip, program->filename, &file);
 		if (ret < 0) {
 			ux_info("unable to open %s", program->filename);
 			if (!allow_missing) {
@@ -230,7 +232,7 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand, 
 	return 0;
 }
 
-int program_load_xml(struct list_head *ops, xmlDoc *doc, const char *program_file,
+int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, const char *program_file,
 		     bool is_nand, bool allow_missing, const char *incdir)
 {
 	xmlNode *node;
@@ -245,7 +247,7 @@ int program_load_xml(struct list_head *ops, xmlDoc *doc, const char *program_fil
 		if (!xmlStrcmp(node->name, (xmlChar *)"erase"))
 			errors = load_erase_tag(ops, node, is_nand);
 		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
-			errors = load_program_tag(ops, node, is_nand, allow_missing, incdir);
+			errors = load_program_tag(ops, node, is_nand, allow_missing, zip, incdir);
 		else {
 			ux_err("unrecognized tag \"%s\" in program-type file \"%s\"\n", node->name, program_file);
 			errors = -EINVAL;
@@ -269,7 +271,7 @@ int program_load(struct list_head *ops, const char *program_file, bool is_nand, 
 		return -EINVAL;
 	}
 
-	errors = program_load_xml(ops, doc, program_file, is_nand, allow_missing, incdir);
+	errors = program_load_xml(ops, doc, NULL, program_file, is_nand, allow_missing, incdir);
 
 	xmlFreeDoc(doc);
 

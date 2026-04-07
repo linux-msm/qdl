@@ -25,7 +25,7 @@ jobs:
         run: |
           sudo apt-get update
 
-          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev help2man pipx
+          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev libzip-dev help2man pipx
           pipx ensurepath
           pipx install meson==1.4.0
 
@@ -73,7 +73,7 @@ jobs:
 
       - name: Dependencies
         run: |
-          brew install libxml2 meson ninja help2man
+          brew install libxml2 libzip meson ninja help2man
 
       - name: Configure
         run: meson setup build
@@ -145,6 +145,7 @@ jobs:
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-libxml2
             mingw-w64-x86_64-libusb
+            mingw-w64-x86_64-libzip
             mingw-w64-x86_64-xz
 
       - name: Configure
@@ -176,6 +177,7 @@ jobs:
           Copy-Item (Join-Path $BIN_DIR "zlib1.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "libxml2-16.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "libusb-1.0.dll") $DistDir
+          Copy-Item (Join-Path $BIN_DIR "libzip.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "liblzma-5.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "libiconv-2.dll") $DistDir
 

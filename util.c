@@ -14,6 +14,7 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include <unistd.h>
+#include <zip.h>
 
 #include "file.h"
 #include "oscompat.h"
@@ -222,14 +223,14 @@ done:
  *
  * Returns: 0 on success, -1 on error
  */
-int load_sahara_image(const char *filename, struct sahara_image *image)
+int load_sahara_image(struct qdl_zip *zip, const char *filename, struct sahara_image *image)
 {
 	struct qdl_file file;
 	size_t len;
 	void *ptr;
 	int ret;
 
-	ret = qdl_file_open(filename, &file);
+	ret = qdl_file_open(zip, filename, &file);
 	if (ret < 0) {
 		ux_err("failed to read \"%s\"\n", filename);
 		return -1;

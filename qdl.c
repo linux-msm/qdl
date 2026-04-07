@@ -347,7 +347,7 @@ static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *
 
 		free((void *)image_path);
 
-		ret = load_sahara_image(image_path_full, &images[image_id]);
+		ret = load_sahara_image(NULL, image_path_full, &images[image_id]);
 		if (ret < 0)
 			goto err_free_doc;
 	}
@@ -416,12 +416,12 @@ static int decode_programmer(char *s, struct sahara_image *images)
 			}
 
 			filename = &tail[1];
-			ret = load_sahara_image(filename, &images[id]);
+			ret = load_sahara_image(NULL, filename, &images[id]);
 			if (ret < 0)
 				return -1;
 		}
 	} else {
-		ret = load_sahara_image(s, &archive);
+		ret = load_sahara_image(NULL, s, &archive);
 		if (ret < 0)
 			return -1;
 
@@ -641,6 +641,8 @@ static int qdl_cmd_flash(struct list_head *firehose_ops, char *args, const char 
 		}
 	}
 
+	firehose_free_ops(&flashmap_ops);
+
 	if (list_empty(firehose_ops)) {
 		ux_err("loaded flashmap does not contain any operations for selected storage type\n");
 		return -1;
@@ -681,7 +683,6 @@ static int qdl_flash(int argc, char **argv)
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
 	struct sahara_image sahara_images[MAPPING_SZ] = {};
 	struct list_head firehose_ops = LIST_INIT(firehose_ops);
-	struct list_head flashmap_ops = LIST_INIT(flashmap_ops);
 	char *incdir = NULL;
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
@@ -922,7 +923,6 @@ out_cleanup:
 	sahara_images_free(sahara_images, MAPPING_SZ);
 
 	firehose_free_ops(&firehose_ops);
-	firehose_free_ops(&flashmap_ops);
 
 	if (qdl) {
 		if (qdl->vip_data.state != VIP_DISABLED)
