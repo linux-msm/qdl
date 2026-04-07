@@ -16,6 +16,7 @@
 #include <libxml/tree.h>
 
 #include "program.h"
+#include "file.h"
 #include "qdl.h"
 #include "oscompat.h"
 #include "firehose.h"
@@ -52,7 +53,7 @@ static int load_erase_tag(struct list_head *ops, xmlNode *node, bool is_nand)
 	return 0;
 }
 
-static int program_load_sparse(struct list_head *ops, struct firehose_op *program, int fd)
+static int program_load_sparse(struct list_head *ops, struct firehose_op *program, struct qdl_file *file)
 {
 	struct firehose_op *program_sparse = NULL;
 	char tmp[PATH_MAX];
@@ -64,7 +65,7 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 	off_t sparse_offset;
 	int chunk_type;
 
-	if (sparse_header_parse(fd, &sparse_header)) {
+	if (sparse_header_parse(file, &sparse_header)) {
 		/*
 		 * If the XML tag "program" contains the attribute 'sparse="true"'
 		 * for a partition node but lacks a sparse header,
@@ -73,8 +74,7 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 		 * was set by mistake, fix the sparse flag and add the
 		 * program entry to the list.
 		 */
-		if ((off_t)program->sector_size * program->num_sectors ==
-		    lseek(fd, 0, SEEK_END)) {
+		if ((off_t)program->sector_size * program->num_sectors == qdl_file_seek(file, 0, SEEK_END)) {
 			program->sparse = false;
 			list_append(ops, &program->node);
 			return 0;
@@ -86,7 +86,7 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 	}
 
 	for (uint32_t i = 0; i < sparse_header.total_chunks; ++i) {
-		chunk_type = sparse_chunk_header_parse(fd, &sparse_header,
+		chunk_type = sparse_chunk_header_parse(file, &sparse_header,
 						       &chunk_size,
 						       &sparse_fill_value,
 						       &sparse_offset);
@@ -153,10 +153,10 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand, bool allow_missing, const char *incdir)
 {
 	struct firehose_op *program;
+	struct qdl_file file = {};
 	char tmp[PATH_MAX];
 	int errors = 0;
 	int ret;
-	int fd = -1;
 
 	program = firehose_alloc_op(FIREHOSE_OP_PROGRAM);
 	if (!program)
@@ -196,8 +196,8 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand, 
 			}
 		}
 
-		fd = open(program->filename, O_RDONLY | O_BINARY);
-		if (fd < 0) {
+		ret = qdl_file_open(program->filename, &file);
+		if (ret < 0) {
 			ux_info("unable to open %s", program->filename);
 			if (!allow_missing) {
 				ux_info("...failing\n");
@@ -210,8 +210,8 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand, 
 		}
 	}
 
-	if (fd >= 0 && program->sparse) {
-		ret = program_load_sparse(ops, program, fd);
+	if (program->filename && program->sparse) {
+		ret = program_load_sparse(ops, program, &file);
 		if (ret < 0)
 			return -1;
 
@@ -225,8 +225,7 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand, 
 
 	list_append(ops, &program->node);
 
-	if (fd >= 0)
-		close(fd);
+	qdl_file_close(&file);
 
 	return 0;
 }

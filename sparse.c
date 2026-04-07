@@ -18,14 +18,15 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "file.h"
 #include "sparse.h"
 #include "qdl.h"
 
-int sparse_header_parse(int fd, sparse_header_t *sparse_header)
+int sparse_header_parse(struct qdl_file *file, sparse_header_t *sparse_header)
 {
-	lseek(fd, 0, SEEK_SET);
+	qdl_file_seek(file, 0, SEEK_SET);
 
-	if (read(fd, sparse_header, sizeof(sparse_header_t)) != sizeof(sparse_header_t)) {
+	if (qdl_file_read(file, sparse_header, sizeof(sparse_header_t)) != sizeof(sparse_header_t)) {
 		ux_err("[SPARSE] Unable to read sparse header\n");
 		return -EINVAL;
 	}
@@ -46,12 +47,13 @@ int sparse_header_parse(int fd, sparse_header_t *sparse_header)
 	}
 
 	if (sparse_header->file_hdr_sz > sizeof(sparse_header_t))
-		lseek(fd, sparse_header->file_hdr_sz - sizeof(sparse_header_t), SEEK_CUR);
+		qdl_file_seek(file, sparse_header->file_hdr_sz - sizeof(sparse_header_t), SEEK_CUR);
 
 	return 0;
 }
 
-int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
+int sparse_chunk_header_parse(struct qdl_file *file,
+			      sparse_header_t *sparse_header,
 			      uint64_t *chunk_size,
 			      uint32_t *value,
 			      off_t *offset)
@@ -63,13 +65,13 @@ int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
 	*chunk_size = 0;
 	*value = 0;
 
-	if (read(fd, &chunk_header, sizeof(chunk_header_t)) != sizeof(chunk_header_t)) {
+	if (qdl_file_read(file, &chunk_header, sizeof(chunk_header_t)) != sizeof(chunk_header_t)) {
 		ux_err("[SPARSE] Unable to read sparse chunk header\n");
 		return -EINVAL;
 	}
 
 	if (sparse_header->chunk_hdr_sz > sizeof(chunk_header_t))
-		lseek(fd, sparse_header->chunk_hdr_sz - sizeof(chunk_header_t), SEEK_CUR);
+		qdl_file_seek(file, sparse_header->chunk_hdr_sz - sizeof(chunk_header_t), SEEK_CUR);
 
 	type = chunk_header.chunk_type;
 	*chunk_size = (uint64_t)chunk_header.chunk_sz * sparse_header->blk_sz;
@@ -82,10 +84,10 @@ int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
 		}
 
 		/* Save the current file offset in the 'value' variable */
-		*offset = lseek(fd, 0, SEEK_CUR);
+		*offset = qdl_file_seek(file, 0, SEEK_CUR);
 
 		/* Move the file cursor forward by the size of the chunk */
-		lseek(fd, *chunk_size, SEEK_CUR);
+		qdl_file_seek(file, *chunk_size, SEEK_CUR);
 		break;
 	case CHUNK_TYPE_DONT_CARE:
 		if (chunk_header.total_sz != sparse_header->chunk_hdr_sz) {
@@ -99,7 +101,7 @@ int sparse_chunk_header_parse(int fd, sparse_header_t *sparse_header,
 			return -EINVAL;
 		}
 
-		if (read(fd, &fill_value, sizeof(fill_value)) != sizeof(fill_value)) {
+		if (qdl_file_read(file, &fill_value, sizeof(fill_value)) != sizeof(fill_value)) {
 			ux_err("[SPARSE] Unable to read fill value\n");
 			return -EINVAL;
 		}

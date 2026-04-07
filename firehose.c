@@ -23,6 +23,7 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include "qdl.h"
+#include "file.h"
 #include "firehose.h"
 #include "ufs.h"
 #include "oscompat.h"
@@ -458,7 +459,7 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	unsigned int num_sectors;
 	unsigned int sector_size;
 	unsigned int zlp_timeout = 10000;
-	struct stat sb;
+	struct qdl_file file;
 	size_t chunk_size;
 	xmlNode *root;
 	xmlNode *node;
@@ -468,7 +469,6 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	time_t t;
 	size_t left;
 	int ret;
-	int fd;
 	int n;
 	size_t i;
 	uint32_t fill_value;
@@ -483,8 +483,8 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	if (!program->filename)
 		return 0;
 
-	fd = open(program->filename, O_RDONLY | O_BINARY);
-	if (fd < 0) {
+	ret = qdl_file_open(program->filename, &file);
+	if (ret < 0) {
 		ux_err("unable to open %s\n", program->filename);
 		return -1;
 	}
@@ -492,14 +492,8 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	num_sectors = program->num_sectors;
 	sector_size = program->sector_size ? : qdl->sector_size;
 
-	ret = fstat(fd, &sb);
-	if (ret < 0) {
-		ux_err("failed to stat \"%s\": %m\n", program->filename);
-		goto err_close_fd;
-	}
-
 	if (!program->sparse) {
-		num_sectors = (sb.st_size + sector_size - 1) / sector_size;
+		num_sectors = (qdl_file_getsize(&file) + sector_size - 1) / sector_size;
 
 		if (program->num_sectors && num_sectors > program->num_sectors) {
 			ux_err("%s to big for %s truncated to %d\n",
@@ -551,11 +545,11 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	t0 = time(NULL);
 
 	if (!program->sparse) {
-		lseek(fd, (off_t)program->file_offset * sector_size, SEEK_SET);
+		qdl_file_seek(&file, (off_t)program->file_offset * sector_size, SEEK_SET);
 	} else {
 		switch (program->sparse_chunk_type) {
 		case CHUNK_TYPE_RAW:
-			lseek(fd, program->sparse_offset, SEEK_SET);
+			qdl_file_seek(&file, program->sparse_offset, SEEK_SET);
 			break;
 		case CHUNK_TYPE_FILL:
 			fill_value = program->sparse_fill_value;
@@ -582,7 +576,7 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
 
 		if (!program->sparse || program->sparse_chunk_type != CHUNK_TYPE_FILL) {
-			n = read(fd, buf, chunk_size * sector_size);
+			n = qdl_file_read(&file, buf, chunk_size * sector_size);
 			if (n < 0) {
 				ux_err("failed to read %s\n", program->filename);
 				goto err_free_doc;
@@ -636,7 +630,7 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 
 	xmlFreeDoc(doc);
 	free(buf);
-	close(fd);
+	qdl_file_close(&file);
 
 	return 0;
 
@@ -644,7 +638,7 @@ err_free_doc:
 	xmlFreeDoc(doc);
 	free(buf);
 err_close_fd:
-	close(fd);
+	qdl_file_close(&file);
 
 	return -1;
 }

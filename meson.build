@@ -37,7 +37,7 @@ version_h = configure_file(
 )
 
 common_sources = files(
-  'sahara.c', 'util.c', 'ux.c', 'oscompat.c'
+  'sahara.c', 'util.c', 'ux.c', 'oscompat.c', 'file.c'
 )
 
 shared_lib = static_library('qdl_common', common_sources, dependencies: common_dep)
