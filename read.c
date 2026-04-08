@@ -19,14 +19,16 @@
 
 static struct list_head read_ops = LIST_INIT(read_ops);
 
-int read_op_load(const char *read_op_file, const char *incdir)
+int read_op_load(const char *read_op_file, struct list_head *incdirs)
 {
+	struct incdir_entry *incdir;
 	struct read_op *read_op;
 	xmlNode *node;
 	xmlNode *root;
 	xmlDoc *doc;
 	int errors;
 	char tmp[PATH_MAX];
+	bool found = false;
 
 	doc = xmlReadFile(read_op_file, NULL, 0);
 	if (!doc) {
@@ -61,10 +63,18 @@ int read_op_load(const char *read_op_file, const char *incdir)
 			continue;
 		}
 
-		if (incdir) {
-			snprintf(tmp, PATH_MAX, "%s/%s", incdir, read_op->filename);
-			if (access(tmp, F_OK) != -1)
-				read_op->filename = strdup(tmp);
+		if (read_op->filename) {
+			list_for_each_entry(incdir, incdirs, node) {
+				snprintf(tmp, PATH_MAX, "%s/%s", incdir->path, read_op->filename);
+				if (access(tmp, F_OK) != -1) {
+					free((void *)read_op->filename);
+					read_op->filename = strdup(tmp);
+					if (found)
+						ux_info("multiple files found for %s, using %s\n",
+							read_op->filename, tmp);
+					found = true;
+				}
+			}
 		}
 
 		list_add(&read_ops, &read_op->node);

@@ -568,11 +568,20 @@ out_cleanup:
 	return ret;
 }
 
+static void free_incdirs(struct list_head *incdirs)
+{
+	struct incdir_entry *incdir, *tmp;
+
+	list_for_each_entry_safe(incdir, tmp, incdirs, node)
+		free(incdir);
+}
+
 static int qdl_flash(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
 	struct sahara_image sahara_images[MAPPING_SZ] = {};
-	char *incdir = NULL;
+	struct list_head incdirs = LIST_INIT(incdirs);
+	struct incdir_entry *incdir;
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
 	const char *vip_table_path = NULL;
@@ -625,7 +634,9 @@ static int qdl_flash(int argc, char **argv)
 			allow_missing = true;
 			break;
 		case 'i':
-			incdir = optarg;
+			incdir = calloc(1, sizeof(*incdir));
+			incdir->path = optarg;
+			list_add(&incdirs, &incdir->node);
 			break;
 		case 'l':
 			qdl_finalize_provisioning = true;
@@ -711,7 +722,7 @@ static int qdl_flash(int argc, char **argv)
 				errx(1, "patch_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_PROGRAM:
-			ret = program_load(argv[optind], storage_type == QDL_STORAGE_NAND, allow_missing, incdir);
+			ret = program_load(argv[optind], storage_type == QDL_STORAGE_NAND, allow_missing, &incdirs);
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[optind]);
 
@@ -720,7 +731,7 @@ static int qdl_flash(int argc, char **argv)
 					" changes. Allow explicitly with --allow-fusing parameter");
 			break;
 		case QDL_FILE_READ:
-			ret = read_op_load(argv[optind], incdir);
+			ret = read_op_load(argv[optind], &incdirs);
 			if (ret < 0)
 				errx(1, "read_op_load %s failed", argv[optind]);
 			break;
@@ -791,6 +802,7 @@ out_cleanup:
 
 	free_programs();
 	free_patches();
+	free_incdirs(&incdirs);
 
 	if (qdl) {
 		if (qdl->vip_data.state != VIP_DISABLED)
