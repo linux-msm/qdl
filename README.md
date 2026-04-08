@@ -88,6 +88,26 @@ the board to flash through the `--serial` option:
 qdl --serial=0AA94EFD prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
 
+### Flashing installer packages
+
+If you have an installer package intead of individual binaries and XML
+definitions, you can flash this using the *flash* subcommand:
+
+```bash
+qdl flash <installer.zip>
+```
+
+If the *installer package* is unpacked it can be installed as:
+
+```bash
+qdl flash flashmap.json
+```
+
+These can of course be combined with e.g. *--serial*.
+
+A subset of the installer package can be selected for installation by appending
+a **::<storage1>[,<storage2>...]** suffix to the file name.
+
 ### Flash simulation (dry run)
 
 Use the `--dry-run` option to run QDL without connecting to or flashing any
