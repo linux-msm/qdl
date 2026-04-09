@@ -13,6 +13,7 @@ ver   = env_v != '' ? env_v : git_v
 # Dependencies
 libusb_dep = dependency('libusb-1.0')
 libxml_dep = dependency('libxml-2.0')
+libzip_dep = dependency('libzip')
 help2man = find_program('help2man', required: false)
 
 # Common include dirs
@@ -24,7 +25,7 @@ if host_machine.system() == 'windows'
   ws2_dep = meson.get_compiler('c').find_library('ws2_32', required : false)
 endif
 
-common_dep = [libusb_dep, libxml_dep, ws2_dep]
+common_dep = [libusb_dep, libxml_dep, libzip_dep, ws2_dep]
 
 # --- version header generation ---
 conf = configuration_data()
@@ -37,7 +38,7 @@ version_h = configure_file(
 )
 
 common_sources = files(
-  'sahara.c', 'util.c', 'ux.c', 'oscompat.c'
+  'sahara.c', 'util.c', 'ux.c', 'oscompat.c', 'file.c'
 )
 
 shared_lib = static_library('qdl_common', common_sources, dependencies: common_dep)
@@ -47,7 +48,7 @@ qdl_sources = files(
   'firehose.c',
   'io.c', 'qdl.c', 'patch.c',
   'program.c', 'read.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
-  'vip.c', 'sparse.c', 'gpt.c'
+  'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c'
 )
 
 qdl_exe = executable('qdl',

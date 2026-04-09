@@ -14,7 +14,9 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include <unistd.h>
+#include <zip.h>
 
+#include "file.h"
 #include "oscompat.h"
 #include "qdl.h"
 #include "version.h"
@@ -221,49 +223,33 @@ done:
  *
  * Returns: 0 on success, -1 on error
  */
-int load_sahara_image(const char *filename, struct sahara_image *image)
+int load_sahara_image(struct qdl_zip *zip, const char *filename, struct sahara_image *image)
 {
-	ssize_t n;
-	off_t len;
+	struct qdl_file file;
+	size_t len;
 	void *ptr;
-	int fd;
+	int ret;
 
-	fd = open(filename, O_RDONLY | O_BINARY);
-	if (fd < 0) {
+	ret = qdl_file_open(zip, filename, &file);
+	if (ret < 0) {
 		ux_err("failed to read \"%s\"\n", filename);
 		return -1;
 	}
 
-	len = lseek(fd, 0, SEEK_END);
-	if (len < 0) {
-		ux_err("failed to find end of \"%s\"\n", filename);
+	ptr = qdl_file_load(&file, &len);
+	if (!ptr)
 		goto err_close;
-	}
-	lseek(fd, 0, SEEK_SET);
-
-	ptr = malloc(len);
-	if (!ptr) {
-		ux_err("failed to init buffer for content of \"%s\"\n", filename);
-		goto err_close;
-	}
-
-	n = read(fd, ptr, len);
-	if (n != len) {
-		ux_err("failed to read content of \"%s\"\n", filename);
-		free(ptr);
-		goto err_close;
-	}
-
-	close(fd);
 
 	image->name = strdup(filename);
 	image->ptr = ptr;
 	image->len = len;
 
+	qdl_file_close(&file);
+
 	return 0;
 
 err_close:
-	close(fd);
+	qdl_file_close(&file);
 	return -1;
 }
 

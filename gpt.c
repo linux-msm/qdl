@@ -2,6 +2,7 @@
 /*
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
+#include "firehose.h"
 #include <stdlib.h>
 #include <string.h>
 #define _FILE_OFFSET_BITS 64
@@ -138,7 +139,7 @@ static int gpt_load_table_from_partition(struct qdl_device *qdl, unsigned int ph
 	struct gpt_entry *entry;
 	struct gpt_header gpt;
 	uint8_t buf[4096];
-	struct read_op op;
+	struct firehose_op op;
 	unsigned int offset;
 	uint64_t lba;
 	char lba_buf[21];
@@ -149,6 +150,7 @@ static int gpt_load_table_from_partition(struct qdl_device *qdl, unsigned int ph
 
 	memset(&op, 0, sizeof(op));
 
+	op.type = FIREHOSE_OP_READ;
 	op.sector_size = qdl->sector_size;
 	op.start_sector = "1";
 	op.num_sectors = 1;
@@ -276,6 +278,34 @@ int gpt_find_by_name(struct qdl_device *qdl, const char *name, int *phys_partiti
 		else
 			ux_err("no partition \"%s\" found\n", name);
 		return -1;
+	}
+
+	return 0;
+}
+
+int gpt_resolve_deferrals(struct qdl_device *qdl, struct list_head *ops)
+{
+	unsigned int start_sector;
+	struct firehose_op *op;
+	char buf[20];
+	int ret;
+
+	list_for_each_entry(op, ops, node) {
+		if (op->type != FIREHOSE_OP_PROGRAM &&
+		    op->type != FIREHOSE_OP_ERASE &&
+		    op->type != FIREHOSE_OP_READ)
+			continue;
+
+		if (!op->gpt_partition)
+			continue;
+
+		ret = gpt_find_by_name(qdl, op->gpt_partition, &op->partition,
+				       &start_sector, &op->num_sectors);
+		if (ret < 0)
+			return -1;
+
+		sprintf(buf, "%u", start_sector);
+		op->start_sector = strdup(buf);
 	}
 
 	return 0;
