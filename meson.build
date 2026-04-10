@@ -71,10 +71,10 @@ qdl_ramdump_exe = executable('qdl-ramdump',
   install : true
 )
 
-# --- ks executable ---
+# --- qdl-ks executable ---
 ks_sources = files('ks.c')
 
-ks_exe = executable('ks',
+qdl_ks_exe = executable('qdl-ks',
   sources : ks_sources + [version_h],
   link_with: shared_lib,
   dependencies : common_dep,
@@ -109,7 +109,7 @@ if help2man.found()
     foreach prog : [
       ['qdl', qdl_exe, 'Qualcomm Download'],
       ['qdl-ramdump', qdl_ramdump_exe, 'Qualcomm Download Ramdump'],
-      ['ks', ks_exe, 'KS']
+      ['qdl-ks', qdl_ks_exe, 'Qualcomm KS']
     ]
       manpage_targets += custom_target(prog[0] + '.1',
         input: prog[1],
