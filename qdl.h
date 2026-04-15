@@ -10,6 +10,7 @@
 #endif
 
 #include <stdbool.h>
+#include <zip.h>
 
 #include "patch.h"
 #include "program.h"
@@ -64,7 +65,7 @@ struct qdl_device {
 	int fd;
 	size_t max_payload_size;
 	size_t sector_size;
-	enum qdl_storage_type storage_type;
+	enum qdl_storage_type current_storage_type;
 	unsigned int slot;
 
 	int (*open)(struct qdl_device *qdl, const char *serial);
@@ -83,6 +84,8 @@ struct sahara_image {
 	void *ptr;
 	size_t len;
 };
+
+struct qdl_zip;
 
 struct libusb_device_handle;
 
@@ -106,13 +109,13 @@ struct qdl_device_desc {
 
 struct qdl_device_desc *usb_list(unsigned int *devices_found);
 
-int firehose_run(struct qdl_device *qdl);
+int firehose_run(struct qdl_device *qdl, struct list_head *ops);
 int firehose_provision(struct qdl_device *qdl);
-int firehose_read_buf(struct qdl_device *qdl, struct read_op *read_op, void *out_buf, size_t out_size);
+int firehose_read_buf(struct qdl_device *qdl, struct firehose_op *read_op, void *out_buf, size_t out_size);
 int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	       const char *ramdump_path,
 	       const char *ramdump_filter);
-int load_sahara_image(const char *filename, struct sahara_image *image);
+int load_sahara_image(struct qdl_zip *zip, const char *filename, struct sahara_image *image);
 void sahara_images_free(struct sahara_image *images, size_t count);
 void print_hex_dump(const char *prefix, const void *buf, size_t len);
 unsigned int attr_as_unsigned(xmlNode *node, const char *attr, int *errors);
@@ -131,6 +134,8 @@ void print_version(void);
 int parse_storage_address(const char *address, int *physical_partition,
 			  unsigned int *start_sector, unsigned int *num_sectors,
 			  char **gpt_partition);
+
+enum qdl_storage_type decode_storage(const char *storage);
 
 extern bool qdl_debug;
 

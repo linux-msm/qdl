@@ -11,7 +11,7 @@ IDs `9008`, `900e`, `901d`) to upload a flash loader and use it to flash images.
 ### Linux
 
 ```bash
-sudo apt install libxml2-dev libusb-1.0-0-dev meson ninja-build help2man
+sudo apt install libxml2-dev libusb-1.0-0-dev libzip-dev meson ninja-build help2man
 meson setup build
 meson compile -C build
 ```
@@ -21,7 +21,7 @@ meson compile -C build
 For Homebrew users:
 
 ```bash
-brew install libxml2 libusb meson ninja help2man
+brew install libxml2 libusb libzip meson ninja help2man
 meson setup build
 meson compile -C build
 ```
@@ -29,7 +29,7 @@ meson compile -C build
 For MacPorts users:
 
 ```bash
-sudo port install libxml2 libusb meson ninja help2man
+sudo port install libxml2 libusb libzip meson ninja help2man
 meson setup build
 meson compile -C build
 ```
@@ -49,6 +49,7 @@ pacman -S mingw-w64-x86_64-meson
 pacman -S mingw-w64-x86_64-ninja
 pacman -S mingw-w64-x86_64-libusb
 pacman -S mingw-w64-x86_64-libxml2
+pacman -S mingw-w64-x86_64-libzip
 ```
 
 Then use the `meson` tool to build QDL:
@@ -86,6 +87,26 @@ the board to flash through the `--serial` option:
 ```bash
 qdl --serial=0AA94EFD prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
+
+### Flashing installer packages
+
+If you have an installer package intead of individual binaries and XML
+definitions, you can flash this using the *flash* subcommand:
+
+```bash
+qdl flash <installer.zip>
+```
+
+If the *installer package* is unpacked it can be installed as:
+
+```bash
+qdl flash flashmap.json
+```
+
+These can of course be combined with e.g. *--serial*.
+
+A subset of the installer package can be selected for installation by appending
+a **::<storage1>[,<storage2>...]** suffix to the file name.
 
 ### Flash simulation (dry run)
 

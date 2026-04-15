@@ -15,13 +15,12 @@
 #include "read.h"
 #include "qdl.h"
 #include "oscompat.h"
+#include "firehose.h"
 #include "gpt.h"
 
-static struct list_head read_ops = LIST_INIT(read_ops);
-
-int read_op_load(const char *read_op_file, const char *incdir)
+int read_op_load(struct list_head *ops, const char *read_op_file, const char *incdir)
 {
-	struct read_op *read_op;
+	struct firehose_op *read_op;
 	xmlNode *node;
 	xmlNode *root;
 	xmlDoc *doc;
@@ -47,7 +46,7 @@ int read_op_load(const char *read_op_file, const char *incdir)
 
 		errors = 0;
 
-		read_op = calloc(1, sizeof(struct read_op));
+		read_op = firehose_alloc_op(FIREHOSE_OP_READ);
 
 		read_op->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
 		read_op->filename = attr_as_string(node, "filename", &errors);
@@ -67,7 +66,7 @@ int read_op_load(const char *read_op_file, const char *incdir)
 				read_op->filename = strdup(tmp);
 		}
 
-		list_add(&read_ops, &read_op->node);
+		list_append(ops, &read_op->node);
 	}
 
 	xmlFreeDoc(doc);
@@ -75,34 +74,11 @@ int read_op_load(const char *read_op_file, const char *incdir)
 	return 0;
 }
 
-int read_op_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct read_op *read_op, int fd))
+int read_cmd_add(struct list_head *ops, const char *address, const char *filename)
 {
-	struct read_op *read_op;
-	int ret;
-	int fd;
-
-	list_for_each_entry(read_op, &read_ops, node) {
-		fd = open(read_op->filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
-		if (fd < 0) {
-			ux_info("unable to open %s...\n", read_op->filename);
-			return ret;
-		}
-
-		ret = apply(qdl, read_op, fd);
-
-		close(fd);
-		if (ret)
-			return ret;
-	}
-
-	return 0;
-}
-
-int read_cmd_add(const char *address, const char *filename)
-{
+	struct firehose_op *read_op;
 	unsigned int start_sector;
 	unsigned int num_sectors;
-	struct read_op *read_op;
 	char *gpt_partition;
 	int partition;
 	char buf[20];
@@ -117,7 +93,9 @@ int read_cmd_add(const char *address, const char *filename)
 		return -1;
 	}
 
-	read_op = calloc(1, sizeof(struct read_op));
+	read_op = firehose_alloc_op(FIREHOSE_OP_READ);
+	if (!read_op)
+		return -1;
 
 	read_op->sector_size = 0;
 	read_op->filename = strdup(filename);
@@ -127,30 +105,7 @@ int read_cmd_add(const char *address, const char *filename)
 	read_op->start_sector = strdup(buf);
 	read_op->gpt_partition = gpt_partition;
 
-	list_add(&read_ops, &read_op->node);
-
-	return 0;
-}
-
-int read_resolve_gpt_deferrals(struct qdl_device *qdl)
-{
-	struct read_op *read_op;
-	unsigned int start_sector;
-	char buf[20];
-	int ret;
-
-	list_for_each_entry(read_op, &read_ops, node) {
-		if (!read_op->gpt_partition)
-			continue;
-
-		ret = gpt_find_by_name(qdl, read_op->gpt_partition, &read_op->partition,
-				       &start_sector, &read_op->num_sectors);
-		if (ret < 0)
-			return -1;
-
-		sprintf(buf, "%u", start_sector);
-		read_op->start_sector = strdup(buf);
-	}
+	list_append(ops, &read_op->node);
 
 	return 0;
 }

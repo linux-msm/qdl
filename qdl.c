@@ -17,6 +17,8 @@
 #include <unistd.h>
 
 #include "qdl.h"
+#include "firehose.h"
+#include "flashmap.h"
 #include "patch.h"
 #include "program.h"
 #include "ufs.h"
@@ -39,6 +41,7 @@ enum {
 	QDL_CMD_READ,
 	QDL_CMD_WRITE,
 	QDL_CMD_ERASE,
+	QDL_CMD_FLASH,
 };
 
 bool qdl_debug;
@@ -56,6 +59,8 @@ static int detect_type(const char *verb)
 		return QDL_CMD_WRITE;
 	if (!strcmp(verb, "erase"))
 		return QDL_CMD_ERASE;
+	if (!strcmp(verb, "flash"))
+		return QDL_CMD_FLASH;
 
 	if (access(verb, F_OK)) {
 		ux_err("%s is not a verb and not a XML file\n", verb);
@@ -97,7 +102,7 @@ static int detect_type(const char *verb)
 	return type;
 }
 
-static enum qdl_storage_type decode_storage(const char *storage)
+enum qdl_storage_type decode_storage(const char *storage)
 {
 
 	if (!strcmp(storage, "emmc"))
@@ -342,7 +347,7 @@ static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *
 
 		free((void *)image_path);
 
-		ret = load_sahara_image(image_path_full, &images[image_id]);
+		ret = load_sahara_image(NULL, image_path_full, &images[image_id]);
 		if (ret < 0)
 			goto err_free_doc;
 	}
@@ -411,12 +416,12 @@ static int decode_programmer(char *s, struct sahara_image *images)
 			}
 
 			filename = &tail[1];
-			ret = load_sahara_image(filename, &images[id]);
+			ret = load_sahara_image(NULL, filename, &images[id]);
 			if (ret < 0)
 				return -1;
 		}
 	} else {
-		ret = load_sahara_image(s, &archive);
+		ret = load_sahara_image(NULL, s, &archive);
 		if (ret < 0)
 			return -1;
 
@@ -568,10 +573,116 @@ out_cleanup:
 	return ret;
 }
 
+static int qdl_ensure_configured(struct list_head *ops, enum qdl_storage_type storage_type)
+{
+	struct firehose_op *op;
+
+	if (list_empty(ops))
+		return 0;
+
+	op = list_entry_first(ops, struct firehose_op, node);
+	if (op->type == FIREHOSE_OP_CONFIGURE)
+		return 0;
+
+	op = firehose_alloc_op(FIREHOSE_OP_CONFIGURE);
+	if (!op)
+		return -1;
+
+	op->storage_type = storage_type;
+
+	list_prepend(ops, &op->node);
+
+	return 0;
+}
+
+static int qdl_cmd_flash(struct list_head *firehose_ops, char *args, const char *incdir, struct sahara_image *images)
+{
+	enum qdl_storage_type current_type = QDL_STORAGE_UNKNOWN;
+	struct list_head flashmap_ops = LIST_INIT(flashmap_ops);
+	enum qdl_storage_type type;
+	unsigned int type_filter = 0;
+	struct firehose_op *next;
+	struct firehose_op *op;
+	char *filter;
+	char *save;
+	char *tmp;
+	int ret;
+
+	tmp = strstr(args, "::");
+	if (tmp) {
+		*tmp = '\0';
+		filter = tmp + 2;
+
+		for (tmp = strtok_r(filter, ",", &save); tmp; tmp = strtok_r(NULL, ",", &save)) {
+			type = decode_storage(tmp);
+			if (type == QDL_STORAGE_UNKNOWN) {
+				ux_err("unknown storage type \"%s\"\n", tmp);
+				return -1;
+			}
+
+			type_filter |= 1 << type;
+		}
+	}
+
+	if (!type_filter)
+		type_filter = ~0U;
+
+	ret = flashmap_load(&flashmap_ops, args, images, incdir);
+	if (ret < 0)
+		errx(1, "flashmap_load failed");
+
+	list_for_each_entry_safe(op, next, &flashmap_ops, node) {
+		if (op->storage_type != QDL_STORAGE_UNKNOWN)
+			current_type = op->storage_type;
+
+		if ((1 << current_type) & type_filter) {
+			list_del(&op->node);
+			list_append(firehose_ops, &op->node);
+		}
+	}
+
+	firehose_free_ops(&flashmap_ops);
+
+	if (list_empty(firehose_ops)) {
+		ux_err("loaded flashmap does not contain any operations for selected storage type\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int qdl_determine_bootable(struct list_head *ops)
+{
+	struct firehose_op *op;
+	bool multiple;
+	int bootable;
+
+	bootable = program_find_bootable_partition(ops, &multiple);
+	if (bootable < 0) {
+		ux_debug("no boot partition found\n");
+		return 0;
+	}
+
+	if (multiple)
+		ux_info("Multiple candidates for primary bootloader found, using partition %d\n",
+			bootable);
+
+	op = firehose_alloc_op(FIREHOSE_OP_SET_BOOTABLE);
+	if (!op)
+		return -1;
+
+	op->partition = bootable;
+
+	list_append(ops, &op->node);
+
+	return 0;
+}
+
 static int qdl_flash(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
 	struct sahara_image sahara_images[MAPPING_SZ] = {};
+	struct list_head firehose_ops = LIST_INIT(firehose_ops);
 	char *incdir = NULL;
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
@@ -695,9 +806,15 @@ static int qdl_flash(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	ret = decode_programmer(argv[optind++], sahara_images);
-	if (ret < 0)
-		goto out_cleanup;
+	/*
+	 * The programmer needs to either be selected explicitly or through the
+	 * "flash" subcommand. Handling of "flash" happens in the loop below.
+	 */
+	if (strcmp(argv[optind], "flash")) {
+		ret = decode_programmer(argv[optind++], sahara_images);
+		if (ret < 0)
+			goto out_cleanup;
+	}
 
 	do {
 		type = detect_type(argv[optind]);
@@ -706,21 +823,23 @@ static int qdl_flash(int argc, char **argv)
 
 		switch (type) {
 		case QDL_FILE_PATCH:
-			ret = patch_load(argv[optind]);
+			ret = patch_load(&firehose_ops, argv[optind]);
 			if (ret < 0)
 				errx(1, "patch_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_PROGRAM:
-			ret = program_load(argv[optind], storage_type == QDL_STORAGE_NAND, allow_missing, incdir);
+			ret = program_load(&firehose_ops, argv[optind],
+					   storage_type == QDL_STORAGE_NAND,
+					   allow_missing, incdir);
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[optind]);
 
-			if (!allow_fusing && program_is_sec_partition_flashed())
+			if (!allow_fusing && program_is_sec_partition_flashed(&firehose_ops))
 				errx(1, "secdata partition to be programmed, which can lead to irreversible"
 					" changes. Allow explicitly with --allow-fusing parameter");
 			break;
 		case QDL_FILE_READ:
-			ret = read_op_load(argv[optind], incdir);
+			ret = read_op_load(&firehose_ops, argv[optind], incdir);
 			if (ret < 0)
 				errx(1, "read_op_load %s failed", argv[optind]);
 			break;
@@ -735,7 +854,7 @@ static int qdl_flash(int argc, char **argv)
 		case QDL_CMD_READ:
 			if (optind + 2 >= argc)
 				errx(1, "read command missing arguments");
-			ret = read_cmd_add(argv[optind + 1], argv[optind + 2]);
+			ret = read_cmd_add(&firehose_ops, argv[optind + 1], argv[optind + 2]);
 			if (ret < 0)
 				errx(1, "failed to add read command");
 			optind += 2;
@@ -743,7 +862,7 @@ static int qdl_flash(int argc, char **argv)
 		case QDL_CMD_WRITE:
 			if (optind + 2 >= argc)
 				errx(1, "write command missing arguments");
-			ret = program_cmd_add(argv[optind + 1], argv[optind + 2]);
+			ret = program_cmd_add(&firehose_ops, argv[optind + 1], argv[optind + 2]);
 			if (ret < 0)
 				errx(1, "failed to add write command");
 			optind += 2;
@@ -751,9 +870,17 @@ static int qdl_flash(int argc, char **argv)
 		case QDL_CMD_ERASE:
 			if (optind + 1 >= argc)
 				errx(1, "erase command missing address");
-			ret = erase_cmd_add(argv[optind + 1]);
+			ret = erase_cmd_add(&firehose_ops, argv[optind + 1]);
 			if (ret < 0)
 				errx(1, "failed to add erase command");
+			optind += 1;
+			break;
+		case QDL_CMD_FLASH:
+			if (optind + 1 >= argc)
+				errx(1, "flash command missing operands");
+			ret = qdl_cmd_flash(&firehose_ops, argv[optind + 1], incdir, sahara_images);
+			if (ret < 0)
+				goto out_cleanup;
 			optind += 1;
 			break;
 		default:
@@ -762,11 +889,17 @@ static int qdl_flash(int argc, char **argv)
 		}
 	} while (++optind < argc);
 
-	ret = qdl_open(qdl, serial);
+	ret = qdl_ensure_configured(&firehose_ops, storage_type);
+	if (ret < 0)
+		goto out_cleanup;
+
+	ret = qdl_determine_bootable(&firehose_ops);
 	if (ret)
 		goto out_cleanup;
 
-	qdl->storage_type = storage_type;
+	ret = qdl_open(qdl, serial);
+	if (ret)
+		goto out_cleanup;
 
 	ret = sahara_run(qdl, sahara_images, NULL, NULL);
 	if (ret < 0)
@@ -775,7 +908,7 @@ static int qdl_flash(int argc, char **argv)
 	if (ufs_need_provisioning())
 		ret = firehose_provision(qdl);
 	else
-		ret = firehose_run(qdl);
+		ret = firehose_run(qdl, &firehose_ops);
 	if (ret < 0)
 		goto out_cleanup;
 
@@ -789,8 +922,7 @@ out_cleanup:
 
 	sahara_images_free(sahara_images, MAPPING_SZ);
 
-	free_programs();
-	free_patches();
+	firehose_free_ops(&firehose_ops);
 
 	if (qdl) {
 		if (qdl->vip_data.state != VIP_DISABLED)
