@@ -586,6 +586,7 @@ static int qdl_flash(int argc, char **argv)
 	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
 	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
+	bool run_firehose = false;
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
@@ -659,8 +660,8 @@ static int qdl_flash(int argc, char **argv)
 		}
 	}
 
-	/* at least 2 non optional args required */
-	if ((optind + 2) > argc) {
+	/* the programmer arg is always required. */
+	if ((optind + 1) > argc) {
 		print_usage(stderr);
 		return 1;
 	}
@@ -699,7 +700,8 @@ static int qdl_flash(int argc, char **argv)
 	if (ret < 0)
 		goto out_cleanup;
 
-	do {
+	while (optind < argc) {
+		run_firehose = true;
 		type = detect_type(argv[optind]);
 		if (type < 0 || type == QDL_FILE_UNKNOWN)
 			errx(1, "failed to detect file type of %s\n", argv[optind]);
@@ -760,7 +762,8 @@ static int qdl_flash(int argc, char **argv)
 			errx(1, "%s type not yet supported", argv[optind]);
 			break;
 		}
-	} while (++optind < argc);
+		++optind;
+	}
 
 	ret = qdl_open(qdl, serial);
 	if (ret)
@@ -772,9 +775,9 @@ static int qdl_flash(int argc, char **argv)
 	if (ret < 0)
 		goto out_cleanup;
 
-	if (ufs_need_provisioning())
+	if (run_firehose && ufs_need_provisioning())
 		ret = firehose_provision(qdl);
-	else
+	else if (run_firehose)
 		ret = firehose_run(qdl);
 	if (ret < 0)
 		goto out_cleanup;
