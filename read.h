@@ -19,7 +19,7 @@ struct read_op {
 	struct list_head node;
 };
 
-int read_op_load(const char *read_op_file, const char *incdir);
+int read_op_load(const char *read_op_file, struct list_head *incdirs);
 int read_op_execute(struct qdl_device *qdl,
 		    int (*apply)(struct qdl_device *qdl, struct read_op *read_op, int fd));
 int read_cmd_add(const char *source, const char *filename);

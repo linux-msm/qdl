@@ -41,6 +41,11 @@
 		(__typeof__(p))(((uintptr_t)(p) + _mask) & ~_mask);	\
 })
 
+struct incdir_entry {
+	const char *path;
+	struct list_head node;
+};
+
 #define MAPPING_SZ 64
 
 #define SAHARA_ID_EHOSTDL_IMG	13
