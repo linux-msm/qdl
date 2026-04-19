@@ -267,8 +267,16 @@ Use `qdl ramdump` on the host to collect the dump:
 qdl ramdump -o ./ramdump
 ```
 
-This writes each offered memory segment to a separate file under `./ramdump`.
-To collect only specific segments, pass a comma-separated filter:
+The same functionality is also available as a standalone `qdl-ramdump`
+binary, useful when only crash-dump collection is needed:
+
+```bash
+qdl-ramdump -o ./ramdump
+```
+
+Either form writes each offered memory segment to a separate file under
+`./ramdump`. To collect only specific segments, pass a comma-separated
+filter:
 
 ```bash
 qdl ramdump -o ./ramdump OCIMEM,CODERAM
