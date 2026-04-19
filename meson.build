@@ -100,6 +100,7 @@ foreach checkpatchparam : ['download-checkpatch', 'check', 'check-cached']
 endforeach
 
 # --- man generation ---
+manpage_targets = []
 if help2man.found()
   # Test if we can run the built executable (might fail in cross-compilation)
   can_run_exe = not meson.is_cross_build()
@@ -123,4 +124,6 @@ if help2man.found()
 endif
 
 # Optional: replicate the "manpages" phony target
-alias_target('manpages', manpage_targets)
+if manpage_targets.length() > 0
+  alias_target('manpages', manpage_targets)
+endif
