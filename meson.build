@@ -119,8 +119,10 @@ if help2man.found()
         install: true,
         install_dir: get_option('mandir') / 'man1')
     endforeach
+
+    # Replicate the "manpages" phony target. alias_target requires at
+    # least one dependency, so it is only declared when we have actually
+    # produced manpage targets above.
+    alias_target('manpages', manpage_targets)
   endif
 endif
-
-# Optional: replicate the "manpages" phony target
-alias_target('manpages', manpage_targets)
