@@ -804,10 +804,16 @@ out_cleanup:
 
 int main(int argc, char **argv)
 {
-	if (argc == 2 && !strcmp(argv[1], "list"))
-		return qdl_list(stdout);
-	if (argc >= 2 && !strcmp(argv[1], "ramdump"))
-		return qdl_ramdump(argc - 1, argv + 1);
+	int i;
+
+	for (i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "list"))
+			return qdl_list(stdout);
+		if (!strcmp(argv[i], "ramdump"))
+			return qdl_ramdump(argc - i, argv + i);
+		if (argv[i][0] != '-')
+			break;
+	}
 
 	return qdl_flash(argc, argv);
 }
