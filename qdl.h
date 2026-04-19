@@ -41,7 +41,7 @@
 		(__typeof__(p))(((uintptr_t)(p) + _mask) & ~_mask);	\
 })
 
-#define MAPPING_SZ 64
+#define MAPPING_SZ 128
 
 #define SAHARA_ID_EHOSTDL_IMG	13
 
