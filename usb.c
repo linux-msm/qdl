@@ -367,21 +367,19 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 
 		serial = strstr((char *)buf, "_SN:");
 		if (!serial) {
-			ux_err("ignoring device with no serial number\n");
-			libusb_close(handle);
-			continue;
-		}
+			memcpy(result[count].serial, "(none)", sizeof("(none)"));
+		} else {
+			serial += strlen("_SN:");
+			serial_len = strcspn(serial, " _");
+			if (serial_len + 1 > sizeof(result[count].serial)) {
+				ux_err("ignoring device with unexpectedly long serial number\n");
+				libusb_close(handle);
+				continue;
+			}
 
-		serial += strlen("_SN:");
-		serial_len = strcspn(serial, " _");
-		if (serial_len + 1 > sizeof(result[count].serial)) {
-			ux_err("ignoring device with unexpectedly long serial number\n");
-			libusb_close(handle);
-			continue;
+			memcpy(result[count].serial, serial, serial_len);
+			result[count].serial[serial_len] = '\0';
 		}
-
-		memcpy(result[count].serial, serial, serial_len);
-		result[count].serial[serial_len] = '\0';
 
 		result[count].vid = desc.idVendor;
 		result[count].pid = desc.idProduct;
