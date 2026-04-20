@@ -185,13 +185,7 @@ static int load_program_tag(xmlNode *node, bool is_nand, bool allow_missing, con
 	}
 
 	if (program->filename) {
-		if (incdir) {
-			snprintf(tmp, PATH_MAX, "%s/%s", incdir, program->filename);
-			if (access(tmp, F_OK) != -1) {
-				free((void *)program->filename);
-				program->filename = strdup(tmp);
-			}
-		}
+		resolve_path(&program->filename, incdir);
 
 		fd = open(program->filename, O_RDONLY | O_BINARY);
 		if (fd < 0) {
@@ -234,12 +228,17 @@ int program_load(const char *program_file, bool is_nand, bool allow_missing, con
 	xmlNode *root;
 	xmlDoc *doc;
 	int errors = 0;
+	char *program_file_resolved = strdup(program_file);
 
-	doc = xmlReadFile(program_file, NULL, 0);
+	resolve_path(&program_file_resolved, incdir);
+
+	doc = xmlReadFile(program_file_resolved, NULL, 0);
 	if (!doc) {
 		ux_err("failed to parse program-type file \"%s\"\n", program_file);
+		free(program_file_resolved);
 		return -EINVAL;
 	}
+	free(program_file_resolved);
 
 	root = xmlDocGetRootElement(doc);
 	for (node = root->children; node ; node = node->next) {

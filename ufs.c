@@ -116,7 +116,7 @@ struct ufs_epilogue *ufs_parse_epilogue(xmlNode *node)
 	return result;
 }
 
-int ufs_load(const char *ufs_file, bool finalize_provisioning)
+int ufs_load(const char *ufs_file, bool finalize_provisioning, const char *incdir)
 {
 	xmlNode *node;
 	xmlNode *root;
@@ -130,12 +130,17 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 		       ufs_file);
 		return -EEXIST;
 	}
+	char *ufs_file_resolved = strdup(ufs_file);
+
+	resolve_path(&ufs_file_resolved, incdir);
 
 	doc = xmlReadFile(ufs_file, NULL, 0);
 	if (!doc) {
 		ux_err("failed to parse ufs-type file \"%s\"\n", ufs_file);
+		free(ufs_file_resolved);
 		return -EINVAL;
 	}
+	free(ufs_file_resolved);
 
 	root = xmlDocGetRootElement(doc);
 

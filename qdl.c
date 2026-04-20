@@ -43,7 +43,7 @@ enum {
 
 bool qdl_debug;
 
-static int detect_type(const char *verb)
+static int detect_type(const char *verb, const char *incdir)
 {
 	xmlNode *root;
 	xmlDoc *doc;
@@ -57,16 +57,22 @@ static int detect_type(const char *verb)
 	if (!strcmp(verb, "erase"))
 		return QDL_CMD_ERASE;
 
-	if (access(verb, F_OK)) {
+	char *filename = strdup(verb);
+	resolve_path(&filename, incdir);
+
+	if (access(filename, F_OK)) {
 		ux_err("%s is not a verb and not a XML file\n", verb);
+		free(filename);
 		return -EINVAL;
 	}
 
-	doc = xmlReadFile(verb, NULL, 0);
+	doc = xmlReadFile(filename, NULL, 0);
 	if (!doc) {
 		ux_err("failed to parse XML file \"%s\"\n", verb);
+		free(filename);
 		return -EINVAL;
 	}
+	free(filename);
 
 	root = xmlDocGetRootElement(doc);
 	if (!xmlStrcmp(root->name, (xmlChar *)"patches")) {
@@ -251,6 +257,7 @@ err:
  * decode_sahara_config() - Attempt to decode a Sahara config XML document
  * @blob: Loaded image to be decoded as Sahara config
  * @images: List of Sahara images, with @images[0] populated
+ * @incdir: include directory to be searched for the files specified in the Sahara config
  *
  * The single blob provided in @images[0] might be a XML blob containing
  * a sahara_config document with definitions of the various Sahara images that
@@ -261,7 +268,7 @@ err:
  *
  * Returns: 0 if no archive was found, 1 if archive was decoded, -1 on error
  */
-static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images)
+static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images, const char *incdir)
 {
 	char image_path_full[PATH_MAX];
 	const char *image_path;
@@ -342,7 +349,7 @@ static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *
 
 		free((void *)image_path);
 
-		ret = load_sahara_image(image_path_full, &images[image_id]);
+		ret = load_sahara_image(image_path_full, &images[image_id], incdir);
 		if (ret < 0)
 			goto err_free_doc;
 	}
@@ -370,6 +377,7 @@ err_free_doc:
  * decode_programmer() - decodes the programmer specifier
  * @s: programmer specifier, from the user
  * @images: array of images to populate
+ * @incdir: include directory to be searched for the files specified in @s
  *
  * This parses the programmer specifier @s, which can either be a single
  * filename, or a comma-separated series of <id>:<filename> entries.
@@ -386,7 +394,7 @@ err_free_doc:
  *
  * Returns: 0 on success, -1 otherwise.
  */
-static int decode_programmer(char *s, struct sahara_image *images)
+static int decode_programmer(char *s, struct sahara_image *images, const char *incdir)
 {
 	struct sahara_image archive;
 	char *filename;
@@ -411,12 +419,12 @@ static int decode_programmer(char *s, struct sahara_image *images)
 			}
 
 			filename = &tail[1];
-			ret = load_sahara_image(filename, &images[id]);
+			ret = load_sahara_image(filename, &images[id], incdir);
 			if (ret < 0)
 				return -1;
 		}
 	} else {
-		ret = load_sahara_image(s, &archive);
+		ret = load_sahara_image(s, &archive, incdir);
 		if (ret < 0)
 			return -1;
 
@@ -424,7 +432,7 @@ static int decode_programmer(char *s, struct sahara_image *images)
 		if (ret < 0 || ret == 1)
 			return ret;
 
-		ret = decode_sahara_config(&archive, images);
+		ret = decode_sahara_config(&archive, images, incdir);
 		if (ret < 0 || ret == 1)
 			return ret;
 
@@ -695,18 +703,18 @@ static int qdl_flash(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	ret = decode_programmer(argv[optind++], sahara_images);
+	ret = decode_programmer(argv[optind++], sahara_images, incdir);
 	if (ret < 0)
 		goto out_cleanup;
 
 	do {
-		type = detect_type(argv[optind]);
+		type = detect_type(argv[optind], incdir);
 		if (type < 0 || type == QDL_FILE_UNKNOWN)
 			errx(1, "failed to detect file type of %s\n", argv[optind]);
 
 		switch (type) {
 		case QDL_FILE_PATCH:
-			ret = patch_load(argv[optind]);
+			ret = patch_load(argv[optind], incdir);
 			if (ret < 0)
 				errx(1, "patch_load %s failed", argv[optind]);
 			break;
@@ -728,7 +736,7 @@ static int qdl_flash(int argc, char **argv)
 			if (storage_type != QDL_STORAGE_UFS)
 				errx(1, "attempting to load provisioning config when storage isn't \"ufs\"");
 
-			ret = ufs_load(argv[optind], qdl_finalize_provisioning);
+			ret = ufs_load(argv[optind], qdl_finalize_provisioning, incdir);
 			if (ret < 0)
 				errx(1, "ufs_load %s failed", argv[optind]);
 			break;
