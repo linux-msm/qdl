@@ -92,6 +92,15 @@ test(
   suite: 'integration',
 )
 
+test(
+  'Flashmap dry-run',
+  find_program('bash'),
+  args: [meson.current_source_dir() / 'tests/test_flashmap.sh', '--builddir', meson.current_build_dir()],
+  depends: [qdl_exe],
+  suite: 'integration',
+  protocol: 'tap',
+)
+
 # --- checkpatch targets  ---
 check_script = join_paths(meson.project_source_root(), 'scripts', 'checkpatch_wrapper.sh')
 foreach checkpatchparam : ['download-checkpatch', 'check', 'check-cached']

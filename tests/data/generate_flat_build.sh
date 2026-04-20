@@ -23,7 +23,13 @@ create_file_with_size rootfs.img 512000
 create_file_with_size xbl_config.elf 320
 create_file_with_size xbl.elf 800
 
-# Copy static test data (XML descriptors) into the output directory
+# Copy static test data (XML descriptors and flashmap.json) into the output directory
 if [ "$OUTDIR" != "$SCRIPT_PATH" ]; then
 	cp "$SCRIPT_PATH"/*.xml "$OUTDIR"/
+	cp "$SCRIPT_PATH"/flashmap.json "$OUTDIR"/
 fi
+
+(cd $OUTDIR ; zip flashmap.zip prog_firehose_ddr.elf efi.bin gpt_backup0.bin \
+		  gpt_backup1.bin gpt_main0.bin gpt_main1.bin rootfs.img \
+		  xbl_config.elf xbl.elf rawprogram0.xml rawprogram1.xml \
+		  patch0.xml patch1.xml flashmap.json)

@@ -25,7 +25,7 @@ jobs:
         run: |
           sudo apt-get update
 
-          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev libzip-dev help2man pipx
+          sudo apt-get install -y libxml2-dev libusb-1.0-0-dev libzip-dev help2man pipx zip
           pipx ensurepath
           pipx install meson==1.4.0
 
@@ -73,7 +73,7 @@ jobs:
 
       - name: Dependencies
         run: |
-          brew install libxml2 libzip meson ninja help2man
+          brew install libxml2 libzip meson ninja help2man zip
 
       - name: Configure
         run: meson setup build
@@ -147,6 +147,7 @@ jobs:
             mingw-w64-x86_64-libusb
             mingw-w64-x86_64-libzip
             mingw-w64-x86_64-xz
+            zip
 
       - name: Configure
         run: meson setup build

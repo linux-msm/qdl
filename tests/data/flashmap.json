@@ -1,0 +1,28 @@
+{
+  "version": "1.1.0",
+  "products": [
+    {
+      "name": "unit-test",
+      "layouts": [
+        {
+          "name": "layout0",
+          "programmer": [
+            "prog_firehose_ddr.elf"
+          ],
+          "programmable": [
+            {
+              "memory": "spinor",
+              "slot": 0,
+              "files": [
+                "rawprogram0.xml",
+                "rawprogram1.xml",
+                "patch0.xml",
+                "patch1.xml"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
