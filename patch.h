@@ -19,7 +19,7 @@ struct patch {
 	struct list_head node;
 };
 
-int patch_load(const char *patch_file);
+int patch_load(const char *patch_file, const char *incdir);
 int patch_execute(struct qdl_device *qdl, int (*apply)(struct qdl_device *qdl, struct patch *patch));
 void free_patches(void);
 

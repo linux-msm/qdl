@@ -27,12 +27,17 @@ int read_op_load(const char *read_op_file, const char *incdir)
 	xmlDoc *doc;
 	int errors;
 	char tmp[PATH_MAX];
+	char *read_op_file_resolved = strdup(read_op_file);
 
-	doc = xmlReadFile(read_op_file, NULL, 0);
+	resolve_path(&read_op_file_resolved, incdir);
+
+	doc = xmlReadFile(read_op_file_resolved, NULL, 0);
 	if (!doc) {
 		ux_err("failed to parse read-type file \"%s\"\n", read_op_file);
+		free(read_op_file_resolved);
 		return -EINVAL;
 	}
+	free(read_op_file_resolved);
 
 	root = xmlDocGetRootElement(doc);
 	for (node = root->children; node ; node = node->next) {

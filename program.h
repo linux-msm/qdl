@@ -11,7 +11,7 @@ struct program {
 	unsigned int pages_per_block;
 	unsigned int sector_size;
 	unsigned int file_offset;
-	const char *filename;
+	char *filename;
 	const char *label;
 	unsigned int num_sectors;
 	int partition;

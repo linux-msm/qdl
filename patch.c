@@ -16,7 +16,7 @@
 static struct list_head patches = LIST_INIT(patches);
 static bool patches_loaded;
 
-int patch_load(const char *patch_file)
+int patch_load(const char *patch_file, const char *incdir)
 {
 	struct patch *patch;
 	xmlNode *node;
@@ -24,11 +24,16 @@ int patch_load(const char *patch_file)
 	xmlDoc *doc;
 	int errors;
 
-	doc = xmlReadFile(patch_file, NULL, 0);
+	char *patch_file_resolved = strdup(patch_file);
+
+	resolve_path(&patch_file_resolved, incdir);
+	doc = xmlReadFile(patch_file_resolved, NULL, 0);
 	if (!doc) {
 		ux_err("failed to parse patch-type file \"%s\"\n", patch_file);
+		free(patch_file_resolved);
 		return -EINVAL;
 	}
+	free(patch_file_resolved);
 
 	root = xmlDocGetRootElement(doc);
 	for (node = root->children; node ; node = node->next) {

@@ -47,7 +47,7 @@ struct ufs_epilogue {
 	bool		commit;
 };
 
-int ufs_load(const char *ufs_file, bool finalize_provisioning);
+int ufs_load(const char *ufs_file, bool finalize_provisioning, const char *incdir);
 int ufs_provisioning_execute(struct qdl_device *qdl,
 			     int (*apply_ufs_common)(struct qdl_device *qdl, struct ufs_common *ufs),
 			     int (*apply_ufs_body)(struct qdl_device *qdl, struct ufs_body *ufs),

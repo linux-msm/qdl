@@ -212,25 +212,48 @@ done:
 }
 
 /**
+ * @brief Resolves a given filename and determines if it's found in the include dir
+ *
+ * @filename: file to be found
+ * @incdir: include directory to be searched for the file
+ */
+void resolve_path(char **filename, const char *incdir)
+{
+	char tmp[PATH_MAX];
+	if (incdir) {
+		snprintf(tmp, PATH_MAX, "%s/%s", incdir, *filename);
+		if (access(tmp, F_OK) != -1) {
+			free((void *)*filename);
+			*filename = strdup(tmp);
+		}
+	}
+}
+
+/**
  * load_sahara_image() - Load the content of the given file into the image
  * @filename: file to be loaded
  * @image: Sahara image object to be populated
+ * @incdir: include directory to be searched for the file
  *
  * Read the content of the given @filename into the given @image, update the
  * @image->len, and then populate the @image->name for debugging purposes.
  *
  * Returns: 0 on success, -1 on error
  */
-int load_sahara_image(const char *filename, struct sahara_image *image)
+int load_sahara_image(const char *filename, struct sahara_image *image, const char *incdir)
 {
 	ssize_t n;
 	off_t len;
 	void *ptr;
 	int fd;
+	char *filename_resolved = strdup(filename);
 
-	fd = open(filename, O_RDONLY | O_BINARY);
+	resolve_path(&filename_resolved, incdir);
+
+	fd = open(filename_resolved, O_RDONLY | O_BINARY);
 	if (fd < 0) {
 		ux_err("failed to read \"%s\"\n", filename);
+		free(filename_resolved);
 		return -1;
 	}
 
@@ -254,6 +277,7 @@ int load_sahara_image(const char *filename, struct sahara_image *image)
 		goto err_close;
 	}
 
+	free(filename_resolved);
 	close(fd);
 
 	image->name = strdup(filename);
@@ -263,6 +287,7 @@ int load_sahara_image(const char *filename, struct sahara_image *image)
 	return 0;
 
 err_close:
+	free(filename_resolved);
 	close(fd);
 	return -1;
 }
