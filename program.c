@@ -156,6 +156,10 @@ static int program_resolve_path(struct firehose_op *program, const char *incdir)
 	const char *filename = program->filename;
 	char *resolved;
 
+	/* Don't attempt to resolve filenames in zip files */
+	if (program->zip)
+		return 0;
+
 	/* Look for the file in include directory */
 	if (incdir) {
 		snprintf(candidate, sizeof(candidate), "%s/%s", incdir, filename);
