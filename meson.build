@@ -15,6 +15,7 @@ libusb_dep = dependency('libusb-1.0')
 libxml_dep = dependency('libxml-2.0')
 libzip_dep = dependency('libzip')
 help2man = find_program('help2man', required: false)
+cmocka_dep = dependency('cmocka', required: get_option('tests'))
 
 # Common include dirs
 inc = include_directories('.')
@@ -109,6 +110,30 @@ test(
   suite: 'integration',
   protocol: 'tap',
 )
+
+if cmocka_dep.found()
+  test_program_load_xml = executable('test_program_load_xml',
+    sources : [
+      'tests/test_program_load_xml.c',
+      'program.c',
+      'util.c',
+      version_h,
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+    c_args : ['-Daccess=mock_access'],
+  )
+
+  test(
+    'program_load_xml path resolution',
+    test_program_load_xml,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+else
+  warning('cmocka not found; skipping unit tests')
+endif
 
 # --- checkpatch targets  ---
 check_script = join_paths(meson.project_source_root(), 'scripts', 'checkpatch_wrapper.sh')

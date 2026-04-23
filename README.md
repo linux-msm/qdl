@@ -341,6 +341,14 @@ param:
 meson test -C build
 ```
 
+If `cmocka` is installed at configure time, Meson also builds and runs the
+unit test suite (including `program_load_xml` path-resolution tests). You can
+run only unit tests with:
+
+```bash
+meson test -C build --suite unit
+```
+
 ## Generate man pages
 
 Manpages can be generated using `manpages` target:
