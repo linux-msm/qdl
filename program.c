@@ -185,8 +185,7 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand,
 
 	if (errors) {
 		ux_err("errors while parsing program tag\n");
-		free(program);
-		return -EINVAL;
+		goto err_free_op;
 	}
 
 	if (program->filename) {
@@ -203,7 +202,7 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand,
 			ux_info("unable to open %s", program->filename);
 			if (!allow_missing) {
 				ux_info("...failing\n");
-				return -1;
+				goto err_free_op;
 			}
 			ux_info("...ignoring\n");
 
@@ -215,7 +214,7 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand,
 	if (program->filename && program->sparse) {
 		ret = program_load_sparse(ops, program, &file);
 		if (ret < 0)
-			return -1;
+			goto err_free_op;
 
 		/*
 		 * Chunks were added to the program list, drop the filename of
@@ -230,6 +229,16 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand,
 	qdl_file_close(&file);
 
 	return 0;
+
+err_free_op:
+	qdl_file_close(&file);
+	qdl_zip_put(program->zip);
+	free((void *)program->filename);
+	free((void *)program->label);
+	free((void *)program->start_sector);
+	free(program);
+
+	return -1;
 }
 
 int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, const char *program_file,
