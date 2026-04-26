@@ -386,6 +386,30 @@ NOTE: Whitespace errors detected.
 Your patch has style problems, please review.
 ```
 
+To verify a series of commits the same way the CI does (per-commit, in
+patch mode), use the `check-range` target. It runs checkpatch on every
+commit in `$CHECKPATCH_BASE..$CHECKPATCH_HEAD` (defaulting to
+`origin/master..HEAD`):
+
+```bash
+meson compile check-range -C build
+```
+
+To restrict the range explicitly, set the environment variables before
+invoking meson:
+
+```bash
+CHECKPATCH_BASE=origin/master CHECKPATCH_HEAD=HEAD \
+    meson compile check-range -C build
+```
+
+The full file-mode check (run against every tracked C/H/sh source) is
+also available:
+
+```bash
+meson compile check -C build
+```
+
 Markdown sources are linted with
 [mdl](https://github.com/markdownlint/markdownlint). Install it via
 `sudo apt install markdownlint` (or `gem install mdl`) and run:
