@@ -386,6 +386,17 @@ NOTE: Whitespace errors detected.
 Your patch has style problems, please review.
 ```
 
+Markdown sources are linted with
+[mdl](https://github.com/markdownlint/markdownlint). Install it via
+`sudo apt install markdownlint` (or `gem install mdl`) and run:
+
+```bash
+meson compile markdown-lint -C build
+```
+
+The wrapper script is invoked from the GitHub Actions workflow as well,
+so a green local run reflects what CI will report.
+
 ## License
 
 This tool is licensed under the BSD 3-Clause license. Check out [LICENSE](LICENSE)

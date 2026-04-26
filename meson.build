@@ -109,6 +109,12 @@ foreach checkpatchparam : ['download-checkpatch', 'check', 'check-cached']
   )
 endforeach
 
+# --- markdown lint target ---
+markdown_script = join_paths(meson.project_source_root(), 'scripts', 'markdownlint_wrapper.sh')
+run_target('markdown-lint',
+  command: ['bash', '-lc', markdown_script + ' check']
+)
+
 # --- man generation ---
 if help2man.found()
   # Test if we can run the built executable (might fail in cross-compilation)
