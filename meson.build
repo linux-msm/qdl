@@ -103,7 +103,7 @@ test(
 
 # --- checkpatch targets  ---
 check_script = join_paths(meson.project_source_root(), 'scripts', 'checkpatch_wrapper.sh')
-foreach checkpatchparam : ['download-checkpatch', 'check', 'check-cached']
+foreach checkpatchparam : ['download-checkpatch', 'check', 'check-cached', 'check-range']
   run_target(checkpatchparam,
     command: ['bash', '-lc', check_script + ' ' + checkpatchparam]
   )
