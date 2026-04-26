@@ -5,7 +5,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: DavidAnson/markdownlint-cli2-action@v20
-      with:
-        globs: |
-          README.md
+    - name: Install mdl
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y markdownlint
+    - name: Run markdown-lint
+      run: ./scripts/markdownlint_wrapper.sh check
