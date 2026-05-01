@@ -2,7 +2,9 @@
 /*
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
+#include <errno.h>
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -20,8 +22,26 @@ enum {
 	QDL_FILE_PROGRAM,
 };
 
-static int flashmap_get_programmers(struct qdl_zip *zip, struct json_value *layout,
-				    struct sahara_image *images, const char *incdir)
+static int flashmap_resolve_path(char *path, size_t path_size, const char *filename, const char *incdir)
+{
+	if (!filename) {
+		ux_err("flashmap: filename is null\n");
+		return -1;
+	}
+
+	if (incdir) {
+		snprintf(path, path_size, "%s/%s", incdir, filename);
+		if (access(path, F_OK))
+			snprintf(path, path_size, "%s", filename);
+	} else {
+		snprintf(path, path_size, "%s", filename);
+	}
+
+	return 0;
+}
+
+static int flashmap_get_legacy_programmer(struct qdl_zip *zip, struct json_value *layout,
+					  struct sahara_image *images, const char *incdir)
 {
 	struct json_value *programmers;
 	const char *filename;
@@ -29,6 +49,11 @@ static int flashmap_get_programmers(struct qdl_zip *zip, struct json_value *layo
 	int count;
 
 	programmers = json_get_child(layout, "programmer");
+	if (!programmers) {
+		ux_err("flashmap: parse error when decoding programmer\n");
+		return -1;
+	}
+
 	count = json_count_children(programmers);
 	if (count != 1) {
 		ux_err("flashmap: single programmer expected, found %d\n", count);
@@ -41,17 +66,75 @@ static int flashmap_get_programmers(struct qdl_zip *zip, struct json_value *layo
 		return -1;
 	}
 
-	if (incdir) {
-		snprintf(path, PATH_MAX, "%s/%s", incdir, filename);
-		if (access(path, F_OK))
-			snprintf(path, PATH_MAX, "%s", filename);
-	} else {
-		snprintf(path, PATH_MAX, "%s", filename);
-	}
+	if (flashmap_resolve_path(path, sizeof(path), filename, incdir))
+		return -1;
 
 	ux_debug("flashmap: selected programmer: %s\n", path);
 
 	return load_sahara_image(zip, path, &images[SAHARA_ID_EHOSTDL_IMG]);
+}
+
+static int flashmap_get_programmer_map(struct qdl_zip *zip, struct json_value *layout,
+				       struct sahara_image *images, const char *incdir)
+{
+	struct json_value *programmers;
+	struct json_value *entry;
+	unsigned long image_id;
+	const char *filename;
+	char *end;
+	char path[PATH_MAX];
+	int count = 0;
+	int ret;
+
+	programmers = json_get_child(layout, "programmer");
+	if (!programmers || programmers->type != JSON_TYPE_OBJECT) {
+		ux_err("flashmap: programmer map must be an object for version 1.2.0-qdl\n");
+		return -1;
+	}
+
+	for (entry = programmers->u.value; entry; entry = entry->next) {
+		errno = 0;
+		image_id = strtoul(entry->key, &end, 0);
+		if (errno || end == entry->key || *end || image_id == 0 || image_id >= MAPPING_SZ) {
+			ux_err("flashmap: invalid programmer image id \"%s\"\n", entry->key);
+			return -1;
+		}
+
+		if (entry->type != JSON_TYPE_STRING || !entry->u.string) {
+			ux_err("flashmap: programmer entry \"%s\" must be a filename string\n", entry->key);
+			return -1;
+		}
+
+		filename = entry->u.string;
+		ret = flashmap_resolve_path(path, sizeof(path), filename, incdir);
+		if (ret)
+			return ret;
+
+		ux_debug("flashmap: selected programmer %lu: %s\n", image_id, path);
+
+		ret = load_sahara_image(zip, path, &images[image_id]);
+		if (ret)
+			return ret;
+
+		count++;
+	}
+
+	if (!count) {
+		ux_err("flashmap: programmer map is empty\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int flashmap_get_programmers(struct qdl_zip *zip, struct json_value *layout,
+				    struct sahara_image *images, const char *incdir,
+				    bool uses_programmer_map)
+{
+	if (uses_programmer_map)
+		return flashmap_get_programmer_map(zip, layout, images, incdir);
+
+	return flashmap_get_legacy_programmer(zip, layout, images, incdir);
 }
 
 static int flashmap_load_xml(struct list_head *ops, struct qdl_zip *zip, const char *filename,
@@ -102,10 +185,12 @@ static int flashmap_load_xml(struct list_head *ops, struct qdl_zip *zip, const c
 	if (!xmlStrcmp(root->name, (xmlChar *)"patches")) {
 		type = QDL_FILE_PATCH;
 	} else if (!xmlStrcmp(root->name, (xmlChar *)"data")) {
+		type = QDL_FILE_PROGRAM;
 		for (node = root->children; node ; node = node->next) {
 			if (node->type != XML_ELEMENT_NODE)
 				continue;
-			if (!xmlStrcmp(node->name, (xmlChar *)"program")) {
+			if (!xmlStrcmp(node->name, (xmlChar *)"program") ||
+			    !xmlStrcmp(node->name, (xmlChar *)"erase")) {
 				type = QDL_FILE_PROGRAM;
 				break;
 			}
@@ -193,13 +278,8 @@ static int flashmap_enumerate_programmables(struct json_value *list, struct list
 				return -1;
 			}
 
-			if (incdir) {
-				snprintf(path, PATH_MAX, "%s/%s", incdir, file);
-				if (access(path, F_OK))
-					snprintf(path, PATH_MAX, "%s", file);
-			} else {
-				snprintf(path, PATH_MAX, "%s", file);
-			}
+			if (flashmap_resolve_path(path, sizeof(path), file, incdir))
+				return -1;
 
 			ret = flashmap_load_xml(ops, zip, path, is_nand, incdir);
 			if (ret)
@@ -230,6 +310,7 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 	char *save = NULL;
 	char *tmp;
 	enum qdl_storage_type type;
+	bool uses_programmer_map = false;
 	const char *version;
 	const char *name;
 	size_t json_size;
@@ -276,7 +357,15 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 	}
 
 	version = json_get_string(json, "version");
-	if (!version || strcmp(version, "1.1.0")) {
+	if (!version) {
+		ux_err("unsupported flashmap version\n");
+		ret = -1;
+		goto out_free_json;
+	}
+
+	if (!strcmp(version, "1.2.0-qdl"))
+		uses_programmer_map = true;
+	else if (strcmp(version, "1.1.0")) {
 		ux_err("unsupported flashmap version\n");
 		ret = -1;
 		goto out_free_json;
@@ -309,7 +398,7 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 
 	layout = json_get_element_object(obj, 0);
 
-	ret = flashmap_get_programmers(zip, layout, images, zip ? NULL : incdir);
+	ret = flashmap_get_programmers(zip, layout, images, zip ? NULL : incdir, uses_programmer_map);
 	if (ret)
 		goto out_free_json;
 
