@@ -115,6 +115,7 @@ if cmocka_dep.found()
   test_program_load_xml = executable('test_program_load_xml',
     sources : [
       'tests/test_program_load_xml.c',
+      'tests/common.c',
       'pathbuf.c',
       'program.c',
       'util.c',
@@ -145,6 +146,41 @@ if cmocka_dep.found()
   test(
     'pathbuf dirname behavior',
     test_pathbuf,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
+  test_contents_selectors = executable('test_contents_selectors',
+    sources : [
+      'tests/test_contents_selectors.c',
+      'pathbuf.c',
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'contents selector resolution',
+    test_contents_selectors,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
+  test_contents_xml = executable('test_contents_xml',
+    sources : [
+      'tests/test_contents_xml.c',
+      'tests/common.c',
+      'pathbuf.c',
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'contents XML parsing',
+    test_contents_xml,
     suite: 'unit',
     protocol: 'tap',
     env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
