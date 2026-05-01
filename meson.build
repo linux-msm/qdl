@@ -58,7 +58,7 @@ qdl_sources = files(
   'firehose.c',
   'io.c', 'qdl.c', 'patch.c',
   'program.c', 'read.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
-  'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c'
+  'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c', 'pathbuf.c',
 )
 
 qdl_exe = executable('qdl',
@@ -127,6 +127,23 @@ if cmocka_dep.found()
   test(
     'program_load_xml path resolution',
     test_program_load_xml,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
+  test_pathbuf = executable('test_pathbuf',
+    sources : [
+      'tests/test_pathbuf.c',
+      'pathbuf.c',
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'pathbuf dirname behavior',
+    test_pathbuf,
     suite: 'unit',
     protocol: 'tap',
     env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
