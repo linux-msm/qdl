@@ -29,6 +29,7 @@
 #include "program.h"
 #include "qdl.h"
 #include "sparse.h"
+#include "common.h"
 
 #define TEST_INCDIR "/mock/incdir"
 #define TEST_XMLDIR "/mock/xml"
