@@ -17,9 +17,12 @@
 #include <unistd.h>
 
 #include "qdl.h"
+#include "contents.h"
+#include "file.h"
 #include "firehose.h"
 #include "flashmap.h"
 #include "patch.h"
+#include "pathbuf.h"
 #include "program.h"
 #include "ufs.h"
 #include "oscompat.h"
@@ -249,9 +252,11 @@ err:
  *
  * Returns: 0 if no archive was found, 1 if archive was decoded, -1 on error
  */
-static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images)
+int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images,
+			 struct contents_filter *contents_filter)
 {
 	char image_path_full[PATH_MAX];
+	struct pathbuf image_full_path = {};
 	const char *image_path;
 	unsigned int image_id;
 	size_t image_path_len;
@@ -311,7 +316,9 @@ static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *
 
 		image_path_len = strlen(image_path);
 
-		if (path_is_absolute(image_path)) {
+		if (contents_resolve_path(contents_filter, image_path, &image_full_path) == 1) {
+			memcpy(image_path_full, image_full_path.buf, image_full_path.len + 1);
+		} else if (path_is_absolute(image_path)) {
 			if (image_path_len + 1 > PATH_MAX) {
 				free((void *)image_path);
 				goto err_free_doc;
@@ -412,7 +419,7 @@ static int decode_programmer(char *s, struct sahara_image *images)
 		if (ret < 0 || ret == 1)
 			return ret;
 
-		ret = decode_sahara_config(&archive, images);
+		ret = decode_sahara_config(&archive, images, NULL);
 		if (ret < 0 || ret == 1)
 			return ret;
 
@@ -431,7 +438,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "       %s [options] <prog.mbn> (erase <address>)...\n", __progname);
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
-	fprintf(out, "       %s flash <flashmap>[::<specifier>]\n", __progname);
+	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", __progname);
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
 	fprintf(out, " -v, --version\t\t\tPrint the current version and exit\n");
 	fprintf(out, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
@@ -455,9 +462,11 @@ static void print_usage(FILE *out)
 	fprintf(out, " <ramdump-path>\t\tpath where ramdump should stored\n");
 	fprintf(out, " <segment-filter>\toptional glob-pattern to select which segments to ramdump\n");
 	fprintf(out, " <flashmap>\tflashmap JSON file, or ZIP archive with flashmap.json\n");
-	fprintf(out, " <specifier>\tcomma-separated list of storage specifiers\n");
+	fprintf(out, " <contents>\tcontents XML file\n");
+	fprintf(out, " <specifier>\tcomma-separated list of specifiers, such as storage type and flavors\n");
 	fprintf(out, "\n");
 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
+	fprintf(out, "         %s flash contents.xml::ufs,spinor/safe_rtos\n", __progname);
 }
 
 static int qdl_list(FILE *out)
@@ -620,8 +629,14 @@ static char *qdl_split_specifier(const char *param, char **specifier)
 static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
 			 const char *incdir, struct sahara_image *images)
 {
+	struct qdl_file flashmap;
+	struct qdl_zip *zip = NULL;
+	const char *dot;
 	char *specifier;
 	char *filename;
+	char *tmp;
+	char *base;
+	int file_type = QDL_FILE_UNKNOWN;
 	int ret;
 
 	filename = qdl_split_specifier(arg, &specifier);
@@ -631,7 +646,42 @@ static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
 		return -1;
 	}
 
-	ret = flashmap_load(firehose_ops, filename, specifier, images, incdir);
+	tmp = strdup(filename);
+	if (!tmp)
+		return -1;
+
+	base = basename(tmp);
+	dot = strrchr(base, '.');
+
+	if (dot && !strcmp(dot, ".xml")) {
+		file_type = QDL_FILE_CONTENTS;
+	} else if (dot && !strcmp(dot, ".json")) {
+		file_type = QDL_CMD_FLASH;
+	} else {
+		ret = qdl_zip_open(filename, &zip);
+		if (!ret) {
+			ret = qdl_file_open(zip, "flashmap.json", &flashmap);
+			if (!ret) {
+				qdl_file_close(&flashmap);
+				file_type = QDL_CMD_FLASH;
+			}
+			qdl_zip_put(zip);
+		}
+	}
+	free(tmp);
+
+	switch (file_type) {
+	case QDL_FILE_CONTENTS:
+		ret = contents_load(firehose_ops, filename, specifier, images, incdir);
+		break;
+	case QDL_CMD_FLASH:
+		ret = flashmap_load(firehose_ops, filename, specifier, images, incdir);
+		break;
+	default:
+		ux_err("flash input must be contents.xml, flashmap.json, or a zip containing flashmap.json\n");
+		ret = -1;
+		break;
+	}
 
 	free(filename);
 
@@ -822,7 +872,7 @@ static int qdl_flash(int argc, char **argv)
 		case QDL_FILE_PROGRAM:
 			ret = program_load(&firehose_ops, argv[optind],
 					   storage_type == QDL_STORAGE_NAND,
-					   allow_missing, incdir);
+					   allow_missing, NULL, incdir);
 			if (ret < 0)
 				errx(1, "program_load %s failed", argv[optind]);
 

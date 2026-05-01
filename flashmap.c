@@ -114,7 +114,7 @@ static int flashmap_load_xml(struct list_head *ops, struct qdl_zip *zip, const c
 
 	switch (type) {
 	case QDL_FILE_PROGRAM:
-		ret = program_load_xml(ops, doc, zip, filename, is_nand, false, incdir);
+		ret = program_load_xml(ops, doc, zip, filename, is_nand, false, NULL, incdir);
 		break;
 	case QDL_FILE_PATCH:
 		ret = patch_load_xml(ops, doc, filename);

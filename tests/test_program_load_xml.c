@@ -25,6 +25,7 @@
 #include "file.h"
 #include "firehose.h"
 #include "list.h"
+#include "pathbuf.h"
 #include "program.h"
 #include "qdl.h"
 #include "sparse.h"
@@ -211,6 +212,15 @@ void firehose_free_ops(struct list_head *ops)
 	}
 }
 
+int contents_resolve_path(struct contents_filter *filter, const char *filename, struct pathbuf *path)
+{
+	(void)filter;
+	(void)filename;
+	(void)path;
+
+	return 0;
+}
+
 static xmlDoc *build_program_doc(const char *filename)
 {
 	char xml[1024];
@@ -267,7 +277,7 @@ static void test_incdir_takes_precedence(void **state)
 	if (!doc)
 		fail_msg("failed to parse synthetic program XML");
 
-	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, false, TEST_INCDIR);
+	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, false, NULL, TEST_INCDIR);
 	if (ret)
 		fail_msg("incdir payload should be accepted, got %d", ret);
 
@@ -294,7 +304,7 @@ static void test_program_xml_directory_is_used(void **state)
 	if (!doc)
 		fail_msg("failed to parse synthetic program XML");
 
-	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, false, TEST_INCDIR);
+	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, false, NULL, TEST_INCDIR);
 	if (ret)
 		fail_msg("XML-adjacent payload should be accepted, got %d", ret);
 
@@ -321,7 +331,7 @@ static void test_program_xml_directory_takes_precedence_over_current_directory(v
 	if (!doc)
 		fail_msg("failed to parse synthetic program XML");
 
-	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, false, TEST_INCDIR);
+	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, false, NULL, TEST_INCDIR);
 	if (ret)
 		fail_msg("XML-adjacent payload should beat current-directory fallback, got %d", ret);
 
@@ -349,7 +359,7 @@ static void test_current_directory_is_used_when_path_resolution_misses(void **st
 		fail_msg("failed to parse synthetic program XML");
 
 	/* Compatibility fallback: leave the original relative filename intact. */
-	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, false, TEST_INCDIR);
+	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, false, NULL, TEST_INCDIR);
 	if (ret)
 		fail_msg("relative fallback payload should be accepted, got %d", ret);
 
@@ -375,7 +385,7 @@ static void test_missing_file_fails_without_allow_missing(void **state)
 	if (!doc)
 		fail_msg("failed to parse synthetic program XML");
 
-	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, false, TEST_INCDIR);
+	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, false, NULL, TEST_INCDIR);
 	if (ret != -1)
 		fail_msg("missing payload should fail without allow_missing, got %d", ret);
 	if (!list_empty(&ops))
@@ -398,7 +408,7 @@ static void test_missing_file_is_tolerated_with_allow_missing(void **state)
 	if (!doc)
 		fail_msg("failed to parse synthetic program XML");
 
-	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, true, TEST_INCDIR);
+	ret = program_load_xml(&ops, doc, NULL, TEST_PROGRAM_FILE, false, true, NULL, TEST_INCDIR);
 	if (ret)
 		fail_msg("missing payload should be tolerated with allow_missing, got %d", ret);
 
