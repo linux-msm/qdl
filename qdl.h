@@ -135,6 +135,8 @@ int parse_storage_address(const char *address, int *physical_partition,
 
 enum qdl_storage_type decode_storage_type(const char *storage);
 const char *encode_storage_type(enum qdl_storage_type storage);
+int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images,
+			 struct contents_filter *contents_filter);
 
 extern bool qdl_debug;
 

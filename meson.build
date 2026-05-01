@@ -58,7 +58,7 @@ qdl_sources = files(
   'firehose.c',
   'io.c', 'qdl.c', 'patch.c',
   'program.c', 'read.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
-  'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c', 'pathbuf.c',
+  'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c', 'contents.c', 'pathbuf.c',
 )
 
 qdl_exe = executable('qdl',
@@ -115,6 +115,7 @@ if cmocka_dep.found()
   test_program_load_xml = executable('test_program_load_xml',
     sources : [
       'tests/test_program_load_xml.c',
+      'pathbuf.c',
       'program.c',
       'util.c',
       version_h,

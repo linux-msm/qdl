@@ -3,6 +3,8 @@
  * Copyright (c) 2016-2017, Linaro Ltd.
  * All rights reserved.
  */
+#include "contents.h"
+#include "pathbuf.h"
 #include <assert.h>
 #define _FILE_OFFSET_BITS 64
 #include <errno.h>
@@ -151,12 +153,13 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 }
 
 static int program_resolve_path(struct firehose_op *program, const char *program_file,
-				const char *incdir)
+				struct contents_filter *contents_filter, const char *incdir)
 {
 	char *program_file_copy;
 	char candidate[PATH_MAX];
 	const char *filename = program->filename;
 	const char *program_dir;
+	struct pathbuf pathbuf = {};
 	char *resolved;
 	size_t len;
 	int ret;
@@ -164,6 +167,18 @@ static int program_resolve_path(struct firehose_op *program, const char *program
 	/* Don't attempt to resolve filenames in zip files */
 	if (program->zip)
 		return 0;
+
+	/* Attempt to look up the file in the contents database */
+	ret = contents_resolve_path(contents_filter, filename, &pathbuf);
+	if (ret == 1) {
+		resolved = strdup(qdl_pathbuf_str(&pathbuf));
+		if (!resolved)
+			return -1;
+
+		free((void *)program->filename);
+		program->filename = resolved;
+		return 0;
+	}
 
 	/* Look for the file in include directory */
 	if (incdir) {
@@ -202,7 +217,7 @@ static int program_resolve_path(struct firehose_op *program, const char *program
 
 static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand,
 			    bool allow_missing, struct qdl_zip *zip,
-			    const char *program_file, const char *incdir)
+			    const char *program_file, struct contents_filter *contents_filter, const char *incdir)
 {
 	struct firehose_op *program;
 	struct qdl_file file = {};
@@ -239,7 +254,7 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand,
 	}
 
 	if (program->filename) {
-		ret = program_resolve_path(program, program_file, incdir);
+		ret = program_resolve_path(program, program_file, contents_filter, incdir);
 		if (ret < 0)
 			goto err_free_op;
 
@@ -288,7 +303,7 @@ err_free_op:
 }
 
 int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, const char *program_file,
-		     bool is_nand, bool allow_missing, const char *incdir)
+		     bool is_nand, bool allow_missing, struct contents_filter *contents_filter, const char *incdir)
 {
 	xmlNode *node;
 	xmlNode *root;
@@ -303,7 +318,7 @@ int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, co
 			errors = load_erase_tag(ops, node, is_nand);
 		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
 			errors = load_program_tag(ops, node, is_nand, allow_missing, zip,
-						  program_file, incdir);
+						  program_file, contents_filter, incdir);
 		else {
 			ux_err("unrecognized tag \"%s\" in program-type file \"%s\"\n", node->name, program_file);
 			errors = -EINVAL;
@@ -316,7 +331,8 @@ int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, co
 	return errors;
 }
 
-int program_load(struct list_head *ops, const char *program_file, bool is_nand, bool allow_missing, const char *incdir)
+int program_load(struct list_head *ops, const char *program_file, bool is_nand,
+		 bool allow_missing, struct contents_filter *contents_filter, const char *incdir)
 {
 	xmlDoc *doc;
 	int errors;
@@ -327,7 +343,7 @@ int program_load(struct list_head *ops, const char *program_file, bool is_nand, 
 		return -EINVAL;
 	}
 
-	errors = program_load_xml(ops, doc, NULL, program_file, is_nand, allow_missing, incdir);
+	errors = program_load_xml(ops, doc, NULL, program_file, is_nand, allow_missing, contents_filter, incdir);
 
 	xmlFreeDoc(doc);
 

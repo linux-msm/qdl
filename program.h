@@ -11,11 +11,12 @@
 struct qdl_device;
 struct firehose_op;
 struct qdl_zip;
+struct contents_filter;
 
 int program_load(struct list_head *ops, const char *program_file, bool is_nand,
-		 bool allow_missing, const char *incdir);
+		 bool allow_missing, struct contents_filter *contents_filter, const char *incdir);
 int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, const char *program_file,
-		     bool is_nand, bool allow_missing, const char *incdir);
+		     bool is_nand, bool allow_missing, struct contents_filter *contents_filter, const char *incdir);
 int erase_execute(struct qdl_device *qdl, struct firehose_op *op,
 		  int (*apply)(struct qdl_device *qdl, struct firehose_op *op));
 int program_find_bootable_partition(struct list_head *ops, bool *multiple_found);
