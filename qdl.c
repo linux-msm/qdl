@@ -439,6 +439,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
 	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", __progname);
+	fprintf(out, "       %s create-zip <zipfile> <contents>[::<specifier>]\n", __progname);
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
 	fprintf(out, " -v, --version\t\t\tPrint the current version and exit\n");
 	fprintf(out, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
@@ -686,6 +687,43 @@ static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
 	free(filename);
 
 	return ret;
+}
+
+static int qdl_create_zip(int argc, char **argv)
+{
+	struct sahara_image images[MAPPING_SZ] = {};
+	struct list_head ops = LIST_INIT(ops);
+	const char *zipfile = argv[1];
+	char *specifier;
+	char *filename;
+	int ret;
+
+	if (argc != 3) {
+		print_usage(stderr);
+		return 1;
+	}
+
+	ux_init();
+
+	filename = qdl_split_specifier(argv[2], &specifier);
+	if (!filename) {
+		ux_err("failed to parse flash argument");
+		return 1;
+	}
+
+	ret = contents_load(&ops, filename, specifier, images, NULL);
+	if (ret < 0)
+		goto out_free_filename;
+
+	ret = zipper_write(zipfile, &ops, images);
+
+	sahara_images_free(images, MAPPING_SZ);
+	firehose_free_ops(&ops);
+
+out_free_filename:
+	free(filename);
+
+	return ret ? 1 : 0;
 }
 
 static int qdl_determine_bootable(struct list_head *ops)
@@ -1000,6 +1038,8 @@ int main(int argc, char **argv)
 			return qdl_list(stdout);
 		if (!strcmp(argv[i], "ramdump"))
 			return qdl_ramdump(argc - i, argv + i);
+		if (!strcmp(argv[i], "create-zip"))
+			return qdl_create_zip(argc - i, argv + i);
 		if (argv[i][0] != '-')
 			break;
 	}

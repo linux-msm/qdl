@@ -12,5 +12,6 @@ struct sahara_image;
 
 int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 		  struct sahara_image *images, const char *incdir);
+int zipper_write(const char *filename, struct list_head *ops, struct sahara_image *images);
 
 #endif
