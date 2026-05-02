@@ -36,7 +36,7 @@ jobs:
         run: meson compile -C build
 
       - name: Run tests
-        run: meson test -C build
+        run: meson test -C build --print-errorlogs
 
       - name: Generate man pages
         run: meson compile manpages -C build
@@ -85,7 +85,7 @@ jobs:
         run: meson compile manpages -C build
 
       - name: Run tests
-        run: meson test -C build
+        run: meson test -C build --print-errorlogs
 
       - name: Package
         run: |
@@ -164,7 +164,7 @@ jobs:
         shell: msys2 {0}
 
       - name: Run tests
-        run: meson test -C build
+        run: meson test -C build --print-errorlogs
         shell: msys2 {0}
 
       - name: Package
