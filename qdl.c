@@ -431,6 +431,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "       %s [options] <prog.mbn> (erase <address>)...\n", __progname);
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
+	fprintf(out, "       %s flash <flashmap>[::<specifier>]\n", __progname);
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
 	fprintf(out, " -v, --version\t\t\tPrint the current version and exit\n");
 	fprintf(out, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
@@ -453,6 +454,8 @@ static void print_usage(FILE *out)
 	fprintf(out, "          \t\tnumber S, the number of sectors to follow L, or partition by \"name\"\n");
 	fprintf(out, " <ramdump-path>\t\tpath where ramdump should stored\n");
 	fprintf(out, " <segment-filter>\toptional glob-pattern to select which segments to ramdump\n");
+	fprintf(out, " <flashmap>\tflashmap JSON file, or ZIP archive with flashmap.json\n");
+	fprintf(out, " <specifier>\tcomma-separated list of storage specifiers\n");
 	fprintf(out, "\n");
 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
 }
