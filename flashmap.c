@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "file.h"
 #include "json.h"
@@ -209,21 +210,47 @@ static int flashmap_enumerate_programmables(struct json_value *list, struct list
 	return 0;
 }
 
-int flashmap_load(struct list_head *ops, const char *filename, struct sahara_image *images, const char *incdir)
+int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
+		  struct sahara_image *images, const char *incdir)
 {
+	struct list_head flashmap_ops = LIST_INIT(flashmap_ops);
+	enum qdl_storage_type current_type = QDL_STORAGE_UNKNOWN;
 	struct json_value *programmable;
 	struct json_value *product;
 	struct json_value *layout;
+	struct firehose_op *op;
+	struct firehose_op *next;
 	struct qdl_file flashmap;
 	struct json_value *json;
 	struct json_value *obj;
 	struct qdl_zip *zip;
+	unsigned int type_filter = 0;
+	unsigned int matched_ops = 0;
+	char *filter = specifier;
+	char *save = NULL;
+	char *tmp;
+	enum qdl_storage_type type;
 	const char *version;
 	const char *name;
 	size_t json_size;
 	void *json_blob;
 	int count;
 	int ret = -1;
+
+	if (filter) {
+		for (tmp = strtok_r(filter, ",", &save); tmp; tmp = strtok_r(NULL, ",", &save)) {
+			type = decode_storage_type(tmp);
+			if (type == QDL_STORAGE_UNKNOWN) {
+				ux_err("unknown storage type \"%s\"\n", tmp);
+				return -1;
+			}
+
+			type_filter |= 1U << type;
+		}
+	}
+
+	if (!type_filter)
+		type_filter = ~0U;
 
 	ret = qdl_zip_open(filename, &zip);
 	if (ret < 0) {
@@ -294,10 +321,29 @@ int flashmap_load(struct list_head *ops, const char *filename, struct sahara_ima
 		goto out_free_json;
 	}
 
-	ret = flashmap_enumerate_programmables(programmable, ops, zip, zip ? NULL : incdir);
+	ret = flashmap_enumerate_programmables(programmable, &flashmap_ops, zip, zip ? NULL : incdir);
 	if (ret < 0) {
-		firehose_free_ops(ops);
+		firehose_free_ops(&flashmap_ops);
 		sahara_images_free(images, MAPPING_SZ);
+		goto out_free_json;
+	}
+
+	list_for_each_entry_safe(op, next, &flashmap_ops, node) {
+		if (op->storage_type != QDL_STORAGE_UNKNOWN)
+			current_type = op->storage_type;
+
+		if ((1U << current_type) & type_filter) {
+			list_del(&op->node);
+			list_append(ops, &op->node);
+			matched_ops++;
+		}
+	}
+
+	firehose_free_ops(&flashmap_ops);
+
+	if (!matched_ops) {
+		ux_err("loaded flashmap does not contain any operations for selected storage type\n");
+		ret = -1;
 	}
 
 out_free_json:

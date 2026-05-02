@@ -579,69 +579,57 @@ static int qdl_ensure_configured(struct list_head *ops, enum qdl_storage_type st
 	return 0;
 }
 
-static int qdl_cmd_flash(struct list_head *firehose_ops, char *param,
-			 const char *incdir, struct sahara_image *images)
+static char *qdl_split_specifier(const char *param, char **specifier)
 {
-	enum qdl_storage_type current_type = QDL_STORAGE_UNKNOWN;
-	struct list_head flashmap_ops = LIST_INIT(flashmap_ops);
-	enum qdl_storage_type type;
-	unsigned int type_filter = 0;
-	struct firehose_op *next;
-	struct firehose_op *op;
 	char *filename;
-	char *filter;
-	char *save;
 	char *tmp;
-	int ret;
+
+	if (!param || !param[0])
+		return NULL;
 
 	filename = strdup(param);
 	if (!filename) {
 		ux_err("internal error: unable to allocate memory for argument\n");
-		return -1;
+		return NULL;
 	}
+
+	*specifier = NULL;
 
 	tmp = strstr(filename, "::");
 	if (tmp) {
+		if (strstr(tmp + 2, "::")) {
+			free(filename);
+			return NULL;
+		}
+
 		*tmp = '\0';
-		filter = tmp + 2;
-
-		for (tmp = strtok_r(filter, ",", &save); tmp; tmp = strtok_r(NULL, ",", &save)) {
-			type = decode_storage_type(tmp);
-			if (type == QDL_STORAGE_UNKNOWN) {
-				ux_err("unknown storage type \"%s\"\n", tmp);
-				ret = -1;
-				goto out_free_filename;
-			}
-
-			type_filter |= 1 << type;
+		if (!filename[0] || !tmp[2]) {
+			free(filename);
+			return NULL;
 		}
+
+		*specifier = tmp + 2;
 	}
 
-	if (!type_filter)
-		type_filter = ~0U;
+	return filename;
+}
 
-	ret = flashmap_load(&flashmap_ops, filename, images, incdir);
-	if (ret < 0)
-		goto out_free_filename;
+static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
+			 const char *incdir, struct sahara_image *images)
+{
+	char *specifier;
+	char *filename;
+	int ret;
 
-	list_for_each_entry_safe(op, next, &flashmap_ops, node) {
-		if (op->storage_type != QDL_STORAGE_UNKNOWN)
-			current_type = op->storage_type;
-
-		if ((1 << current_type) & type_filter) {
-			list_del(&op->node);
-			list_append(firehose_ops, &op->node);
-		}
+	filename = qdl_split_specifier(arg, &specifier);
+	if (!filename) {
+		ux_err("failed to parse flash argument \"%s\" (expected <file> or <file>::<selector>)\n",
+		       arg);
+		return -1;
 	}
 
-	firehose_free_ops(&flashmap_ops);
+	ret = flashmap_load(firehose_ops, filename, specifier, images, incdir);
 
-	if (list_empty(firehose_ops)) {
-		ux_err("loaded flashmap does not contain any operations for selected storage type\n");
-		ret = -1;
-	}
-
-out_free_filename:
 	free(filename);
 
 	return ret;
