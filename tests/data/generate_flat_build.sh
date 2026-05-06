@@ -19,12 +19,12 @@ create_file_with_size() {
 }
 
 create_file_with_size prog_firehose_ddr.elf 20
-create_file_with_size efi.bin 524288
+create_file_with_size efi.bin 8192
 create_file_with_size gpt_backup0.bin 20
 create_file_with_size gpt_backup1.bin 20
 create_file_with_size gpt_main0.bin 24
 create_file_with_size gpt_main1.bin 24
-create_file_with_size rootfs.img 512000
+create_file_with_size rootfs.img 8192
 create_file_with_size xbl_config.elf 320
 create_file_with_size xbl.elf 800
 
