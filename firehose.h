@@ -17,6 +17,7 @@ enum firehose_op_type {
 	FIREHOSE_OP_READ,
 	FIREHOSE_OP_PATCH,
 	FIREHOSE_OP_SET_BOOTABLE,
+	FIREHOSE_OP_RESET,
 };
 
 struct firehose_op {

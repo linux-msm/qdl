@@ -460,6 +460,7 @@ static void print_usage(FILE *out)
 	fprintf(out, " -t, --create-digests=T\t\tGenerate table of digests in the T folder\n");
 	fprintf(out, " -T, --slot=T\t\t\tSet slot number T for multiple storage devices\n");
 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
+	fprintf(out, " -R, --skip-reset\t\tDo not send the reset command after flashing completes\n");
 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
 	fprintf(out, " <program-xml>\t\txml file containing <program> or <erase> directives\n");
 	fprintf(out, " <patch-xml>\t\txml file containing <patch> directives\n");
@@ -705,6 +706,7 @@ static int qdl_flash(int argc, char **argv)
 	bool qdl_finalize_provisioning = false;
 	bool allow_fusing = false;
 	bool allow_missing = false;
+	bool skip_reset = false;
 	long out_chunk_size = 0;
 	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
@@ -724,11 +726,12 @@ static int qdl_flash(int argc, char **argv)
 		{"dry-run", no_argument, 0, 'n'},
 		{"create-digests", required_argument, 0, 't'},
 		{"slot", required_argument, 0, 'T'},
+		{"skip-reset", no_argument, 0, 'R'},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:h", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:Rh", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
@@ -772,6 +775,9 @@ static int qdl_flash(int argc, char **argv)
 			break;
 		case 'T':
 			slot = (unsigned int)strtoul(optarg, NULL, 10);
+			break;
+		case 'R':
+			skip_reset = true;
 			break;
 		case 'h':
 			print_usage(stdout);
@@ -909,6 +915,21 @@ static int qdl_flash(int argc, char **argv)
 	if (ret)
 		goto out_cleanup;
 
+	/*
+	 * Reset is the last operation in any flashing run, modelled as a regular
+	 * firehose op so callers can compose it like any other. Skip the append
+	 * to leave the programmer alive across qdl invocations.
+	 */
+	if (!skip_reset) {
+		struct firehose_op *reset_op = firehose_alloc_op(FIREHOSE_OP_RESET);
+
+		if (!reset_op) {
+			ret = -1;
+			goto out_cleanup;
+		}
+		list_append(&firehose_ops, &reset_op->node);
+	}
+
 	ret = qdl_open(qdl, serial);
 	if (ret)
 		goto out_cleanup;
@@ -918,7 +939,7 @@ static int qdl_flash(int argc, char **argv)
 		goto out_cleanup;
 
 	if (ufs_need_provisioning())
-		ret = firehose_provision(qdl);
+		ret = firehose_provision(qdl, skip_reset);
 	else
 		ret = firehose_run(qdl, &firehose_ops);
 	if (ret < 0)

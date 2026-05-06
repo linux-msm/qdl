@@ -1053,7 +1053,7 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 	return 0;
 }
 
-int firehose_provision(struct qdl_device *qdl)
+int firehose_provision(struct qdl_device *qdl, bool skip_reset)
 {
 	int ret;
 
@@ -1069,7 +1069,8 @@ int firehose_provision(struct qdl_device *qdl)
 	else
 		ux_info("UFS provisioning failed\n");
 
-	firehose_reset(qdl);
+	if (!skip_reset)
+		firehose_reset(qdl);
 
 	return ret;
 
@@ -1169,6 +1170,11 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 		case FIREHOSE_OP_SET_BOOTABLE:
 			firehose_set_bootable(qdl, op->partition);
 			break;
+		case FIREHOSE_OP_RESET:
+			ret = firehose_reset(qdl);
+			if (ret < 0)
+				return ret;
+			break;
 		default:
 			ux_err("internal error: unknown firehose operation %d\n", op->type);
 			return -1;
@@ -1180,15 +1186,7 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 
 int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 {
-	int ret;
-
 	ux_info("waiting for Firehose programmer...\n");
 
-	ret = firehose_execute_ops(qdl, ops);
-	if (ret)
-		return ret;
-
-	firehose_reset(qdl);
-
-	return 0;
+	return firehose_execute_ops(qdl, ops);
 }
