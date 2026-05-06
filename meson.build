@@ -27,6 +27,15 @@ endif
 
 common_dep = [libusb_dep, libxml_dep, libzip_dep, ws2_dep]
 
+# Compile-only view of common_dep (includes + cflags, no link args).
+# Used on executables so their own sources see the headers, while link
+# args propagate exactly once through the static library below, avoiding
+# duplicate "-l..." entries on the link line.
+common_compile_dep = []
+foreach d : [libusb_dep, libxml_dep, libzip_dep]
+  common_compile_dep += d.partial_dependency(compile_args: true, includes: true)
+endforeach
+
 # --- version header generation ---
 conf = configuration_data()
 conf.set('version', ver)
@@ -54,7 +63,7 @@ qdl_sources = files(
 qdl_exe = executable('qdl',
   sources : qdl_sources + [version_h],
   link_with: shared_lib,
-  dependencies : common_dep,
+  dependencies : common_compile_dep,
   include_directories : inc,
   install : true
 )
@@ -67,7 +76,7 @@ ramdump_sources = files(
 qdl_ramdump_exe = executable('qdl-ramdump',
   sources : ramdump_sources + [version_h],
   link_with: shared_lib,
-  dependencies : common_dep,
+  dependencies : common_compile_dep,
   include_directories : inc,
   install : true
 )
@@ -78,7 +87,7 @@ ks_sources = files('ks.c')
 qdl_ks_exe = executable('qdl-ks',
   sources : ks_sources + [version_h],
   link_with: shared_lib,
-  dependencies : common_dep,
+  dependencies : common_compile_dep,
   include_directories : inc,
   install : true
 )
