@@ -40,7 +40,7 @@ case "${uname_out}" in
 esac
 
 DATA_SRC=${SCRIPT_PATH}/data
-FLAT_BUILD=${builddir}/tests/data
+FLAT_BUILD=${builddir}/tests/data-flashmap
 
 ${DATA_SRC}/generate_flat_build.sh "${FLAT_BUILD}" >&2
 

@@ -24,7 +24,7 @@ if [[ -z "${builddir}" ]]; then
 fi
 
 DATA_SRC=${SCRIPT_PATH}/data
-FLAT_BUILD=${builddir}/tests/data
+FLAT_BUILD=${builddir}/tests/data-vip
 
 # Generate test fixtures in the build directory
 ${DATA_SRC}/generate_flat_build.sh "${FLAT_BUILD}"
