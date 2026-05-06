@@ -509,6 +509,15 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	       const char *ramdump_path,
 	       const char *ramdump_filter)
 {
+	/*
+	 * Auto-detect that the device is already running the Firehose
+	 * programmer (e.g. left running by a previous --skip-reset
+	 * invocation): if the first read times out or returns a Firehose XML
+	 * banner instead of a Sahara HELLO, skip Sahara entirely. Disabled
+	 * in ramdump mode, where Sahara is the only valid protocol.
+	 */
+	const bool detect_firehose = !ramdump_path;
+	bool first_read = true;
 	struct sahara_pkt *pkt;
 	char buf[4096];
 	char tmp[32];
@@ -528,9 +537,20 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	while (!done) {
 		n = qdl_read(qdl, buf, sizeof(buf), SAHARA_CMD_TIMEOUT_MS);
 		if (n < 0) {
+			if (first_read && detect_firehose && n == -ETIMEDOUT) {
+				ux_info("no Sahara HELLO received; assuming Firehose programmer is already running\n");
+				return 0;
+			}
 			ux_err("failed to read sahara request from device\n");
 			break;
 		}
+
+		if (first_read && detect_firehose &&
+		    n >= 5 && !memcmp(buf, "<?xml", 5)) {
+			ux_info("device is already in Firehose mode, skipping Sahara\n");
+			return 0;
+		}
+		first_read = false;
 
 		pkt = (struct sahara_pkt *)buf;
 		if ((uint32_t)n != pkt->length) {
