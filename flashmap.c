@@ -176,7 +176,7 @@ static int flashmap_enumerate_programmables(struct json_value *list, struct list
 		is_nand = !strcmp(memory, "nand");
 
 		op = firehose_alloc_op(FIREHOSE_OP_CONFIGURE);
-		op->storage_type = decode_storage(memory);
+		op->storage_type = decode_storage_type(memory);
 		list_append(ops, &op->node);
 
 		file_count = json_count_children(files);

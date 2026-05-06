@@ -133,7 +133,8 @@ int parse_storage_address(const char *address, int *physical_partition,
 			  unsigned int *start_sector, unsigned int *num_sectors,
 			  char **gpt_partition);
 
-enum qdl_storage_type decode_storage(const char *storage);
+enum qdl_storage_type decode_storage_type(const char *storage);
+const char *encode_storage_type(enum qdl_storage_type storage);
 
 extern bool qdl_debug;
 

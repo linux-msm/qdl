@@ -124,6 +124,36 @@ bool attr_as_bool(xmlNode *node, const char *attr, int *errors)
 	return ret;
 }
 
+static const char * const storage_types[] = {
+	[QDL_STORAGE_EMMC] = "emmc",
+	[QDL_STORAGE_NAND] = "nand",
+	[QDL_STORAGE_NVME] = "nvme",
+	[QDL_STORAGE_SPINOR] = "spinor",
+	[QDL_STORAGE_UFS] = "ufs",
+};
+
+const char *encode_storage_type(enum qdl_storage_type storage)
+{
+	if ((unsigned int)storage >= ARRAY_SIZE(storage_types))
+		return NULL;
+
+	return storage_types[storage];
+}
+
+enum qdl_storage_type decode_storage_type(const char *storage)
+{
+	unsigned int i;
+
+	if (!storage)
+		return QDL_STORAGE_UNKNOWN;
+
+	for (i = 0; i < ARRAY_SIZE(storage_types); i++)
+		if (storage_types[i] && !strcmp(storage, storage_types[i]))
+			return i;
+
+	return QDL_STORAGE_UNKNOWN;
+}
+
 /***
  * parse_storage_address() - parse a storage address specifier
  * @address: specifier to be parsed
