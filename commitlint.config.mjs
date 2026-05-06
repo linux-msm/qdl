@@ -30,4 +30,19 @@ export default {
     'scope-empty': [0],
     'subject-case': [0],
   },
+
+  // Teach the parser which trailers terminate the body and start the
+  // footer. Without this, kernel-style trailers like `Fixes:` are
+  // classified as body lines and trip body-max-line-length, while the
+  // relaxed footer-max-line-length (200) never gets a chance to apply.
+  parserPreset: {
+    parserOpts: {
+      noteKeywords: [
+        'BREAKING CHANGE', 'BREAKING-CHANGE',
+        'Fixes', 'Signed-off-by', 'Co-authored-by',
+        'Reviewed-by', 'Tested-by', 'Acked-by',
+        'Reported-by', 'Suggested-by',
+      ],
+    },
+  },
 };
