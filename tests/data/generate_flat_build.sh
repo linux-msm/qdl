@@ -10,7 +10,12 @@ create_file_with_size() {
 	filename="$1"
 	size_kbytes="$2"
 
-	dd if=/dev/zero of="$OUTDIR/$filename" bs=1024 count="$size_kbytes" status=none
+	# Create a sparse file of the requested size: dd with count=0 seek=N
+	# extends the file to N*bs bytes via lseek without writing any data.
+	# Reads still yield zeros, so callers (sha256, qdl --dry-run, zip) see
+	# the same content as a fully-written file, but disk I/O and allocation
+	# are O(1). Avoids ~1 GB of writes on slow CI runners.
+	dd if=/dev/zero of="$OUTDIR/$filename" bs=1024 count=0 seek="$size_kbytes" status=none
 }
 
 create_file_with_size prog_firehose_ddr.elf 20
