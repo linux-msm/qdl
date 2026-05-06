@@ -316,23 +316,21 @@ static int firehose_send_configure(struct qdl_device *qdl, size_t payload_size,
 				   enum qdl_storage_type storage,
 				   size_t *max_payload_size)
 {
-	static const char * const memory_names[] = {
-		[QDL_STORAGE_EMMC] = "emmc",
-		[QDL_STORAGE_NAND] = "nand",
-		[QDL_STORAGE_UFS] = "ufs",
-		[QDL_STORAGE_NVME] = "nvme",
-		[QDL_STORAGE_SPINOR] = "spinor",
-	};
+	const char *memory_name;
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
+
+	memory_name = encode_storage_type(storage);
+	if (!memory_name)
+		return -EINVAL;
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
 	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
 	node = xmlNewChild(root, NULL, (xmlChar *)"configure", NULL);
-	xml_setpropf(node, "MemoryName", memory_names[storage]);
+	xml_setpropf(node, "MemoryName", memory_name);
 	xml_setpropf(node, "MaxPayloadSizeToTargetInBytes", "%lu", payload_size);
 	xml_setpropf(node, "Verbose", "%d", 0);
 	xml_setpropf(node, "ZlpAwareHost", "%d", 1);

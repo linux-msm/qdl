@@ -102,23 +102,6 @@ static int detect_type(const char *verb)
 	return type;
 }
 
-enum qdl_storage_type decode_storage(const char *storage)
-{
-
-	if (!strcmp(storage, "emmc"))
-		return QDL_STORAGE_EMMC;
-	if (!strcmp(storage, "nand"))
-		return QDL_STORAGE_NAND;
-	if (!strcmp(storage, "nvme"))
-		return QDL_STORAGE_NVME;
-	if (!strcmp(storage, "spinor"))
-		return QDL_STORAGE_SPINOR;
-	if (!strcmp(storage, "ufs"))
-		return QDL_STORAGE_UFS;
-
-	return QDL_STORAGE_UNKNOWN;
-}
-
 #define CPIO_MAGIC "070701"
 struct cpio_newc_header {
 	char c_magic[6];       /* "070701" */
@@ -623,7 +606,7 @@ static int qdl_cmd_flash(struct list_head *firehose_ops, char *param,
 		filter = tmp + 2;
 
 		for (tmp = strtok_r(filter, ",", &save); tmp; tmp = strtok_r(NULL, ",", &save)) {
-			type = decode_storage(tmp);
+			type = decode_storage_type(tmp);
 			if (type == QDL_STORAGE_UNKNOWN) {
 				ux_err("unknown storage type \"%s\"\n", tmp);
 				ret = -1;
@@ -763,7 +746,7 @@ static int qdl_flash(int argc, char **argv)
 			out_chunk_size = strtol(optarg, NULL, 10);
 			break;
 		case 's':
-			storage_type = decode_storage(optarg);
+			storage_type = decode_storage_type(optarg);
 			if (storage_type == QDL_STORAGE_UNKNOWN)
 				errx(1, "unknown storage type \"%s\"", optarg);
 			break;
