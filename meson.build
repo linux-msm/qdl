@@ -22,11 +22,18 @@ inc = include_directories('.')
 
 # Windows-specific link flags
 ws2_dep = []
+setupapi_dep = []
 if host_machine.system() == 'windows'
   ws2_dep = meson.get_compiler('c').find_library('ws2_32', required : false)
+  # SetupAPI / cfgmgr32 are needed by the QUD backend to enumerate Qualcomm
+  # COM ports exposed by the official QDLoader 9008 driver.
+  setupapi_dep = [
+    meson.get_compiler('c').find_library('setupapi', required : false),
+    meson.get_compiler('c').find_library('cfgmgr32', required : false),
+  ]
 endif
 
-common_dep = [libusb_dep, libxml_dep, libzip_dep, ws2_dep]
+common_dep = [libusb_dep, libxml_dep, libzip_dep, ws2_dep, setupapi_dep]
 
 # Compile-only view of common_dep (includes + cflags, no link args).
 # Used on executables so their own sources see the headers, while link
