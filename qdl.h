@@ -47,6 +47,7 @@
 enum QDL_DEVICE_TYPE {
 	QDL_DEVICE_USB,
 	QDL_DEVICE_SIM,
+	QDL_DEVICE_QUD,
 };
 
 enum qdl_storage_type {
@@ -98,6 +99,7 @@ int qdl_vip_transfer_enable(struct qdl_device *qdl, const char *vip_table_path);
 
 struct qdl_device *usb_init(void);
 struct qdl_device *sim_init(void);
+struct qdl_device *qud_init(void);
 
 struct qdl_device_desc {
 	int vid;
