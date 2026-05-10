@@ -106,18 +106,23 @@ static int detect_type(const char *verb)
 }
 
 /*
- * Parse a --backend= value into an enum. "auto" picks the best available real
- * backend; today that is QDL_DEVICE_USB (libusb / WinUSB on Windows). The
- * "qud" backend covers official kernel drivers that expose the device as a
- * character device (e.g. /dev/ttyUSB* on Linux, \\.\COMx on Windows) and is
- * recognised here for forward compatibility but not yet wired to qdl_init().
+ * Parse a --backend= value into an enum. "auto" maps to the meta-backend
+ * QDL_DEVICE_AUTO, which inside its open path runs a unified wait loop
+ * over libusb and (on Windows) the QUD SetupAPI enumeration, binding
+ * whichever first reaches an EDL device. Explicit "usb"/"qud" pin to a
+ * single concrete transport and skip the meta layer entirely.
  *
  * QDL_DEVICE_SIM is intentionally not selectable via --backend; --dry-run /
  * --create-digests pick it implicitly.
  */
 static int decode_backend(const char *name, enum QDL_DEVICE_TYPE *out)
 {
-	if (!name || !strcmp(name, "auto") || !strcmp(name, "usb")) {
+	if (!name || !strcmp(name, "auto")) {
+		*out = QDL_DEVICE_AUTO;
+		return 0;
+	}
+
+	if (!strcmp(name, "usb")) {
 		*out = QDL_DEVICE_USB;
 		return 0;
 	}
@@ -538,7 +543,7 @@ static int qdl_ramdump(int argc, char **argv)
 	char *ramdump_path = ".";
 	char *filter = NULL;
 	char *serial = NULL;
-	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
+	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_AUTO;
 	int ret = 0;
 	int opt;
 
@@ -819,7 +824,7 @@ static int qdl_flash(int argc, char **argv)
 	long out_chunk_size = 0;
 	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
-	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
+	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_AUTO;
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},

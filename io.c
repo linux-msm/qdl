@@ -19,6 +19,9 @@ struct qdl_device *qdl_init(enum QDL_DEVICE_TYPE type)
 	if (type == QDL_DEVICE_QUD)
 		return qud_init();
 
+	if (type == QDL_DEVICE_AUTO)
+		return auto_init();
+
 	return NULL;
 }
 
