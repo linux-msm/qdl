@@ -105,6 +105,31 @@ static int detect_type(const char *verb)
 	return type;
 }
 
+/*
+ * Parse a --backend= value into an enum. "auto" picks the best available real
+ * backend; today that is QDL_DEVICE_USB (libusb / WinUSB on Windows). The
+ * "qud" backend covers official kernel drivers that expose the device as a
+ * character device (e.g. /dev/ttyUSB* on Linux, \\.\COMx on Windows) and is
+ * recognised here for forward compatibility but not yet wired to qdl_init().
+ *
+ * QDL_DEVICE_SIM is intentionally not selectable via --backend; --dry-run /
+ * --create-digests pick it implicitly.
+ */
+static int decode_backend(const char *name, enum QDL_DEVICE_TYPE *out)
+{
+	if (!name || !strcmp(name, "auto") || !strcmp(name, "usb")) {
+		*out = QDL_DEVICE_USB;
+		return 0;
+	}
+
+	if (!strcmp(name, "qud")) {
+		*out = QDL_DEVICE_QUD;
+		return 0;
+	}
+
+	return -1;
+}
+
 #define CPIO_MAGIC "070701"
 struct cpio_newc_header {
 	char c_magic[6];       /* "070701" */
@@ -453,6 +478,7 @@ static void print_usage(FILE *out)
 	fprintf(out, " -T, --slot=T\t\t\tSet slot number T for multiple storage devices\n");
 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
 	fprintf(out, " -R, --skip-reset\t\tDo not send the reset command after flashing completes\n");
+	fprintf(out, "     --backend=B\t\tSelect device backend B: <auto|usb|qud> (default: auto)\n");
 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
 	fprintf(out, " <program-xml>\t\txml file containing <program> or <erase> directives\n");
 	fprintf(out, " <patch-xml>\t\txml file containing <patch> directives\n");
@@ -493,12 +519,18 @@ static int qdl_list(FILE *out)
 	return 0;
 }
 
+/* Long-only option ids, distinct from any short option character. */
+enum {
+	OPT_BACKEND = 0x100,
+};
+
 static int qdl_ramdump(int argc, char **argv)
 {
 	struct qdl_device *qdl;
 	char *ramdump_path = ".";
 	char *filter = NULL;
 	char *serial = NULL;
+	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
 	int ret = 0;
 	int opt;
 
@@ -507,6 +539,7 @@ static int qdl_ramdump(int argc, char **argv)
 		{"version", no_argument, 0, 'v'},
 		{"output", required_argument, 0, 'o'},
 		{"serial", required_argument, 0, 'S'},
+		{"backend", required_argument, 0, OPT_BACKEND},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
@@ -524,6 +557,10 @@ static int qdl_ramdump(int argc, char **argv)
 			break;
 		case 'S':
 			serial = optarg;
+			break;
+		case OPT_BACKEND:
+			if (decode_backend(optarg, &qdl_dev_type) < 0)
+				errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
 			break;
 		case 'h':
 			print_usage(stdout);
@@ -544,9 +581,11 @@ static int qdl_ramdump(int argc, char **argv)
 
 	ux_init();
 
-	qdl = qdl_init(QDL_DEVICE_USB);
-	if (!qdl)
+	qdl = qdl_init(qdl_dev_type);
+	if (!qdl) {
+		ux_err("backend not available\n");
 		return 1;
+	}
 
 	if (qdl_debug)
 		print_version();
@@ -789,6 +828,7 @@ static int qdl_flash(int argc, char **argv)
 		{"create-digests", required_argument, 0, 't'},
 		{"slot", required_argument, 0, 'T'},
 		{"skip-reset", no_argument, 0, 'R'},
+		{"backend", required_argument, 0, OPT_BACKEND},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
@@ -840,6 +880,15 @@ static int qdl_flash(int argc, char **argv)
 			break;
 		case 'R':
 			skip_reset = true;
+			break;
+		case OPT_BACKEND:
+			/*
+			 * --dry-run / --create-digests already pinned the backend to
+			 * QDL_DEVICE_SIM; honour that and ignore --backend in that case.
+			 */
+			if (qdl_dev_type != QDL_DEVICE_SIM &&
+			    decode_backend(optarg, &qdl_dev_type) < 0)
+				errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
 			break;
 		case 'h':
 			print_usage(stdout);
