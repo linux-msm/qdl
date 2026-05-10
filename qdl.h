@@ -76,6 +76,18 @@ struct qdl_device {
 				 const char *chained_table);
 
 	struct vip_transfer_data vip_data;
+
+	/*
+	 * Pushback buffer for stream-oriented transports (Windows COM via the
+	 * QDLoader driver, virtio-console, ...). When a single read crosses a
+	 * Firehose message boundary - typically because the binary payload of
+	 * a rawmode response trails the XML envelope in the same read - the
+	 * leftover bytes are stashed here and qdl_read() returns them before
+	 * pulling more data from the transport.
+	 */
+	char *pending_buf;
+	size_t pending_len;
+	size_t pending_off;
 };
 
 struct sahara_image {
@@ -93,6 +105,7 @@ void qdl_deinit(struct qdl_device *qdl);
 int qdl_open(struct qdl_device *qdl, const char *serial);
 void qdl_close(struct qdl_device *qdl);
 int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
+int qdl_push_back(struct qdl_device *qdl, const void *buf, size_t len);
 int qdl_write(struct qdl_device *qdl, const void *buf, size_t len, unsigned int timeout);
 void qdl_set_out_chunk_size(struct qdl_device *qdl, long size);
 int qdl_vip_transfer_enable(struct qdl_device *qdl, const char *vip_table_path);
