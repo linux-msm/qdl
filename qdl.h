@@ -109,6 +109,20 @@ struct qdl_device_desc {
 
 struct qdl_device_desc *usb_list(unsigned int *devices_found);
 
+/*
+ * QUD-side counterpart to qdl_device_desc. Serial here is the iSerial as
+ * Windows stored it in the device-instance ID (no fixed length guarantee
+ * across OEMs), and path is the kernel-driver-exposed handle the QUD
+ * backend will open (e.g. "\\\\.\\COM5").
+ */
+struct qud_device_desc {
+	unsigned int pid;
+	char serial[64];
+	char path[64];
+};
+
+struct qud_device_desc *qud_list(unsigned int *devices_found);
+
 int firehose_run(struct qdl_device *qdl, struct list_head *ops);
 int firehose_provision(struct qdl_device *qdl, bool skip_reset);
 int firehose_read_buf(struct qdl_device *qdl, struct firehose_op *read_op, void *out_buf, size_t out_size);

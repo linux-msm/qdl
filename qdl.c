@@ -498,23 +498,31 @@ static void print_usage(FILE *out)
 
 static int qdl_list(FILE *out)
 {
-	struct qdl_device_desc *devices;
-	unsigned int count;
+	struct qdl_device_desc *usb_devices;
+	struct qud_device_desc *qud_devices;
+	unsigned int usb_count = 0;
+	unsigned int qud_count = 0;
 	unsigned int i;
 
-	devices = usb_list(&count);
-	if (!devices)
-		return 1;
+	usb_devices = usb_list(&usb_count);
+	qud_devices = qud_list(&qud_count);
 
-	if (count == 0) {
+	if (usb_count == 0 && qud_count == 0) {
 		fprintf(out, "No devices found\n");
 	} else {
-		for (i = 0; i < count; i++)
+		for (i = 0; i < usb_count; i++)
 			fprintf(out, "%04x:%04x\t%s\n",
-				devices[i].vid, devices[i].pid, devices[i].serial);
+				usb_devices[i].vid, usb_devices[i].pid,
+				usb_devices[i].serial);
+		for (i = 0; i < qud_count; i++)
+			fprintf(out, "05c6:%04x\t%s\t%s\n",
+				qud_devices[i].pid,
+				qud_devices[i].serial,
+				qud_devices[i].path);
 	}
 
-	free(devices);
+	free(usb_devices);
+	free(qud_devices);
 
 	return 0;
 }
