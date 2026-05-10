@@ -179,15 +179,75 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 
 		ux_debug("FIREHOSE READ: %s\n", buf);
 
-		node = firehose_response_parse(buf, n, &error);
-		if (!node)
-			return error;
+		/*
+		 * On stream-oriented transports (Windows COM port via the
+		 * QDLoader driver, virtio-console, ...) a single read can
+		 * deliver multiple back-to-back Firehose responses
+		 * concatenated, since the driver doesn't preserve USB bulk-
+		 * transfer boundaries. Walk the buffer using the "<?xml" ...
+		 * "</data>" envelope to bound each message; the closing tag
+		 * is what really delimits the document so that any rawmode
+		 * binary payload that arrives spliced onto the same read
+		 * doesn't end up fed into libxml2 as if it were XML.
+		 *
+		 * libusb preserves transfer boundaries, so on that path each
+		 * read still contains exactly one document and the loop runs
+		 * once.
+		 */
+		char *cursor = buf;
+		char *bufend = buf + n;
 
-		ret = response_parser(node, data, &rawmode);
-		xmlFreeDoc(node->doc);
+		while (cursor < bufend) {
+			char *start = strstr(cursor, "<?xml");
+			char *xml_end;
+			size_t chunk;
 
-		if (ret >= 0)
-			resp = ret;
+			if (!start)
+				break;
+
+			/*
+			 * Bound the XML on the closing </data> tag. If it's
+			 * missing the message was either truncated or doesn't
+			 * fit the schema we know how to parse; hand the rest
+			 * of the buffer to libxml2 and let it error out
+			 * gracefully.
+			 */
+			xml_end = strstr(start, "</data>");
+			if (xml_end) {
+				xml_end += sizeof("</data>") - 1;
+				chunk = (size_t)(xml_end - start);
+			} else {
+				chunk = (size_t)(bufend - start);
+			}
+
+			node = firehose_response_parse(start, chunk, &error);
+			if (!node)
+				return error;
+
+			ret = response_parser(node, data, &rawmode);
+			xmlFreeDoc(node->doc);
+
+			if (ret >= 0)
+				resp = ret;
+
+			cursor = start + chunk;
+
+			/*
+			 * The response we just parsed told the host to switch
+			 * to raw mode (e.g. the ACK that precedes the binary
+			 * sectors of a <read>). On a stream transport the
+			 * first chunk of that binary payload can have arrived
+			 * tacked onto this same read. Push it back so the
+			 * next qdl_read() picks it up before the transport
+			 * is touched again.
+			 */
+			if (rawmode) {
+				if (cursor < bufend)
+					qdl_push_back(qdl, cursor,
+						      (size_t)(bufend - cursor));
+				break;
+			}
+		}
 
 		if (rawmode)
 			break;
@@ -697,31 +757,47 @@ static int firehose_issue_read(struct qdl_device *qdl, struct firehose_op *read_
 
 	left = read_op->num_sectors;
 	while (left > 0) {
+		size_t want;
+		size_t got;
+
 		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
+		want = chunk_size * sector_size;
 
-		n = qdl_read(qdl, buf, chunk_size * sector_size, 30000);
-		if (n < 0) {
-			ux_err("failed to read sector data\n");
-			ret = -1;
-			goto out;
-		}
-
-		if ((size_t)n != chunk_size * sector_size) {
-			ux_err("failed to read full sector\n");
-			ret = -1;
-			goto out;
+		/*
+		 * Accumulate the chunk across qdl_read() calls. libusb usually
+		 * delivers an entire bulk transfer in one shot, but stream
+		 * transports (QUD's Windows COM port, virtio-console, ...) can
+		 * fragment it - including the rawmode tail that firehose_read()
+		 * pushed back from the same buffer as the ACK response.
+		 */
+		got = 0;
+		while (got < want) {
+			n = qdl_read(qdl, (char *)buf + got, want - got, 30000);
+			if (n < 0) {
+				ux_err("failed to read sector data\n");
+				ret = -1;
+				goto out;
+			}
+			if (n == 0) {
+				ux_err("unexpected EOF while reading sector data\n");
+				ret = -1;
+				goto out;
+			}
+			got += (size_t)n;
 		}
 
 		if (out_buf) {
-			if ((size_t)n > out_len - out_offset)
-				n = out_len - out_offset;
+			size_t copy = want;
 
-			memcpy(out_buf + out_offset, buf, n);
-			out_offset += n;
+			if (copy > out_len - out_offset)
+				copy = out_len - out_offset;
+
+			memcpy((char *)out_buf + out_offset, buf, copy);
+			out_offset += copy;
 		} else {
-			n = write(fd, buf, n);
+			n = write(fd, buf, want);
 
-			if (n < 0 || (size_t)n != chunk_size * sector_size) {
+			if (n < 0 || (size_t)n != want) {
 				ux_err("failed to write sector data\n");
 				ret = -1;
 				goto out;
