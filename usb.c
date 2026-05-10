@@ -195,7 +195,33 @@ static bool usb_is_edl_pid(uint16_t pid)
 	return pid == 0x9008 || pid == 0x900e || pid == 0x901d;
 }
 
-static int usb_open(struct qdl_device *qdl, const char *serial)
+/*
+ * try_usb_open() - one libusb scan-and-open pass.
+ *
+ * Used as the single iteration unit by both usb_open() (the --backend usb
+ * wait loop) and auto_open() (the unified Windows libusb+QUD wait loop).
+ *
+ * On success, populates @qdl and emits the "Flashing/Collecting device"
+ * UX line; the caller need not log anything.
+ *
+ * Returns:
+ *    0          - device opened, @qdl is ready
+ *   -ENODEV     - no EDL device currently visible
+ *   -EBUSY      - EDL device(s) visible but none could be opened
+ *                 (typically: another driver, usually the Qualcomm
+ *                  QDLoader 9008 driver behind the QUD backend, has
+ *                  claimed the USB interface)
+ *   -EIO        - libusb itself failed (init/get_device_list)
+ *
+ * @visible_out, when non-NULL, receives the number of EDL devices that
+ * libusb saw on this pass, so callers that loop can print transition
+ * diagnostics without re-enumerating.
+ *
+ * Does its own libusb_init()/libusb_exit() so the next call sees a
+ * fresh enumeration (libusb's udev-less backends otherwise cache the
+ * list, which would mask newly-attached devices in containerised setups).
+ */
+int try_usb_open(struct qdl_device *qdl, const char *serial, int *visible_out)
 {
 	struct qdl_device_usb *qdl_usb = container_of(qdl, struct qdl_device_usb, base);
 	struct libusb_device_descriptor desc;
@@ -203,100 +229,98 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 	struct libusb_device *dev;
 	char matched_serial[64];
 	uint16_t matched_pid = 0;
-	int visible_prev = -1;
 	bool found = false;
-	int visible;
+	int visible = 0;
 	ssize_t n;
 	int ret;
 	int i;
 
+	if (visible_out)
+		*visible_out = 0;
+
+	ret = libusb_init(NULL);
+	if (ret < 0) {
+		ux_err("failed to initialize libusb: %s\n", libusb_strerror(ret));
+		return -EIO;
+	}
+
+	n = libusb_get_device_list(NULL, &devs);
+	if (n < 0) {
+		ux_err("failed to list USB devices: %s\n", libusb_strerror(n));
+		libusb_exit(NULL);
+		return -EIO;
+	}
+
+	for (i = 0; devs[i]; i++) {
+		dev = devs[i];
+
+		if (libusb_get_device_descriptor(dev, &desc) < 0)
+			continue;
+		if (desc.idVendor != 0x05c6 || !usb_is_edl_pid(desc.idProduct))
+			continue;
+
+		visible++;
+
+		ret = usb_try_open(dev, qdl_usb, serial);
+		if (ret == 1) {
+			found = true;
+			matched_pid = desc.idProduct;
+			if (!usb_read_serial(qdl_usb->usb_handle, &desc,
+					     matched_serial, sizeof(matched_serial)))
+				matched_serial[0] = '\0';
+			break;
+		}
+	}
+
+	if (visible_out)
+		*visible_out = visible;
+
+	if (found) {
+		const char *action = matched_pid == 0x900e ? "Collecting crash dump from" : "Flashing";
+
+		libusb_free_device_list(devs, 1);
+		if (matched_serial[0])
+			ux_info("%s device (PID 0x%04x, serial: %s)\n",
+				action, matched_pid, matched_serial);
+		else
+			ux_info("%s device (PID 0x%04x)\n", action, matched_pid);
+		return 0;
+	}
+
+	libusb_free_device_list(devs, 1);
+	libusb_exit(NULL);
+
+	return visible == 0 ? -ENODEV : -EBUSY;
+}
+
+static int usb_open(struct qdl_device *qdl, const char *serial)
+{
+	int visible_prev = -1;
+	int visible;
+	int ret;
+
 	for (;;) {
-		ret = libusb_init(NULL);
-		if (ret < 0)
-			ux_err("failed to initialize libusb: %s\n", libusb_strerror(ret));
-
-		n = libusb_get_device_list(NULL, &devs);
-		if (n < 0) {
-			ux_err("failed to list USB devices: %s\n", libusb_strerror(n));
-			libusb_exit(NULL);
-			return -1;
-		}
-
-		visible = 0;
-		for (i = 0; devs[i]; i++) {
-			dev = devs[i];
-
-			if (libusb_get_device_descriptor(dev, &desc) < 0)
-				continue;
-			if (desc.idVendor != 0x05c6 || !usb_is_edl_pid(desc.idProduct))
-				continue;
-
-			visible++;
-
-			ret = usb_try_open(dev, qdl_usb, serial);
-			if (ret == 1) {
-				found = true;
-				matched_pid = desc.idProduct;
-				if (!usb_read_serial(qdl_usb->usb_handle, &desc,
-						     matched_serial, sizeof(matched_serial)))
-					matched_serial[0] = '\0';
-				break;
-			}
-		}
-
-		if (found) {
-			const char *action = matched_pid == 0x900e ? "Collecting crash dump from" : "Flashing";
-
-			libusb_free_device_list(devs, 1);
-			if (matched_serial[0])
-				ux_info("%s device (PID 0x%04x, serial: %s)\n",
-					action, matched_pid, matched_serial);
-			else
-				ux_info("%s device (PID 0x%04x)\n", action, matched_pid);
+		ret = try_usb_open(qdl, serial, &visible);
+		if (ret == 0)
 			return 0;
-		}
+		if (ret == -EIO)
+			return -1;
 
 		if (visible != visible_prev) {
 			if (visible == 0) {
 				ux_info("Waiting for EDL device\n");
+			} else if (serial) {
+				ux_info("%d EDL device(s) visible, none match serial \"%s\"\n",
+					visible, serial);
 			} else {
-				if (serial)
-					ux_info("%d EDL device(s) visible, none match serial \"%s\":\n",
-						visible, serial);
-				else
-					ux_info("%d EDL device(s) visible, none could be opened:\n",
-						visible);
-				for (i = 0; devs[i]; i++) {
-					dev = devs[i];
-					if (libusb_get_device_descriptor(dev, &desc) < 0)
-						continue;
-					if (desc.idVendor != 0x05c6 || !usb_is_edl_pid(desc.idProduct))
-						continue;
-					ux_info("  [bus %u, addr %u] PID 0x%04x\n",
-						libusb_get_bus_number(dev),
-						libusb_get_device_address(dev),
-						desc.idProduct);
-				}
+				ux_info("%d EDL device(s) visible, none could be opened\n",
+					visible);
 			}
 			visible_prev = visible;
 		}
 
-		libusb_free_device_list(devs, 1);
-
-		/*
-		 * Tear down libusb before retrying so the next iteration
-		 * builds a fresh device list from scratch. Without this,
-		 * libusb's udev-based backend caches the enumeration and
-		 * never notices newly attached devices - a problem in
-		 * containerised environments where udev events are not
-		 * available.
-		 */
-		libusb_exit(NULL);
-
 		usleep(250000);
 	}
-
-	return -1;
 }
 
 struct qdl_device_desc *usb_list(unsigned int *devices_found)

@@ -48,6 +48,14 @@ enum QDL_DEVICE_TYPE {
 	QDL_DEVICE_USB,
 	QDL_DEVICE_SIM,
 	QDL_DEVICE_QUD,
+	/*
+	 * Meta-backend: defers transport selection to the wait loop inside
+	 * auto_open(), which polls libusb and (on Windows) the QUD SetupAPI
+	 * enumeration each tick and binds whichever first reaches an EDL
+	 * device. Resolves the UX hazard of an upfront probe timeout where
+	 * the user plugs in the cable just after the grace window expires.
+	 */
+	QDL_DEVICE_AUTO,
 };
 
 enum qdl_storage_type {
@@ -113,6 +121,22 @@ int qdl_vip_transfer_enable(struct qdl_device *qdl, const char *vip_table_path);
 struct qdl_device *usb_init(void);
 struct qdl_device *sim_init(void);
 struct qdl_device *qud_init(void);
+struct qdl_device *auto_init(void);
+
+/*
+ * try_usb_open() - single libusb scan-and-open pass; shared between
+ * the --backend usb wait loop in usb.c and the unified auto_open() loop.
+ * Returns 0 on success (and emits the "Flashing/Collecting device" UX
+ * line), -ENODEV when no EDL device is visible, -EBUSY when one is
+ * visible but cannot be opened (typically: the Qualcomm QDLoader 9008
+ * driver has claimed it), -EIO on a libusb failure. @visible_out, if
+ * non-NULL, receives the count of EDL devices seen on this pass.
+ *
+ * qud_probe_present() returns the number of Qualcomm COM ports the QUD
+ * backend enumerated via SetupAPI; 0 on non-Windows hosts.
+ */
+int try_usb_open(struct qdl_device *qdl, const char *serial, int *visible_out);
+int qud_probe_present(void);
 
 struct qdl_device_desc {
 	int vid;

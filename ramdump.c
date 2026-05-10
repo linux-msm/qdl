@@ -31,7 +31,7 @@ int main(int argc, char **argv)
 {
 	struct qdl_device *qdl;
 
-	qdl = qdl_init(QDL_DEVICE_USB);
+	qdl = qdl_init(QDL_DEVICE_AUTO);
 	if (!qdl)
 		return 1;
 

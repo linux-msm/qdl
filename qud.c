@@ -497,6 +497,21 @@ struct qdl_device *qud_init(void)
 }
 
 /*
+ * qud_probe_present() - count Qualcomm COM ports exposed by the QDLoader
+ * 9008 driver. Used by the auto-backend selector on Windows to decide
+ * whether the QUD backend can take over when libusb cannot open the
+ * device.
+ */
+int qud_probe_present(void)
+{
+	struct qud_device_desc matches[16];
+	int found;
+
+	found = win_enumerate_qcom(matches, ARRAY_SIZE(matches));
+	return found > 0 ? found : 0;
+}
+
+/*
  * Enumerate Qualcomm COM ports the QUD backend can drive, returning a
  * heap-allocated array of qud_device_desc and writing the count to
  * *devices_found. Caller frees with free(). Returns NULL on error or
@@ -535,6 +550,11 @@ struct qdl_device *qud_init(void)
 {
 	ux_err("qud backend is not supported on this platform\n");
 	return NULL;
+}
+
+int qud_probe_present(void)
+{
+	return 0;
 }
 
 struct qud_device_desc *qud_list(unsigned int *devices_found)

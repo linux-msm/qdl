@@ -62,7 +62,7 @@ shared_lib = static_library('qdl_common', common_sources, dependencies: common_d
 
 # --- qdl executable ---
 qdl_sources = files(
-  'qud.c',
+  'auto.c', 'qud.c',
   'firehose.c',
   'io.c', 'qdl.c', 'patch.c',
   'program.c', 'read.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
@@ -80,7 +80,7 @@ qdl_exe = executable('qdl',
 
 # --- qdl-ramdump executable ---
 ramdump_sources = files(
-  'ramdump.c', 'qud.c', 'io.c', 'sha2.c', 'sim.c', 'usb.c'
+  'ramdump.c', 'auto.c', 'qud.c', 'io.c', 'sha2.c', 'sim.c', 'usb.c'
 )
 
 qdl_ramdump_exe = executable('qdl-ramdump',
