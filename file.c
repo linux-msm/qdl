@@ -183,6 +183,7 @@ int qdl_zip_open(const char *filename, struct qdl_zip **__qdl_zip)
 	qdl_zip = calloc(1, sizeof(*qdl_zip));
 	if (!qdl_zip) {
 		zip_close(zip);
+		*__qdl_zip = NULL;
 		return -1;
 	}
 

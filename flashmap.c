@@ -26,12 +26,53 @@ static int flashmap_get_programmers(struct qdl_zip *zip, struct json_value *layo
 	const char *filename;
 	char path[PATH_MAX];
 	int count;
+	const char *spec;
+	char *tail;
+	unsigned long id;
+	int i;
 
 	programmers = json_get_child(layout, "programmer");
 	count = json_count_children(programmers);
-	if (count != 1) {
-		ux_err("flashmap: single programmer expected, found %d\n", count);
+	if (count < 1) {
+		ux_err("flashmap: programmer list is missing or empty\n");
 		return -1;
+	}
+
+	if (count > 1) {
+		for (i = 0; i < count; i++) {
+			spec = json_get_element_string(programmers, i);
+			if (!spec) {
+				ux_err("flashmap: parse error when decoding programmer\n");
+				return -1;
+			}
+
+			id = strtoul(spec, &tail, 0);
+
+			if (tail == spec || *tail != ':' || tail[1] == '\0') {
+				ux_err("flashmap: invalid programmer entry \"%s\"\n", spec);
+				return -1;
+			}
+
+			if (id == 0 || id >= MAPPING_SZ) {
+				ux_err("flashmap: invalid programmer id for \"%s\"\n", spec);
+				return -1;
+			}
+
+			filename = tail + 1;
+
+			if (incdir) {
+				snprintf(path, PATH_MAX, "%s/%s", incdir, filename);
+				if (access(path, F_OK))
+					snprintf(path, PATH_MAX, "%s", filename);
+			} else {
+				snprintf(path, PATH_MAX, "%s", filename);
+			}
+
+			if (load_sahara_image(zip, path, images + id))
+				return -1;
+		}
+
+		return 0;
 	}
 
 	filename = json_get_element_string(programmers, 0);
@@ -50,7 +91,7 @@ static int flashmap_get_programmers(struct qdl_zip *zip, struct json_value *layo
 
 	ux_debug("flashmap: selected programmer: %s\n", path);
 
-	return load_sahara_image(zip, path, &images[SAHARA_ID_EHOSTDL_IMG]);
+	return load_programmers(path, images, zip);
 }
 
 static int flashmap_load_xml(struct list_head *ops, struct qdl_zip *zip, const char *filename,
@@ -283,8 +324,10 @@ int flashmap_load(struct list_head *ops, const char *filename, struct sahara_ima
 	layout = json_get_element_object(obj, 0);
 
 	ret = flashmap_get_programmers(zip, layout, images, zip ? NULL : incdir);
-	if (ret)
+	if (ret) {
+		sahara_images_free(images, MAPPING_SZ);
 		goto out_free_json;
+	}
 
 	programmable = json_get_child(layout, "programmable");
 	if (!programmable) {

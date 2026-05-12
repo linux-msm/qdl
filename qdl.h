@@ -107,6 +107,7 @@ struct qdl_device_desc {
 
 struct qdl_device_desc *usb_list(unsigned int *devices_found);
 
+int load_programmers(const char *s, struct sahara_image *images, struct qdl_zip *zip);
 int firehose_run(struct qdl_device *qdl, struct list_head *ops);
 int firehose_provision(struct qdl_device *qdl, bool skip_reset);
 int firehose_read_buf(struct qdl_device *qdl, struct firehose_op *read_op, void *out_buf, size_t out_size);
