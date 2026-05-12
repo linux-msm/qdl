@@ -266,7 +266,7 @@ err:
  *
  * Returns: 0 if no archive was found, 1 if archive was decoded, -1 on error
  */
-static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images)
+static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images, struct qdl_zip *zip)
 {
 	char image_path_full[PATH_MAX];
 	const char *image_path;
@@ -294,6 +294,8 @@ static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *
 	blob_name_buf = strdup(blob->name);
 	base_path = dirname(blob_name_buf);
 	base_path_len = strlen(base_path);
+	if (base_path_len == 1 && base_path[0] == '.')
+		base_path_len = 0;
 
 	root = xmlDocGetRootElement(doc);
 	if (xmlStrcmp(root->name, (xmlChar *)"sahara_config")) {
@@ -328,7 +330,7 @@ static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *
 
 		image_path_len = strlen(image_path);
 
-		if (path_is_absolute(image_path)) {
+		if (path_is_absolute(image_path) || base_path_len == 0) {
 			if (image_path_len + 1 > PATH_MAX) {
 				free((void *)image_path);
 				goto err_free_doc;
@@ -347,7 +349,7 @@ static int decode_sahara_config(struct sahara_image *blob, struct sahara_image *
 
 		free((void *)image_path);
 
-		ret = load_sahara_image(NULL, image_path_full, &images[image_id]);
+		ret = load_sahara_image(zip, image_path_full, &images[image_id]);
 		if (ret < 0)
 			goto err_free_doc;
 	}
@@ -385,15 +387,12 @@ err_free_doc:
  * second case, each comma-separated entry will be split on ':' and the given
  * <filename> will be assigned to the @image entry indicated by the given <id>.
  *
- * Memory is not allocated for the various strings, instead @s will be modified
- * by the tokenizer and pointers to the individual parts will be stored in the
- * @images array.
- *
  * Returns: 0 on success, -1 otherwise.
  */
-static int decode_programmer(char *s, struct sahara_image *images)
+int load_programmers(const char *s, struct sahara_image *images, struct qdl_zip *zip)
 {
 	struct sahara_image archive;
+	char *copy;
 	char *filename;
 	char *save1;
 	char *pair;
@@ -403,35 +402,46 @@ static int decode_programmer(char *s, struct sahara_image *images)
 
 	strtoul(s, &tail, 0);
 	if (tail != s && tail[0] == ':') {
-		for (pair = strtok_r(s, ",", &save1); pair; pair = strtok_r(NULL, ",", &save1)) {
+		copy = strdup(s);
+		if (!copy) {
+			ux_err("internal error: unable to allocate memory for argument\n");
+			return -1;
+		}
+
+		for (pair = strtok_r(copy, ",", &save1); pair; pair = strtok_r(NULL, ",", &save1)) {
 			id = strtoul(pair, &tail, 0);
-			if (tail == pair) {
+			if (tail == pair || *tail != ':' || tail[1] == '\0') {
 				ux_err("invalid programmer specifier\n");
+				free(copy);
 				return -1;
 			}
 
 			if (id == 0 || id >= MAPPING_SZ) {
 				ux_err("invalid image id \"%s\"\n", pair);
+				free(copy);
 				return -1;
 			}
 
 			filename = &tail[1];
-			ret = load_sahara_image(NULL, filename, &images[id]);
-			if (ret < 0)
+			ret = load_sahara_image(zip, filename, &images[id]);
+			if (ret < 0) {
+				free(copy);
 				return -1;
+			}
 		}
+		free(copy);
 	} else {
-		ret = load_sahara_image(NULL, s, &archive);
+		ret = load_sahara_image(zip, s, &archive);
 		if (ret < 0)
 			return -1;
 
 		ret = decode_programmer_archive(&archive, images);
-		if (ret < 0 || ret == 1)
-			return ret;
+		if (ret != 0)
+			return (ret == 1) ? 0 : -1;
 
-		ret = decode_sahara_config(&archive, images);
-		if (ret < 0 || ret == 1)
-			return ret;
+		ret = decode_sahara_config(&archive, images, zip);
+		if (ret != 0)
+			return (ret == 1) ? 0 : -1;
 
 		images[SAHARA_ID_EHOSTDL_IMG] = archive;
 	}
@@ -829,7 +839,7 @@ static int qdl_flash(int argc, char **argv)
 	 * "flash" subcommand. Handling of "flash" happens in the loop below.
 	 */
 	if (strcmp(argv[optind], "flash")) {
-		ret = decode_programmer(argv[optind++], sahara_images);
+		ret = load_programmers(argv[optind++], sahara_images, NULL);
 		if (ret < 0)
 			goto out_cleanup;
 	}
