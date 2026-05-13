@@ -109,3 +109,38 @@ int read_cmd_add(struct list_head *ops, const char *address, const char *filenam
 
 	return 0;
 }
+
+int sha256_cmd_add(struct list_head *ops, const char *address)
+{
+	struct firehose_op *op;
+	unsigned int start_sector;
+	unsigned int num_sectors;
+	char *gpt_partition;
+	int partition;
+	char buf[20];
+	int ret;
+
+	ret = parse_storage_address(address, &partition, &start_sector, &num_sectors, &gpt_partition);
+	if (ret < 0)
+		return ret;
+
+	if (num_sectors == 0 && !gpt_partition) {
+		ux_err("sha256 command without length specifier not supported\n");
+		return -1;
+	}
+
+	op = firehose_alloc_op(FIREHOSE_OP_GET_SHA256_DIGEST);
+	if (!op)
+		return -1;
+
+	op->sector_size = 0;
+	op->partition = partition;
+	op->num_sectors = num_sectors;
+	sprintf(buf, "%u", start_sector);
+	op->start_sector = strdup(buf);
+	op->gpt_partition = gpt_partition;
+
+	list_append(ops, &op->node);
+
+	return 0;
+}

@@ -42,6 +42,7 @@ enum {
 	QDL_CMD_WRITE,
 	QDL_CMD_ERASE,
 	QDL_CMD_FLASH,
+	QDL_CMD_SHA256,
 };
 
 bool qdl_debug;
@@ -61,6 +62,8 @@ static int detect_type(const char *verb)
 		return QDL_CMD_ERASE;
 	if (!strcmp(verb, "flash"))
 		return QDL_CMD_FLASH;
+	if (!strcmp(verb, "sha256"))
+		return QDL_CMD_SHA256;
 
 	if (access(verb, F_OK)) {
 		ux_err("%s is not a verb and not a XML file\n", verb);
@@ -446,6 +449,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "Usage: %s [options] <prog.mbn> (<program-xml> | <patch-xml> | <read-xml>)...\n", __progname);
 	fprintf(out, "       %s [options] <prog.mbn> ((read | write) <address> <binary>)...\n", __progname);
 	fprintf(out, "       %s [options] <prog.mbn> (erase <address>)...\n", __progname);
+	fprintf(out, "       %s [options] <prog.mbn> (sha256 <address>)...\n", __progname);
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
@@ -891,6 +895,14 @@ static int qdl_flash(int argc, char **argv)
 			ret = erase_cmd_add(&firehose_ops, argv[optind + 1]);
 			if (ret < 0)
 				errx(1, "failed to add erase command");
+			optind += 1;
+			break;
+		case QDL_CMD_SHA256:
+			if (optind + 1 >= argc)
+				errx(1, "sha256 command missing address");
+			ret = sha256_cmd_add(&firehose_ops, argv[optind + 1]);
+			if (ret < 0)
+				errx(1, "failed to add sha256 command");
 			optind += 1;
 			break;
 		case QDL_CMD_FLASH:
