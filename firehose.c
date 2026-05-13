@@ -25,6 +25,7 @@
 #include "qdl.h"
 #include "file.h"
 #include "firehose.h"
+#include "sha2.h"
 #include "ufs.h"
 #include "oscompat.h"
 #include "vip.h"
@@ -111,6 +112,93 @@ static int firehose_generic_parser(xmlNode *node, void *data __unused, bool *raw
 		if (xmlStrcmp(value, (xmlChar *)"true") == 0)
 			*rawmode = true;
 		xmlFree(value);
+	}
+
+	return ret;
+}
+
+/*
+ * Scan @str for a contiguous run of exactly SHA256_DIGEST_STRING_LENGTH-1
+ * (64) lowercase or uppercase hex characters bounded by a non-hex character
+ * or string boundary. On match, decode into @digest and return true.
+ */
+static bool extract_sha256_hex(const char *str, uint8_t digest[SHA256_DIGEST_LENGTH])
+{
+	const size_t hex_len = SHA256_DIGEST_LENGTH * 2;
+	const char *p = str;
+	size_t i;
+
+	while (*p) {
+		size_t run = 0;
+		const char *start;
+
+		while (*p && !isxdigit((unsigned char)*p))
+			p++;
+
+		start = p;
+		while (isxdigit((unsigned char)*p)) {
+			run++;
+			p++;
+		}
+
+		if (run == hex_len) {
+			for (i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+				char byte[3] = { start[i * 2], start[i * 2 + 1], '\0' };
+
+				digest[i] = (uint8_t)strtoul(byte, NULL, 16);
+			}
+			return true;
+		}
+	}
+
+	return false;
+}
+
+struct firehose_sha256_result {
+	uint8_t digest[SHA256_DIGEST_LENGTH];
+	bool valid;
+};
+
+static int firehose_sha256_parser(xmlNode *node, void *data, bool *rawmode)
+{
+	struct firehose_sha256_result *result = data;
+	xmlChar *value;
+	int ret;
+
+	if (xmlStrcmp(node->name, (xmlChar *)"log") == 0) {
+		value = xmlGetProp(node, (xmlChar *)"value");
+		if (!value)
+			return -EINVAL;
+
+		if (!result->valid && extract_sha256_hex((const char *)value, result->digest))
+			result->valid = true;
+
+		ux_log("LOG: %s\n", value);
+		xmlFree(value);
+		return -EAGAIN;
+	}
+
+	ret = firehose_generic_parser(node, NULL, rawmode);
+
+	/*
+	 * Some Firehose implementations attach the digest as an attribute on
+	 * the response itself rather than emitting it via <log>. Try a few
+	 * known attribute names.
+	 */
+	if (!result->valid) {
+		static const char * const attrs[] = { "Digest", "SHA256", "sha256" };
+		size_t i;
+
+		for (i = 0; i < ARRAY_SIZE(attrs); i++) {
+			value = xmlGetProp(node, (xmlChar *)attrs[i]);
+			if (!value)
+				continue;
+			if (extract_sha256_hex((const char *)value, result->digest))
+				result->valid = true;
+			xmlFree(value);
+			if (result->valid)
+				break;
+		}
 	}
 
 	return ret;
@@ -784,6 +872,66 @@ static int firehose_read_op(struct qdl_device *qdl, struct firehose_op *op)
 	return ret;
 }
 
+static int firehose_getsha256digest(struct qdl_device *qdl, struct firehose_op *op)
+{
+	struct firehose_sha256_result result = { 0 };
+	unsigned int sector_size;
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	char hex[SHA256_DIGEST_STRING_LENGTH];
+	size_t i;
+	int ret;
+
+	sector_size = op->sector_size ? : qdl->sector_size;
+
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
+	xmlDocSetRootElement(doc, root);
+
+	node = xmlNewChild(root, NULL, (xmlChar *)"getsha256digest", NULL);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", sector_size);
+	xml_setpropf(node, "num_partition_sectors", "%d", op->num_sectors);
+	xml_setpropf(node, "physical_partition_number", "%d", op->partition);
+	xml_setpropf(node, "start_sector", "%s", op->start_sector);
+	if (qdl->slot != UINT_MAX)
+		xml_setpropf(node, "slot", "%u", qdl->slot);
+
+	ret = firehose_write(qdl, doc);
+	if (ret < 0) {
+		ux_err("failed to send getsha256digest command\n");
+		goto out;
+	}
+
+	ret = firehose_read(qdl, 30000, firehose_sha256_parser, &result);
+	if (ret != FIREHOSE_ACK) {
+		ux_err("getsha256digest failed for %s+0x%x\n",
+		       op->start_sector, op->num_sectors);
+		ret = -1;
+		goto out;
+	}
+
+	if (!result.valid) {
+		ux_err("getsha256digest returned no digest for %s+0x%x\n",
+		       op->start_sector, op->num_sectors);
+		ret = -1;
+		goto out;
+	}
+
+	for (i = 0; i < SHA256_DIGEST_LENGTH; i++)
+		snprintf(hex + i * 2, 3, "%02x", result.digest[i]);
+	hex[SHA256_DIGEST_STRING_LENGTH - 1] = '\0';
+
+	printf("%s\n", hex);
+	fflush(stdout);
+
+	ret = 0;
+
+out:
+	xmlFreeDoc(doc);
+	return ret;
+}
+
 static int firehose_apply_patch(struct qdl_device *qdl, struct firehose_op *patch)
 {
 	xmlNode *root;
@@ -1153,6 +1301,11 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 			break;
 		case FIREHOSE_OP_READ:
 			ret = firehose_read_op(qdl, op);
+			if (ret < 0)
+				return ret;
+			break;
+		case FIREHOSE_OP_GET_SHA256_DIGEST:
+			ret = firehose_getsha256digest(qdl, op);
 			if (ret < 0)
 				return ret;
 			break;

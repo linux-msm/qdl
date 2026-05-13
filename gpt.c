@@ -293,7 +293,8 @@ int gpt_resolve_deferrals(struct qdl_device *qdl, struct list_head *ops)
 	list_for_each_entry(op, ops, node) {
 		if (op->type != FIREHOSE_OP_PROGRAM &&
 		    op->type != FIREHOSE_OP_ERASE &&
-		    op->type != FIREHOSE_OP_READ)
+		    op->type != FIREHOSE_OP_READ &&
+		    op->type != FIREHOSE_OP_GET_SHA256_DIGEST)
 			continue;
 
 		if (!op->gpt_partition)
