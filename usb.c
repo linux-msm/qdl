@@ -376,10 +376,8 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 			continue;
 
 		ret = libusb_open(dev, &handle);
-		if (ret < 0) {
-			warnx("unable to open USB device");
+		if (ret < 0)
 			continue;
-		}
 
 		ret = libusb_get_string_descriptor_ascii(handle, desc.iProduct, buf, sizeof(buf) - 1);
 		if (ret < 0) {
