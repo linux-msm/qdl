@@ -182,6 +182,8 @@ jobs:
           Copy-Item (Join-Path $BIN_DIR "libzip.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "liblzma-5.dll") $DistDir
           Copy-Item (Join-Path $BIN_DIR "libiconv-2.dll") $DistDir
+          Copy-Item (Join-Path $BIN_DIR "libbz2-1.dll") $DistDir
+          Copy-Item (Join-Path $BIN_DIR "libzstd.dll") $DistDir
 
           Copy-Item "./build/qdl.exe" $DistDir
 
