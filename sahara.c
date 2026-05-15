@@ -124,10 +124,23 @@ static void sahara_send_reset(struct qdl_device *qdl)
 	qdl_write(qdl, &resp, resp.length, SAHARA_CMD_TIMEOUT_MS);
 }
 
-static int sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
+static int sahara_send_hello_resp(struct qdl_device *qdl, unsigned int mode)
 {
 	struct sahara_pkt resp = {};
 
+	resp.cmd = SAHARA_HELLO_RESP_CMD;
+	resp.length = SAHARA_HELLO_LENGTH;
+	resp.hello_resp.version = SAHARA_VERSION;
+	resp.hello_resp.compatible = 1;
+	resp.hello_resp.status = SAHARA_SUCCESS;
+	resp.hello_resp.mode = mode;
+
+	qdl_write(qdl, &resp, resp.length, SAHARA_CMD_TIMEOUT_MS);
+	return 0;
+}
+
+static int sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
+{
 	if (pkt->length != SAHARA_HELLO_LENGTH) {
 		ux_err("unexpected HELLO packet length %u\n", pkt->length);
 		sahara_send_reset(qdl);
@@ -137,15 +150,7 @@ static int sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	ux_debug("HELLO version: 0x%x compatible: 0x%x max_len: %d mode: %d\n",
 		 pkt->hello_req.version, pkt->hello_req.compatible, pkt->hello_req.max_len, pkt->hello_req.mode);
 
-	resp.cmd = SAHARA_HELLO_RESP_CMD;
-	resp.length = SAHARA_HELLO_LENGTH;
-	resp.hello_resp.version = SAHARA_VERSION;
-	resp.hello_resp.compatible = 1;
-	resp.hello_resp.status = SAHARA_SUCCESS;
-	resp.hello_resp.mode = pkt->hello_req.mode;
-
-	qdl_write(qdl, &resp, resp.length, SAHARA_CMD_TIMEOUT_MS);
-	return 0;
+	return sahara_send_hello_resp(qdl, pkt->hello_req.mode);
 }
 
 static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
@@ -538,6 +543,19 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 		n = qdl_read(qdl, buf, sizeof(buf), SAHARA_CMD_TIMEOUT_MS);
 		if (n < 0) {
 			if (first_read && detect_firehose && n == -ETIMEDOUT) {
+				/*
+				 * The QUD driver will eat the HELLO request on
+				 * many modern targets, so send an unsolicited
+				 * HELLO response.
+				 * If the device is already in Firehose mode,
+				 * the programmer will fail to parse the "XML"
+				 * message and report an error, which will
+				 * trigger below detection of a <?xml response.
+				 */
+				if (qdl->dev_type == QDL_DEVICE_QUD || qdl->dev_type == QDL_DEVICE_AUTO) {
+					sahara_send_hello_resp(qdl, 0);
+					continue;
+				}
 				ux_info("no Sahara HELLO received; assuming Firehose programmer is already running\n");
 				return 0;
 			}
