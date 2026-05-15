@@ -46,6 +46,7 @@ static int load_erase_tag(struct list_head *ops, xmlNode *node, bool is_nand)
 
 	if (errors) {
 		ux_err("errors while parsing erase tag\n");
+		free(program->start_sector);
 		free(program);
 		return -EINVAL;
 	}
