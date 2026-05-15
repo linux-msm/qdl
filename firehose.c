@@ -568,9 +568,16 @@ static int firehose_erase(struct qdl_device *qdl, struct firehose_op *program)
 
 	node = xmlNewChild(root, NULL, (xmlChar *)"erase", NULL);
 	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", sector_size);
-	xml_setpropf(node, "num_partition_sectors", "%d", program->num_sectors);
 	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
-	xml_setpropf(node, "start_sector", "%s", program->start_sector);
+
+	/*
+	 * Omitting num_sectors and start_sector attributes tells the programmer
+	 * to erase the full physical partition.
+	 */
+	if (program->num_sectors > 0) {
+		xml_setpropf(node, "num_partition_sectors", "%d", program->num_sectors);
+		xml_setpropf(node, "start_sector", "%s", program->start_sector);
+	}
 	if (qdl->slot != UINT_MAX) {
 		xml_setpropf(node, "slot", "%u", qdl->slot);
 	}
