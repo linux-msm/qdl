@@ -595,6 +595,88 @@ out:
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
+static int firehose_getsha256digest(struct qdl_device *qdl, struct firehose_op *op);
+
+/*
+ * Decide whether the @program op can be skipped because its bytes are
+ * already on flash. Returns 1 if the program path can be bypassed, 0
+ * to defer to the normal write. @buf is a scratch buffer of size
+ * qdl->max_payload_size owned by the caller.
+ *
+ * Hash the bytes that would have been written, ask the device for the
+ * digest of the same region, and compare. Any failure on the way (read error,
+ * digest query failure, mismatch) returns 0 so the caller proceeds with
+ * the normal program flow; the file pointer is restored by the
+ * qdl_file_seek() at the top of the write loop.
+ *
+ * Restricted to non-sparse, non-NAND programs with VIP disabled:
+ *   - Sparse chunks would each need their own digest; v1 keeps them on
+ *     the normal program path.
+ *   - NAND has spare/OOB bytes whose semantics differ across
+ *     programmers.
+ *   - <getsha256digest> is not part of pre-built VIP digest tables.
+ */
+static int qdl_should_skipblock(struct qdl_device *qdl,
+				struct firehose_op *program,
+				struct qdl_file *file,
+				unsigned int num_sectors,
+				unsigned int sector_size,
+				void *buf)
+{
+	uint8_t local_digest[SHA256_DIGEST_LENGTH];
+	size_t total = (size_t)num_sectors * sector_size;
+	struct firehose_op digest_op;
+	size_t hashed = 0;
+	SHA2_CTX ctx;
+	ssize_t hn;
+
+	if (qdl->skipblock_mode != QDL_SKIPBLOCK_SHA256 ||
+	    program->sparse ||
+	    program->is_nand ||
+	    qdl->vip_data.state != VIP_DISABLED)
+		return 0;
+
+	SHA256Init(&ctx);
+	qdl_file_seek(file, (off_t)program->file_offset * sector_size, SEEK_SET);
+
+	while (hashed < total) {
+		size_t want = MIN(qdl->max_payload_size, total - hashed);
+
+		hn = qdl_file_read_exact(file, buf, want);
+		if (hn < 0)
+			return 0;
+		if (hn == 0 || (size_t)hn < want) {
+			/*
+			 * EOF before completing the requested region: the
+			 * device's digest is over `total` bytes from flash,
+			 * so we can't construct a matching local digest.
+			 * Defer to the normal program path.
+			 */
+			if (hn > 0)
+				SHA256Update(&ctx, buf, hn);
+			return 0;
+		}
+		SHA256Update(&ctx, buf, hn);
+		hashed += (size_t)hn;
+	}
+
+	SHA256Final(local_digest, &ctx);
+
+	digest_op = (struct firehose_op){
+		.type = FIREHOSE_OP_GET_SHA256_DIGEST,
+		.sector_size = sector_size,
+		.num_sectors = num_sectors,
+		.partition = program->partition,
+		.start_sector = program->start_sector,
+	};
+
+	if (firehose_getsha256digest(qdl, &digest_op) == 0 &&
+	    !memcmp(local_digest, digest_op.digest, SHA256_DIGEST_LENGTH))
+		return 1;
+
+	return 0;
+}
+
 static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 {
 	unsigned int num_sectors;
@@ -649,6 +731,13 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	if (!buf) {
 		ux_err("failed to allocate sector buffer\n");
 		goto err_close_fd;
+	}
+
+	if (qdl_should_skipblock(qdl, program, &file, num_sectors, sector_size, buf)) {
+		ux_info("skipped \"%s\" (sha256 match)\n", program->label);
+		free(buf);
+		qdl_file_close(&file);
+		return 0;
 	}
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
@@ -717,14 +806,21 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
 
 		if (!program->sparse || program->sparse_chunk_type != CHUNK_TYPE_FILL) {
-			n = qdl_file_read(&file, buf, chunk_size * sector_size);
+			n = qdl_file_read_exact(&file, buf, chunk_size * sector_size);
 			if (n < 0) {
 				ux_err("failed to read %s\n", program->filename);
 				goto err_free_doc;
 			}
 
-			if ((size_t)n < qdl->max_payload_size)
-				memset(buf + n, 0, qdl->max_payload_size - n);
+			/*
+			 * qdl_file_read_exact() only returns short on true
+			 * EOF. The wire protocol expects exactly
+			 * chunk_size * sector_size bytes, so zero-pad the
+			 * residue (which is at most the trailing partial
+			 * sector of the file).
+			 */
+			if ((size_t)n < chunk_size * sector_size)
+				memset(buf + n, 0, chunk_size * sector_size - n);
 		}
 
 		vip_gen_chunk_update(qdl, buf, chunk_size * sector_size);

@@ -488,6 +488,8 @@ static void print_usage(FILE *out)
 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
 	fprintf(out, " -R, --skip-reset\t\tDo not send the reset command after flashing completes\n");
 	fprintf(out, "     --backend=B\t\tSelect device backend B: <auto|usb|qud> (default: auto)\n");
+	fprintf(out, "     --skipblock=M\t\tUse readback mechanism M to skip <program> entries already on flash;\n");
+	fprintf(out, "                 \t\tM: <none|sha256> (default: none)\n");
 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
 	fprintf(out, " <program-xml>\t\txml file containing <program> or <erase> directives\n");
 	fprintf(out, " <patch-xml>\t\txml file containing <patch> directives\n");
@@ -539,6 +541,7 @@ static int qdl_list(FILE *out)
 /* Long-only option ids, distinct from any short option character. */
 enum {
 	OPT_BACKEND = 0x100,
+	OPT_SKIPBLOCK,
 };
 
 static int qdl_ramdump(int argc, char **argv)
@@ -865,6 +868,7 @@ static int qdl_flash(int argc, char **argv)
 	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
 	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_AUTO;
+	enum qdl_skipblock_mode skipblock_mode = QDL_SKIPBLOCK_NONE;
 
 	static struct option options[] = {
 		{"debug", no_argument, 0, 'd'},
@@ -882,6 +886,7 @@ static int qdl_flash(int argc, char **argv)
 		{"slot", required_argument, 0, 'T'},
 		{"skip-reset", no_argument, 0, 'R'},
 		{"backend", required_argument, 0, OPT_BACKEND},
+		{"skipblock", required_argument, 0, OPT_SKIPBLOCK},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
@@ -943,6 +948,15 @@ static int qdl_flash(int argc, char **argv)
 			    decode_backend(optarg, &qdl_dev_type) < 0)
 				errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
 			break;
+		case OPT_SKIPBLOCK:
+			if (!strcmp(optarg, "none"))
+				skipblock_mode = QDL_SKIPBLOCK_NONE;
+			else if (!strcmp(optarg, "sha256"))
+				skipblock_mode = QDL_SKIPBLOCK_SHA256;
+			else
+				errx(1, "unknown --skipblock mode \"%s\", valid options are none and sha256",
+				     optarg);
+			break;
 		case 'h':
 			print_usage(stdout);
 			return 0;
@@ -965,6 +979,7 @@ static int qdl_flash(int argc, char **argv)
 	}
 
 	qdl->slot = slot;
+	qdl->skipblock_mode = skipblock_mode;
 
 	if (vip_table_path) {
 		if (vip_generate_dir)

@@ -31,6 +31,7 @@ void *qdl_file_load(struct qdl_file *file, size_t *len);
 void qdl_file_close(struct qdl_file *file);
 size_t qdl_file_getsize(struct qdl_file *file);
 ssize_t qdl_file_read(struct qdl_file *file, void *buf, size_t len);
+ssize_t qdl_file_read_exact(struct qdl_file *file, void *buf, size_t len);
 off_t qdl_file_seek(struct qdl_file *file, off_t offset, int whence);
 
 int qdl_zip_open(const char *filename, struct qdl_zip **__qdl_zip);
