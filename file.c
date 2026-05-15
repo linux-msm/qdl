@@ -151,6 +151,34 @@ ssize_t qdl_file_read(struct qdl_file *file, void *buf, size_t len)
 	return -1;
 }
 
+/*
+ * Loop around qdl_file_read() until @len bytes have been read into
+ * @buf. Returns the number of bytes read, which equals @len for full
+ * reads and is less than @len only on EOF; negative on a read error.
+ *
+ * Wraps the underlying read() / zip_fread() so callers that don't
+ * tolerate short reads don't have to roll their own loop. The bytes
+ * past the returned length are left untouched - callers that need a
+ * fixed-size buffer must zero them themselves.
+ */
+ssize_t qdl_file_read_exact(struct qdl_file *file, void *buf, size_t len)
+{
+	uint8_t *p = buf;
+	size_t got = 0;
+	ssize_t n;
+
+	while (got < len) {
+		n = qdl_file_read(file, p + got, len - got);
+		if (n < 0)
+			return -1;
+		if (n == 0)
+			break;
+		got += (size_t)n;
+	}
+
+	return (ssize_t)got;
+}
+
 off_t qdl_file_seek(struct qdl_file *file, off_t offset, int whence)
 {
 	switch (file->type) {

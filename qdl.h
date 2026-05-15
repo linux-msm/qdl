@@ -67,12 +67,18 @@ enum qdl_storage_type {
 	QDL_STORAGE_SPINOR,
 };
 
+enum qdl_skipblock_mode {
+	QDL_SKIPBLOCK_NONE,
+	QDL_SKIPBLOCK_SHA256,
+};
+
 struct qdl_device {
 	enum QDL_DEVICE_TYPE dev_type;
 	int fd;
 	size_t max_payload_size;
 	size_t sector_size;
 	enum qdl_storage_type current_storage_type;
+	enum qdl_skipblock_mode skipblock_mode;
 	unsigned int slot;
 
 	int (*open)(struct qdl_device *qdl, const char *serial);
