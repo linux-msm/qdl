@@ -809,6 +809,42 @@ static int qdl_determine_bootable(struct list_head *ops)
 	return 0;
 }
 
+/*
+ * Walk the firehose op list and emit one hex line per
+ * FIREHOSE_OP_GET_SHA256_DIGEST entry. firehose_run() fills op->digest;
+ * formatting and printing live here so firehose.c stays out of the
+ * user-facing output policy.
+ *
+ * If the request shipped but the device returned no digest
+ * (digest_valid stayed false), surface that to the user instead of
+ * silently skipping the region.
+ */
+static void print_sha256_results(struct list_head *ops)
+{
+	struct firehose_op *op;
+
+	list_for_each_entry(op, ops, node) {
+		char hex[SHA256_DIGEST_STRING_LENGTH];
+		size_t i;
+
+		if (op->type != FIREHOSE_OP_GET_SHA256_DIGEST)
+			continue;
+
+		if (!op->digest_valid) {
+			ux_err("no sha256 digest returned for %s+0x%x\n",
+			       op->start_sector, op->num_sectors);
+			continue;
+		}
+
+		for (i = 0; i < SHA256_DIGEST_LENGTH; i++)
+			snprintf(hex + i * 2, 3, "%02x", op->digest[i]);
+		hex[SHA256_DIGEST_STRING_LENGTH - 1] = '\0';
+
+		printf("%s\n", hex);
+		fflush(stdout);
+	}
+}
+
 static int qdl_flash(int argc, char **argv)
 {
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
@@ -1080,6 +1116,8 @@ static int qdl_flash(int argc, char **argv)
 		ret = firehose_run(qdl, &firehose_ops);
 	if (ret < 0)
 		goto out_cleanup;
+
+	print_sha256_results(&firehose_ops);
 
 out_cleanup:
 	if (qdl) {

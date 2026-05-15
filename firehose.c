@@ -154,14 +154,9 @@ static bool extract_sha256_hex(const char *str, uint8_t digest[SHA256_DIGEST_LEN
 	return false;
 }
 
-struct firehose_sha256_result {
-	uint8_t digest[SHA256_DIGEST_LENGTH];
-	bool valid;
-};
-
 static int firehose_sha256_parser(xmlNode *node, void *data, bool *rawmode)
 {
-	struct firehose_sha256_result *result = data;
+	struct firehose_op *op = data;
 	xmlChar *value;
 	int ret;
 
@@ -170,8 +165,8 @@ static int firehose_sha256_parser(xmlNode *node, void *data, bool *rawmode)
 		if (!value)
 			return -EINVAL;
 
-		if (!result->valid && extract_sha256_hex((const char *)value, result->digest))
-			result->valid = true;
+		if (!op->digest_valid && extract_sha256_hex((const char *)value, op->digest))
+			op->digest_valid = true;
 
 		ux_log("LOG: %s\n", value);
 		xmlFree(value);
@@ -185,7 +180,7 @@ static int firehose_sha256_parser(xmlNode *node, void *data, bool *rawmode)
 	 * the response itself rather than emitting it via <log>. Try a few
 	 * known attribute names.
 	 */
-	if (!result->valid) {
+	if (!op->digest_valid) {
 		static const char * const attrs[] = { "Digest", "SHA256", "sha256" };
 		size_t i;
 
@@ -193,10 +188,10 @@ static int firehose_sha256_parser(xmlNode *node, void *data, bool *rawmode)
 			value = xmlGetProp(node, (xmlChar *)attrs[i]);
 			if (!value)
 				continue;
-			if (extract_sha256_hex((const char *)value, result->digest))
-				result->valid = true;
+			if (extract_sha256_hex((const char *)value, op->digest))
+				op->digest_valid = true;
 			xmlFree(value);
-			if (result->valid)
+			if (op->digest_valid)
 				break;
 		}
 	}
@@ -946,15 +941,20 @@ static int firehose_read_op(struct qdl_device *qdl, struct firehose_op *op)
 	return ret;
 }
 
+/*
+ * Issue a <getsha256digest> request and store the result on @op. On
+ * success op->digest is populated and op->digest_valid is set; callers
+ * that want to surface the digest (the qdl `sha256` subcommand prints
+ * it after firehose_run() returns; the --skipblock=sha256 fast-path
+ * compares it against a locally-computed digest) consume the field
+ * themselves.
+ */
 static int firehose_getsha256digest(struct qdl_device *qdl, struct firehose_op *op)
 {
-	struct firehose_sha256_result result = { 0 };
 	unsigned int sector_size;
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
-	char hex[SHA256_DIGEST_STRING_LENGTH];
-	size_t i;
 	int ret;
 
 	sector_size = op->sector_size ? : qdl->sector_size;
@@ -971,13 +971,15 @@ static int firehose_getsha256digest(struct qdl_device *qdl, struct firehose_op *
 	if (qdl->slot != UINT_MAX)
 		xml_setpropf(node, "slot", "%u", qdl->slot);
 
+	op->digest_valid = false;
+
 	ret = firehose_write(qdl, doc);
 	if (ret < 0) {
 		ux_err("failed to send getsha256digest command\n");
 		goto out;
 	}
 
-	ret = firehose_read(qdl, 30000, firehose_sha256_parser, &result);
+	ret = firehose_read(qdl, 30000, firehose_sha256_parser, op);
 	if (ret != FIREHOSE_ACK) {
 		ux_err("getsha256digest failed for %s+0x%x\n",
 		       op->start_sector, op->num_sectors);
@@ -985,19 +987,12 @@ static int firehose_getsha256digest(struct qdl_device *qdl, struct firehose_op *
 		goto out;
 	}
 
-	if (!result.valid) {
+	if (!op->digest_valid) {
 		ux_err("getsha256digest returned no digest for %s+0x%x\n",
 		       op->start_sector, op->num_sectors);
 		ret = -1;
 		goto out;
 	}
-
-	for (i = 0; i < SHA256_DIGEST_LENGTH; i++)
-		snprintf(hex + i * 2, 3, "%02x", result.digest[i]);
-	hex[SHA256_DIGEST_STRING_LENGTH - 1] = '\0';
-
-	printf("%s\n", hex);
-	fflush(stdout);
 
 	ret = 0;
 
