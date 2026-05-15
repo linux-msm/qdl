@@ -18,6 +18,47 @@
 #include "qdl.h"
 #include "oscompat.h"
 
+/* Minimal ELF64 definitions — <elf.h> is not available on all platforms */
+#define ELFMAG		"\177ELF"
+#define SELFMAG		4
+#define ET_CORE		4
+#define PT_LOAD		1
+
+#define EI_NIDENT	16
+typedef uint16_t Elf64_Half;
+typedef uint32_t Elf64_Word;
+typedef uint64_t Elf64_Addr;
+typedef uint64_t Elf64_Off;
+typedef uint64_t Elf64_Xword;
+
+typedef struct {
+	unsigned char	e_ident[EI_NIDENT];
+	Elf64_Half	e_type;
+	Elf64_Half	e_machine;
+	Elf64_Word	e_version;
+	Elf64_Addr	e_entry;
+	Elf64_Off	e_phoff;
+	Elf64_Off	e_shoff;
+	Elf64_Word	e_flags;
+	Elf64_Half	e_ehsize;
+	Elf64_Half	e_phentsize;
+	Elf64_Half	e_phnum;
+	Elf64_Half	e_shentsize;
+	Elf64_Half	e_shnum;
+	Elf64_Half	e_shstrndx;
+} Elf64_Ehdr;
+
+typedef struct {
+	Elf64_Word	p_type;
+	Elf64_Word	p_flags;
+	Elf64_Off	p_offset;
+	Elf64_Addr	p_vaddr;
+	Elf64_Addr	p_paddr;
+	Elf64_Xword	p_filesz;
+	Elf64_Xword	p_memsz;
+	Elf64_Xword	p_align;
+} Elf64_Phdr;
+
 #define SAHARA_HELLO_CMD		0x1  /* Min protocol version 1.0 */
 #define SAHARA_HELLO_RESP_CMD		0x2  /* Min protocol version 1.0 */
 #define SAHARA_READ_DATA_CMD		0x3  /* Min protocol version 1.0 */
@@ -417,6 +458,237 @@ static bool sahara_debug64_filter(const char *filename, const char *filter)
 	return !anymatch;
 }
 
+static int write_zeroes(FILE *out, size_t count)
+{
+	static const char zeros[4096];
+	size_t chunk;
+
+	while (count > 0) {
+		chunk = count > sizeof(zeros) ? sizeof(zeros) : count;
+		if (fwrite(zeros, 1, chunk, out) != chunk)
+			return -1;
+		count -= chunk;
+	}
+	return 0;
+}
+
+static ssize_t copy_file_to(FILE *out, const char *path)
+{
+	char buf[65536];
+	ssize_t written = 0;
+	FILE *in;
+	size_t n;
+
+	in = fopen(path, "rb");
+	if (!in)
+		return -1;
+
+	while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+		if (fwrite(buf, 1, n, out) != n) {
+			fclose(in);
+			return -1;
+		}
+		written += n;
+	}
+	fclose(in);
+	return written;
+}
+
+/*
+ * sahara_build_minidump_elf() - assemble a minidump ELF from downloaded regions
+ * @ramdump_path: directory containing the downloaded region files
+ * @filter:       the segment filter that was applied during download (may be NULL)
+ * @table:        the Sahara debug region table received from the device
+ * @n_regions:    number of entries in @table
+ *
+ * When the kernel minidump backend is active, one of the downloaded regions is
+ * named "KELF". It is a fully formed ELF core header whose PT_LOAD program
+ * headers describe the physical address and output offset of every other kernel
+ * region. A second region ("Kvmcorein") carries the vmcoreinfo data that fills
+ * the tail of the PT_NOTE section and has no PT_LOAD entry of its own.
+ *
+ * This function detects those two special regions, then iterates the PT_LOAD
+ * headers in p_offset order, matches each one to a downloaded region file by
+ * physical address, and concatenates everything into a single minidump.elf
+ * ready for crash or gdb.
+ *
+ * All segments are written sequentially because meminspect assigns p_offset
+ * values in a strictly increasing, contiguous order.
+ */
+static void sahara_build_minidump_elf(const char *ramdump_path, const char *filter,
+				      const struct sahara_debug_region64 *table,
+				      size_t n_regions)
+{
+	char path[PATH_MAX];
+	char out_path[PATH_MAX];
+	Elf64_Ehdr *ehdr;
+	Elf64_Phdr *phdrs;
+	void *kelf_buf = NULL;
+	size_t kelf_size;
+	ssize_t kelf_idx = -1;
+	ssize_t vmcore_idx = -1;
+	ssize_t written;
+	FILE *out = NULL;
+	FILE *in;
+	size_t i, j;
+	bool matched;
+
+	/* Locate the KELF region; bail out silently if absent (not a minidump) */
+	for (i = 0; i < n_regions; i++) {
+		if (!strncmp(table[i].region, "md_KELF", 7)) {
+			kelf_idx = i;
+			break;
+		}
+	}
+
+	if (kelf_idx < 0)
+		return;
+
+	/* If KELF itself was excluded by the filter, nothing to do */
+	if (sahara_debug64_filter(table[kelf_idx].filename, filter))
+		return;
+
+	/* Read the KELF file into memory so we can parse its program headers */
+	snprintf(path, sizeof(path), "%s/%s", ramdump_path, table[kelf_idx].filename);
+	in = fopen(path, "rb");
+	if (!in) {
+		ux_err("minidump: failed to open KELF file %s\n", path);
+		return;
+	}
+
+	long kelf_size_l;
+
+	fseek(in, 0, SEEK_END);
+	kelf_size_l = ftell(in);
+	if (kelf_size_l <= 0) {
+		ux_err("minidump: failed to get KELF file size\n");
+		fclose(in);
+		return;
+	}
+	fseek(in, 0, SEEK_SET);
+	kelf_size = (size_t)kelf_size_l;
+
+	kelf_buf = malloc(kelf_size);
+	if (!kelf_buf) {
+		fclose(in);
+		return;
+	}
+
+	if (fread(kelf_buf, 1, kelf_size, in) != kelf_size) {
+		ux_err("minidump: failed to read KELF file\n");
+		fclose(in);
+		goto out_free;
+	}
+	fclose(in);
+
+	ehdr = kelf_buf;
+	if (kelf_size < sizeof(*ehdr) ||
+	    memcmp(ehdr->e_ident, ELFMAG, SELFMAG) ||
+	    ehdr->e_type != ET_CORE ||
+	    ehdr->e_phentsize != sizeof(Elf64_Phdr) ||
+	    ehdr->e_phoff > kelf_size ||
+	    (size_t)ehdr->e_phnum * sizeof(Elf64_Phdr) > kelf_size - ehdr->e_phoff) {
+		ux_err("minidump: KELF does not look like a 64-bit ELF core file\n");
+		goto out_free;
+	}
+
+	phdrs = (Elf64_Phdr *)((char *)kelf_buf + ehdr->e_phoff);
+
+	/*
+	 * Identify the vmcoreinfo region: among all K-prefixed regions, it is
+	 * the one whose physical address has no matching PT_LOAD p_paddr entry.
+	 * It fills the tail of the PT_NOTE section and must be placed immediately
+	 * after the KELF content in the output file.
+	 */
+	for (i = 0; i < n_regions; i++) {
+		if ((ssize_t)i == kelf_idx || strncmp(table[i].region, "md_K", 4) != 0)
+			continue;
+
+		matched = false;
+		for (j = 0; j < ehdr->e_phnum; j++) {
+			if (phdrs[j].p_type == PT_LOAD &&
+			    phdrs[j].p_paddr == table[i].addr) {
+				matched = true;
+				break;
+			}
+		}
+
+		if (!matched) {
+			vmcore_idx = i;
+			break;
+		}
+	}
+
+	snprintf(out_path, sizeof(out_path), "%s/minidump.elf", ramdump_path);
+	out = fopen(out_path, "wb");
+	if (!out) {
+		ux_err("minidump: failed to create %s\n", out_path);
+		goto out_free;
+	}
+
+	/* 1. Write KELF: provides the ELF header, phdrs, and partial PT_NOTE */
+	if (fwrite(kelf_buf, 1, kelf_size, out) != kelf_size) {
+		ux_err("minidump: failed to write KELF to output\n");
+		goto out_close;
+	}
+
+	/* 2. Write vmcoreinfo immediately after KELF to complete the PT_NOTE */
+	if (vmcore_idx >= 0) {
+		snprintf(path, sizeof(path), "%s/%s",
+			 ramdump_path, table[vmcore_idx].filename);
+		if (copy_file_to(out, path) < 0)
+			ux_err("minidump: vmcoreinfo region missing, crash may not load correctly\n");
+	}
+
+	/*
+	 * 3. Write PT_LOAD segments in ascending p_offset order.
+	 *    meminspect assigns p_offset values contiguously in registration
+	 *    order so iterating the phdr array gives the correct sequence.
+	 */
+	for (j = 0; j < ehdr->e_phnum; j++) {
+		if (phdrs[j].p_type != PT_LOAD)
+			continue;
+
+		matched = false;
+		for (i = 0; i < n_regions; i++) {
+			if (table[i].addr != phdrs[j].p_paddr)
+				continue;
+
+			snprintf(path, sizeof(path), "%s/%s",
+				 ramdump_path, table[i].filename);
+			written = copy_file_to(out, path);
+			if (written < 0) {
+				ux_err("minidump: region %s missing, skipping\n",
+				       table[i].filename);
+				matched = true;
+				break;
+			}
+
+			/* Zero-pad to p_filesz to keep offsets aligned */
+			if ((size_t)written < phdrs[j].p_filesz &&
+			    write_zeroes(out, phdrs[j].p_filesz - (size_t)written)) {
+				ux_err("minidump: failed to pad region %s\n",
+				       table[i].filename);
+				goto out_close;
+			}
+
+			matched = true;
+			break;
+		}
+
+		if (!matched)
+			ux_err("minidump: no region found for PT_LOAD at paddr 0x%"
+			       PRIx64 "\n", phdrs[j].p_paddr);
+	}
+
+	ux_info("minidump: ELF written to %s\n", out_path);
+
+out_close:
+	fclose(out);
+out_free:
+	free(kelf_buf);
+}
+
 static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 			   const char *ramdump_path, const char *filter)
 {
@@ -476,6 +748,9 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 
 		ux_info("%s dumped successfully\n", table[i].filename);
 	}
+
+	sahara_build_minidump_elf(ramdump_path, filter, table,
+				  pkt->debug64_req.length / sizeof(table[0]));
 
 	free(table);
 
