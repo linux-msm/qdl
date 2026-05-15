@@ -8,6 +8,7 @@
 
 #include "list.h"
 #include "qdl.h"
+#include "sha2.h"
 
 enum firehose_op_type {
 	FIREHOSE_OP_NONE,
@@ -58,6 +59,10 @@ struct firehose_op {
 
 	/* configure */
 	enum qdl_storage_type storage_type;
+
+	/* getsha256digest */
+	uint8_t digest[SHA256_DIGEST_LENGTH];
+	bool digest_valid;
 };
 
 struct firehose_op *firehose_alloc_op(int type);
