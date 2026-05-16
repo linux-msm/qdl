@@ -51,6 +51,13 @@ static int load_erase_tag(struct list_head *ops, xmlNode *node, bool is_nand)
 		return -EINVAL;
 	}
 
+	if (!program->num_sectors) {
+		ux_err("erase tag with num_sectors=0 not allowed\n");
+		free(program->start_sector);
+		free(program);
+		return -EINVAL;
+	}
+
 	list_append(ops, &program->node);
 
 	return 0;
