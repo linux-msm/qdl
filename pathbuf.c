@@ -97,14 +97,14 @@ int qdl_pathbuf_push(struct pathbuf *path, const char *component)
 	if (path_is_absolute(component))
 		path_len = 0;
 
-	if (component[0] == '.' && component[1] == '/')
+	if (component[0] == '.' && qdl_path_is_sep(component[1]))
 		skip += 2;
 
 	if (path_len > 0)
-		need_sep = (path->buf[path_len - 1] != '/');
+		need_sep = !qdl_path_is_sep(path->buf[path_len - 1]);
 
 	if (path_len > 0 && !need_sep) {
-		while (component[skip] == '/')
+		while (qdl_path_is_sep(component[skip]))
 			skip++;
 	}
 
@@ -118,7 +118,12 @@ int qdl_pathbuf_push(struct pathbuf *path, const char *component)
 	if (need_sep)
 		path->buf[path_len++] = '/';
 
+#ifndef _WIN32
 	memcpy(path->buf + path_len, component + skip, component_len + 1);
+#else
+	for (size_t i = 0; i <= component_len; i++)
+		path->buf[path_len + i] = qdl_path_is_sep(component[skip + i]) ? '/' : component[skip + i];
+#endif
 	path->len = path_len + component_len;
 
 	return 0;

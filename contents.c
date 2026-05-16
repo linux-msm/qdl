@@ -19,6 +19,12 @@
 #include "pathbuf.h"
 #include "qdl.h"
 
+#ifdef _WIN32
+#define ROOT_PATH_TAG "windows_root_path"
+#else
+#define ROOT_PATH_TAG "linux_root_path"
+#endif
+
 enum contents_file_type {
 	CONTENTS_FILE_OTHER,
 	CONTENTS_FILE_PROGRAM,
@@ -395,7 +401,7 @@ static int contents_parse_builds(struct contents *contents, xmlNode *node, struc
 			continue;
 		}
 
-		if (!xmlStrcmp(node->name, (xmlChar *)"linux_root_path")) {
+		if (!xmlStrcmp(node->name, (xmlChar *)ROOT_PATH_TAG)) {
 			root = contents_node_get_text(node);
 			if (!root)
 				return -1;
