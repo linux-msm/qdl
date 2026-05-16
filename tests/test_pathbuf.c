@@ -102,6 +102,16 @@ static void test_push_basic_behavior(void **state)
 	assert_int_equal(path.len, strlen("foo/bar/baz"));
 
 #ifdef _WIN32
+	ret = qdl_pathbuf_push(&path, ".\\qux");
+	assert_int_equal(ret, 0);
+	assert_string_equal(path.buf, "foo/bar/baz/qux");
+	assert_int_equal(path.len, strlen("foo/bar/baz/qux"));
+
+	ret = qdl_pathbuf_push(&path, "nested\\leaf");
+	assert_int_equal(ret, 0);
+	assert_string_equal(path.buf, "foo/bar/baz/qux/nested/leaf");
+	assert_int_equal(path.len, strlen("foo/bar/baz/qux/nested/leaf"));
+
 	ret = qdl_pathbuf_push(&path, "C:/abs");
 	assert_int_equal(ret, 0);
 	assert_string_equal(path.buf, "C:/abs");
