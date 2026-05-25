@@ -41,6 +41,13 @@ struct vip_transfer_data {
 	size_t chained_table_size;
 	bool fh_parse_status;
 	bool sending_table; /* set during vip_transfer_send_raw() */
+	/*
+	 * Set when the programmer's startup logs announce that VIP is
+	 * active (it expects a signed digest table). Lets the host detect
+	 * a mismatch between the device's policy and the --vip-table-path
+	 * option before the configure handshake stalls.
+	 */
+	bool programmer_requires_vip;
 };
 
 int vip_transfer_init(struct qdl_device *qdl, const char *vip_table_path);

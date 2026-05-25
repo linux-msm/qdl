@@ -37,6 +37,33 @@ enum {
 	FIREHOSE_NAK,
 };
 
+/*
+ * Substring emitted by the Firehose programmer's startup logs when VIP is
+ * active on-device (e.g. "INFO: VIP is enabled, receiving the signed table
+ * of size 8192"). Matching a stable prefix avoids coupling to the trailing
+ * byte count, which varies per programmer build.
+ */
+#define VIP_PROGRAMMER_MARKER "VIP is enabled, receiving the signed table"
+
+static void firehose_check_vip_marker(struct qdl_device *qdl, xmlNode *node)
+{
+	xmlChar *value;
+
+	if (qdl->vip_data.programmer_requires_vip)
+		return;
+	if (xmlStrcmp(node->name, (xmlChar *)"log") != 0)
+		return;
+
+	value = xmlGetProp(node, (xmlChar *)"value");
+	if (!value)
+		return;
+
+	if (strstr((const char *)value, VIP_PROGRAMMER_MARKER))
+		qdl->vip_data.programmer_requires_vip = true;
+
+	xmlFree(value);
+}
+
 static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 {
 	xmlChar buf[128];
@@ -306,6 +333,8 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 			node = firehose_response_parse(start, chunk, &error);
 			if (!node)
 				return error;
+
+			firehose_check_vip_marker(qdl, node);
 
 			ret = response_parser(node, data, &rawmode);
 			xmlFreeDoc(node->doc);
@@ -1343,6 +1372,21 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 	 */
 	if (qdl->vip_data.state != VIP_DISABLED) {
 		firehose_read(qdl, timeout_s * 1000, firehose_generic_parser, NULL);
+
+		/*
+		 * The startup-log drain above is our only chance to learn
+		 * whether the programmer expects a VIP table before configure
+		 * is sent.  configure goes through firehose_write(), which
+		 * unconditionally pushes the signed table when state is not
+		 * VIP_DISABLED; if the programmer isn't in VIP mode it will
+		 * try to parse those bytes as XML and reject the configure.
+		 * Demote VIP here so the table is never sent.
+		 */
+		if (!qdl->vip_data.programmer_requires_vip) {
+			ux_info("WARNING: --vip-table-path was provided but programmer did not announce VIP; continuing without VIP\n");
+			qdl->vip_data.state = VIP_DISABLED;
+		}
+
 		ret = firehose_try_configure(qdl, false, storage);
 		if (ret != FIREHOSE_ACK) {
 			ux_err("configure request failed\n");
@@ -1355,6 +1399,17 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 	timeradd(&now, &timeout, &timeout);
 	for (;;) {
 		ret = firehose_try_configure(qdl, skip_storage_init, storage);
+
+		/*
+		 * If the programmer's startup logs announced that VIP is
+		 * active but no --vip-table-path was provided, bail out now
+		 * rather than burning the full configure timeout waiting for
+		 * a signed table that will never be sent.
+		 */
+		if (qdl->vip_data.programmer_requires_vip) {
+			ux_err("programmer requires VIP, but no --vip-table-path was provided\n");
+			return -1;
+		}
 
 		if (ret == FIREHOSE_ACK) {
 			break;
