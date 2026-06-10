@@ -47,6 +47,9 @@ struct firehose_op {
 	unsigned int last_sector;
 	bool is_nand;
 
+	/* erase */
+	bool erase_all;
+
 	unsigned int sparse_chunk_type;
 	uint32_t sparse_fill_value;
 	off_t sparse_offset;
