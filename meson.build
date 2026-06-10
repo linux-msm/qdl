@@ -5,10 +5,18 @@ project('qdl', 'c',
 )
 
 # Determine version
-git_check_ver = run_command('git', 'describe', '--dirty', '--always', '--tags', check: false).stdout().strip()
-git_v = git_check_ver != '' ? git_check_ver : 'unknown-version'
 env_v = get_option('VERSION')
-ver   = env_v != '' ? env_v : git_v
+if env_v != ''
+  ver = env_v
+else
+  git = find_program('git', required: false)
+  git_v = 'unknown-version'
+  if git.found()
+    git_check_ver = run_command(git, 'describe', '--dirty', '--always', '--tags', check: false).stdout().strip()
+    git_v = git_check_ver != '' ? git_check_ver : git_v
+  endif
+  ver = git_v
+endif
 
 # Dependencies
 libusb_dep = dependency('libusb-1.0')
