@@ -15,7 +15,7 @@
 #include <cmocka.h>
 
 #include "common.h"
-#include "../contents.c"
+#include "../src/contents.c"
 
 bool qdl_debug;
 
