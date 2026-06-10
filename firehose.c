@@ -675,25 +675,39 @@ static int qdl_should_skipblock(struct qdl_device *qdl,
 	SHA256Init(&ctx);
 	qdl_file_seek(file, (off_t)program->file_offset * sector_size, SEEK_SET);
 
+	/* Hash the file bytes that fall within the region. */
 	while (hashed < total) {
 		size_t want = MIN(qdl->max_payload_size, total - hashed);
 
 		hn = qdl_file_read_exact(file, buf, want);
 		if (hn < 0)
 			return 0;
-		if (hn == 0 || (size_t)hn < want) {
-			/*
-			 * EOF before completing the requested region: the
-			 * device's digest is over `total` bytes from flash,
-			 * so we can't construct a matching local digest.
-			 * Defer to the normal program path.
-			 */
-			if (hn > 0)
-				SHA256Update(&ctx, buf, hn);
-			return 0;
+		if (hn > 0) {
+			SHA256Update(&ctx, buf, hn);
+			hashed += (size_t)hn;
 		}
-		SHA256Update(&ctx, buf, hn);
-		hashed += (size_t)hn;
+		if ((size_t)hn < want)
+			break;	/* short read == EOF, remainder is zero-pad */
+	}
+
+	/*
+	 * The program path zero-pads everything past EOF up to the full
+	 * region (see the memset() of the trailing residue in
+	 * firehose_program()), so the bytes the device hashed on flash are
+	 * the file bytes followed by zeros up to `total`. Mirror that padding
+	 * here, otherwise a file shorter than the region - or one read from a
+	 * non-zero file_sector_offset, where `num_sectors` still covers the
+	 * whole file - would never produce a digest that can match flash, and
+	 * the partition would always be reprogrammed.
+	 */
+	if (hashed < total) {
+		memset(buf, 0, qdl->max_payload_size);
+		while (hashed < total) {
+			size_t pad = MIN(qdl->max_payload_size, total - hashed);
+
+			SHA256Update(&ctx, buf, pad);
+			hashed += pad;
+		}
 	}
 
 	SHA256Final(local_digest, &ctx);
