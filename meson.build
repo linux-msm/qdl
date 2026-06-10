@@ -25,8 +25,10 @@ libzip_dep = dependency('libzip')
 help2man = find_program('help2man', required: false)
 cmocka_dep = dependency('cmocka', required: get_option('tests'))
 
-# Common include dirs
-inc = include_directories('.')
+# Public API headers live in include/, implementation headers in src/.
+# '.' adds the top-level build dir, where configure_file generates
+# version.h, so targets in subdirs (e.g. tests/) resolve it too.
+inc = include_directories('include', 'src', '.')
 
 # Windows-specific link flags
 ws2_dep = []
@@ -57,27 +59,21 @@ conf = configuration_data()
 conf.set('version', ver)
 
 version_h = configure_file(
-  input: 'version.h.in',
+  input: 'include/version.h.in',
   output: 'version.h',
   configuration: conf
 )
 
-common_sources = files(
-  'sahara.c', 'util.c', 'ux.c', 'oscompat.c', 'file.c'
-)
+# Source lists (common_sources, qdl_sources, ramdump_sources, ks_sources
+# and the per-test source vars) are declared next to the sources.
+subdir('src')
 
-shared_lib = static_library('qdl_common', common_sources, dependencies: common_dep)
+shared_lib = static_library('qdl_common', common_sources,
+  dependencies: common_dep,
+  include_directories: inc,
+)
 
 # --- qdl executable ---
-qdl_sources = files(
-  'auto.c', 'qud.c',
-  'firehose.c',
-  'io.c', 'qdl.c', 'patch.c',
-  'program.c', 'read.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
-  'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c', 'contents.c', 'pathbuf.c',
-  'zipper.c',
-)
-
 qdl_exe = executable('qdl',
   sources : qdl_sources + [version_h],
   link_with: shared_lib,
@@ -87,10 +83,6 @@ qdl_exe = executable('qdl',
 )
 
 # --- qdl-ramdump executable ---
-ramdump_sources = files(
-  'ramdump.c', 'auto.c', 'qud.c', 'io.c', 'sha2.c', 'sim.c', 'usb.c'
-)
-
 qdl_ramdump_exe = executable('qdl-ramdump',
   sources : ramdump_sources + [version_h],
   link_with: shared_lib,
@@ -100,8 +92,6 @@ qdl_ramdump_exe = executable('qdl-ramdump',
 )
 
 # --- qdl-ks executable ---
-ks_sources = files('ks.c')
-
 qdl_ks_exe = executable('qdl-ks',
   sources : ks_sources + [version_h],
   link_with: shared_lib,
@@ -110,101 +100,8 @@ qdl_ks_exe = executable('qdl-ks',
   install : true
 )
 
-# -- tests ---
-test(
-  'VIP table generation',
-  find_program('bash'),
-  args: [meson.current_source_dir() / 'tests/test_vip_generation.sh', '--builddir', meson.current_build_dir()],
-  depends: [qdl_exe],
-  suite: 'integration',
-)
-
-test(
-  'Flashmap dry-run',
-  find_program('bash'),
-  args: [meson.current_source_dir() / 'tests/test_flashmap.sh', '--builddir', meson.current_build_dir()],
-  depends: [qdl_exe],
-  suite: 'integration',
-  protocol: 'tap',
-)
-
-if cmocka_dep.found()
-  test_program_load_xml = executable('test_program_load_xml',
-    sources : [
-      'tests/test_program_load_xml.c',
-      'tests/common.c',
-      'pathbuf.c',
-      'program.c',
-      'util.c',
-      version_h,
-    ],
-    dependencies : common_dep + [cmocka_dep],
-    include_directories : inc,
-    c_args : ['-Daccess=mock_access'],
-  )
-
-  test(
-    'program_load_xml path resolution',
-    test_program_load_xml,
-    suite: 'unit',
-    protocol: 'tap',
-    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
-  )
-
-  test_pathbuf = executable('test_pathbuf',
-    sources : [
-      'tests/test_pathbuf.c',
-      'pathbuf.c',
-    ],
-    dependencies : common_dep + [cmocka_dep],
-    include_directories : inc,
-  )
-
-  test(
-    'pathbuf dirname behavior',
-    test_pathbuf,
-    suite: 'unit',
-    protocol: 'tap',
-    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
-  )
-
-  test_contents_selectors = executable('test_contents_selectors',
-    sources : [
-      'tests/test_contents_selectors.c',
-      'pathbuf.c',
-    ],
-    dependencies : common_dep + [cmocka_dep],
-    include_directories : inc,
-  )
-
-  test(
-    'contents selector resolution',
-    test_contents_selectors,
-    suite: 'unit',
-    protocol: 'tap',
-    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
-  )
-
-  test_contents_xml = executable('test_contents_xml',
-    sources : [
-      'tests/test_contents_xml.c',
-      'tests/common.c',
-      'pathbuf.c',
-    ],
-    dependencies : common_dep + [cmocka_dep],
-    include_directories : inc,
-  )
-
-  test(
-    'contents XML parsing',
-    test_contents_xml,
-    suite: 'unit',
-    protocol: 'tap',
-    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
-  )
-else
-  warning('cmocka not found; skipping unit tests')
-endif
+# --- tests ---
+subdir('tests')
 
 # --- checkpatch targets  ---
 check_script = join_paths(meson.project_source_root(), 'scripts', 'checkpatch_wrapper.sh')

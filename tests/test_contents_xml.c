@@ -23,7 +23,7 @@
 static xmlDocPtr mock_xmlReadFile(const char *filename, const char *encoding, int options);
 
 #define xmlReadFile mock_xmlReadFile
-#include "../contents.c"
+#include "../src/contents.c"
 #undef xmlReadFile
 
 bool qdl_debug;
