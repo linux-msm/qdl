@@ -16,9 +16,6 @@ qdl_sources = files(
   'zipper.c',
 )
 
-# qdl-ks: Sahara kickstart helper.
-ks_sources = files('ks.c')
-
 # Individual sources reused by the cmocka unit tests.
 pathbuf_src = files('pathbuf.c')
 program_src = files('program.c')

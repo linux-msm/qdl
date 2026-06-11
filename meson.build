@@ -64,8 +64,8 @@ version_h = configure_file(
   configuration: conf
 )
 
-# Source lists (common_sources, qdl_sources, ks_sources and the per-test
-# source vars) are declared next to the sources.
+# Source lists (common_sources, qdl_sources and the per-test source
+# vars) are declared next to the sources.
 subdir('src')
 
 shared_lib = static_library('qdl_common', common_sources,
@@ -76,15 +76,6 @@ shared_lib = static_library('qdl_common', common_sources,
 # --- qdl executable ---
 qdl_exe = executable('qdl',
   sources : qdl_sources + [version_h],
-  link_with: shared_lib,
-  dependencies : common_compile_dep,
-  include_directories : inc,
-  install : true
-)
-
-# --- qdl-ks executable ---
-qdl_ks_exe = executable('qdl-ks',
-  sources : ks_sources + [version_h],
   link_with: shared_lib,
   dependencies : common_compile_dep,
   include_directories : inc,
@@ -117,7 +108,6 @@ if help2man.found()
     manpage_targets = []
     foreach prog : [
       ['qdl', qdl_exe, 'Qualcomm Download'],
-      ['qdl-ks', qdl_ks_exe, 'Qualcomm KS']
     ]
       manpage_targets += custom_target(prog[0] + '.1',
         input: prog[1],
