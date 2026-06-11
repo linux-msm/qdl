@@ -16,11 +16,6 @@ qdl_sources = files(
   'zipper.c',
 )
 
-# qdl-ramdump: crash-dump collection only.
-ramdump_sources = files(
-  'ramdump.c', 'auto.c', 'qud.c', 'io.c', 'sha2.c', 'sim.c', 'usb.c',
-)
-
 # qdl-ks: Sahara kickstart helper.
 ks_sources = files('ks.c')
 
