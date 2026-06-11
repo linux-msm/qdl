@@ -6,6 +6,7 @@
  */
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <libgen.h>
 #include <stdbool.h>
@@ -472,6 +473,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "       %s [options] <prog.mbn> (sha256 <address>)...\n", __progname);
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
+	fprintf(out, "       %s ks -p <sahara-dev-node> -s <id:file-path>...\n", __progname);
 	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", __progname);
 	fprintf(out, "       %s create-zip <zipfile> <contents>[::<specifier>]\n", __progname);
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
@@ -499,6 +501,8 @@ static void print_usage(FILE *out)
 	fprintf(out, "          \t\tnumber S, the number of sectors to follow L, or partition by \"name\"\n");
 	fprintf(out, " <ramdump-path>\t\tpath where ramdump should stored\n");
 	fprintf(out, " <segment-filter>\toptional glob-pattern to select which segments to ramdump\n");
+	fprintf(out, " <sahara-dev-node>\tSahara device node, e.g. /dev/mhi0_QAIC_SAHARA (ks)\n");
+	fprintf(out, " <id:file-path>\t\tmap a Sahara image id to a host file, repeatable (ks)\n");
 	fprintf(out, " <flashmap>\tflashmap JSON file, or ZIP archive with flashmap.json\n");
 	fprintf(out, " <contents>\tcontents XML file\n");
 	fprintf(out, " <specifier>\tcomma-separated list of specifiers, such as storage type and flavors\n");
@@ -626,6 +630,117 @@ out_cleanup:
 	qdl_close(qdl);
 	qdl_deinit(qdl);
 
+	return ret;
+}
+
+/*
+ * Sahara kickstart ("ks") subcommand.
+ *
+ * Kickstart talks to a kernel-provided Sahara device node (such as
+ * /dev/mhi0_QAIC_SAHARA) with plain read()/write() rather than going through
+ * USB/QUD, so it plugs raw-fd hooks into the device read/write vtable instead
+ * of allocating a backend via qdl_init().
+ */
+static int ks_read(struct qdl_device *qdl, void *buf, size_t len,
+		   unsigned int timeout __unused)
+{
+	return read(qdl->fd, buf, len);
+}
+
+static int ks_write(struct qdl_device *qdl, const void *buf, size_t len,
+		    unsigned int timeout __unused)
+{
+	return write(qdl->fd, buf, len);
+}
+
+static int qdl_ks(int argc, char **argv)
+{
+	struct sahara_image mappings[MAPPING_SZ] = {};
+	struct qdl_device qdl = {
+		.fd = -1,
+		.read = ks_read,
+		.write = ks_write,
+	};
+	bool found_mapping = false;
+	const char *dev_node = NULL;
+	const char *filename;
+	long file_id;
+	char *colon;
+	int ret = 0;
+	int opt;
+
+	static struct option options[] = {
+		{"debug", no_argument, 0, 'd'},
+		{"version", no_argument, 0, 'v'},
+		{"port", required_argument, 0, 'p'},
+		{"sahara", required_argument, 0, 's'},
+		{"help", no_argument, 0, 'h'},
+		{0, 0, 0, 0}
+	};
+
+	while ((opt = getopt_long(argc, argv, "dvp:s:h", options, NULL)) != -1) {
+		switch (opt) {
+		case 'd':
+			qdl_debug = true;
+			break;
+		case 'v':
+			print_version();
+			goto out;
+		case 'p':
+			dev_node = optarg;
+			break;
+		case 's':
+			file_id = strtol(optarg, NULL, 10);
+			colon = strchr(optarg, ':');
+			if (file_id < 0 || file_id >= MAPPING_SZ || !colon) {
+				ux_err("invalid sahara mapping \"%s\", expected <id:path> with id in 0..%d\n",
+				       optarg, MAPPING_SZ - 1);
+				ret = 1;
+				goto out;
+			}
+			filename = colon + 1;
+			if (load_sahara_image(NULL, filename, &mappings[file_id]) < 0) {
+				ret = 1;
+				goto out;
+			}
+			found_mapping = true;
+			ux_debug("mapped sahara image id %ld to %s\n", file_id, filename);
+			break;
+		case 'h':
+			print_usage(stdout);
+			goto out;
+		default:
+			print_usage(stderr);
+			ret = 1;
+			goto out;
+		}
+	}
+
+	/* A device node (-p) and at least one image mapping (-s) are required */
+	if (!dev_node || !found_mapping) {
+		print_usage(stderr);
+		ret = 1;
+		goto out;
+	}
+
+	ux_init();
+
+	if (qdl_debug)
+		print_version();
+
+	qdl.fd = open(dev_node, O_RDWR);
+	if (qdl.fd < 0) {
+		ux_err("unable to open %s\n", dev_node);
+		ret = 1;
+		goto out;
+	}
+
+	if (sahara_run(&qdl, mappings, NULL, NULL) < 0)
+		ret = 1;
+
+	close(qdl.fd);
+out:
+	sahara_images_free(mappings, MAPPING_SZ);
 	return ret;
 }
 
@@ -1165,6 +1280,8 @@ int main(int argc, char **argv)
 			return qdl_list(stdout);
 		if (!strcmp(argv[i], "ramdump"))
 			return qdl_ramdump(argc - i, argv + i);
+		if (!strcmp(argv[i], "ks"))
+			return qdl_ks(argc - i, argv + i);
 		if (!strcmp(argv[i], "create-zip"))
 			return qdl_create_zip(argc - i, argv + i);
 		if (argv[i][0] != '-')
