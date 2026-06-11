@@ -171,6 +171,24 @@ specifier*** can take the forms:
   partition names of the GPT partition table in the specified physical
   partition N.
 
+### Erasing storage
+
+Storage can be erased using the `erase` command, taking an ***address
+specifier*** as described above. When given a bare physical partition number,
+the entire physical partition is erased:
+
+```bash
+qdl prog_firehose_ddr.elf erase <address specifier>
+```
+
+To wipe the whole storage device, mirroring the "erase all" operation of QFIL
+and PCAT, pass `all` instead of an address. Every physical partition on the
+device is erased in turn:
+
+```bash
+qdl prog_firehose_ddr.elf erase all
+```
+
 ### Validated Image Programming (VIP)
 
 QDL supports **Validated Image Programming (VIP)** mode, which is activated

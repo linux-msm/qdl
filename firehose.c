@@ -581,7 +581,15 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 	return 0;
 }
 
-static int firehose_erase(struct qdl_device *qdl, struct firehose_op *program)
+/*
+ * UFS supports up to 8 logical units, bounding the "erase all" scan. The loop
+ * stops at the first physical partition that can't be erased, so devices with
+ * fewer physical partitions only have their existing ones touched.
+ */
+#define FIREHOSE_MAX_PHYSICAL_PARTITIONS 8
+
+static int firehose_erase_one(struct qdl_device *qdl, struct firehose_op *program,
+			      int partition)
 {
 	unsigned int sector_size;
 	xmlNode *root;
@@ -597,7 +605,7 @@ static int firehose_erase(struct qdl_device *qdl, struct firehose_op *program)
 
 	node = xmlNewChild(root, NULL, (xmlChar *)"erase", NULL);
 	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", sector_size);
-	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
+	xml_setpropf(node, "physical_partition_number", "%d", partition);
 
 	/*
 	 * Omitting num_sectors and start_sector attributes tells the programmer
@@ -621,14 +629,52 @@ static int firehose_erase(struct qdl_device *qdl, struct firehose_op *program)
 	}
 
 	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
-	if (ret)
-		ux_err("failed to erase %s+0x%x\n", program->start_sector, program->num_sectors);
-	else
-		ux_info("successfully erased %s+0x%x\n", program->start_sector, program->num_sectors);
 
 out:
 	xmlFreeDoc(doc);
 	return ret == FIREHOSE_ACK ? 0 : -1;
+}
+
+static int firehose_erase(struct qdl_device *qdl, struct firehose_op *program)
+{
+	int ret;
+	int i;
+
+	if (!program->erase_all) {
+		ret = firehose_erase_one(qdl, program, program->partition);
+		if (ret)
+			ux_err("failed to erase %s+0x%x\n",
+			       program->start_sector, program->num_sectors);
+		else if (program->num_sectors > 0)
+			ux_info("successfully erased %s+0x%x\n",
+				program->start_sector, program->num_sectors);
+		else
+			ux_info("successfully erased physical partition %d\n",
+				program->partition);
+		return ret;
+	}
+
+	/*
+	 * "erase all" mirrors the behavior of QFIL/PCAT and wipes every physical
+	 * partition on the storage device. The programmer provides no way to
+	 * enumerate the physical partitions, so erase them in order and stop at
+	 * the first one that can't be erased, treating that as the end of the
+	 * device. Failing to erase physical partition 0 is a genuine error.
+	 */
+	for (i = 0; i < FIREHOSE_MAX_PHYSICAL_PARTITIONS; i++) {
+		ret = firehose_erase_one(qdl, program, i);
+		if (ret) {
+			if (i == 0) {
+				ux_err("failed to erase physical partition 0\n");
+				return ret;
+			}
+			ux_debug("erase all stopped after physical partition %d\n", i - 1);
+			break;
+		}
+		ux_info("successfully erased physical partition %d\n", i);
+	}
+
+	return 0;
 }
 
 static int firehose_getsha256digest(struct qdl_device *qdl, struct firehose_op *op);

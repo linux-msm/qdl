@@ -500,6 +500,25 @@ int erase_cmd_add(struct list_head *ops, const char *address)
 	char buf[20];
 	int ret;
 
+	/*
+	 * "erase all" wipes every physical partition on the storage device, as
+	 * done by QFIL/PCAT. It carries no address, so handle it before parsing.
+	 */
+	if (!strcmp(address, "all")) {
+		program = firehose_alloc_op(FIREHOSE_OP_ERASE);
+		if (!program) {
+			ux_err("failed to allocate erase command\n");
+			return -1;
+		}
+
+		program->erase_all = true;
+		program->start_sector = strdup("0");
+
+		list_append(ops, &program->node);
+
+		return 0;
+	}
+
 	ret = parse_storage_address(address, &partition, &start_sector, &num_sectors, &gpt_partition);
 	if (ret < 0)
 		return ret;
