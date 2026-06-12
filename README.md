@@ -310,14 +310,7 @@ Use `qdl ramdump` on the host to collect the dump:
 qdl ramdump -o ./ramdump
 ```
 
-The same functionality is also available as a standalone `qdl-ramdump`
-binary, useful when only crash-dump collection is needed:
-
-```bash
-qdl-ramdump -o ./ramdump
-```
-
-Either form writes each offered memory segment to a separate file under
+Each offered memory segment is written to a separate file under
 `./ramdump`. To collect only specific segments, pass a comma-separated
 filter:
 
@@ -325,15 +318,14 @@ filter:
 qdl ramdump -o ./ramdump OCIMEM,CODERAM
 ```
 
-## Sahara kickstart for flashless-boot devices (qdl-ks)
+## Sahara kickstart for flashless-boot devices (qdl ks)
 
-The `qdl-ks` ("kickstart") helper uses the Sahara protocol to load
+The `qdl ks` ("kickstart") subcommand uses the Sahara protocol to load
 images from the host to the device. It targets *flashless boot* devices
 such as the Qualcomm Cloud AI 100, which fetch their runtime firmware
 from the host on every boot rather than storing it on-device.
 
-Although it shares the Sahara protocol with `qdl`, `qdl-ks` is a
-deliberately separate tool: it does not use USB or Firehose, and instead
+Unlike normal flashing, kickstart does not use USB or Firehose; it
 talks to a kernel-provided device node using plain open/read/write
 operations. Its argument set is correspondingly minimal.
 
@@ -343,14 +335,14 @@ specified more than once, one mapping per Sahara image id the device may
 request.
 
 ```bash
-qdl-ks -p /dev/mhi0_QAIC_SAHARA \
+qdl ks -p /dev/mhi0_QAIC_SAHARA \
        -s 1:/opt/qti-aic/firmware/fw1.bin \
        -s 2:/opt/qti-aic/firmware/fw2.bin
 ```
 
-The mapped files do not need to exist at invocation time. If `qdl-ks`
+The mapped files do not need to exist at invocation time. If `qdl ks`
 cannot open a requested file, the device decides the next action. This
-makes it possible to wire `qdl-ks` into a single udev rule that covers
+makes it possible to wire `qdl ks` into a single udev rule that covers
 multiple device configurations (for example, an optional DDR training
 image that is only present on some setups).
 
