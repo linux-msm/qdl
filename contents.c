@@ -112,22 +112,6 @@ out_free_str:
 	return ret;
 }
 
-static bool contents_entry_is_ignored(xmlNode *node)
-{
-	xmlChar *ignore;
-	bool ret;
-
-	ignore = xmlGetProp(node, (xmlChar *)"ignore");
-	if (!ignore)
-		return false;
-
-	ret = !xmlStrcmp(ignore, (xmlChar *)"true");
-
-	xmlFree(ignore);
-
-	return ret;
-}
-
 static int contents_parse_pf(struct contents *contents, xmlNode *node)
 {
 	char **new_flavors;
@@ -334,9 +318,6 @@ static int contents_parse_entry(struct contents *contents, xmlNode *node,
 		ux_err("entry has no build root path in contents.xml\n");
 		return -1;
 	}
-
-	if (contents_entry_is_ignored(node))
-		return 0;
 
 	file_type = contents_detect_file_type(node, &firehose_type);
 	storage = contents_detect_storage_type(node);
