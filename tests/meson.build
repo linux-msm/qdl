@@ -14,15 +14,6 @@ test(
   suite: 'integration',
 )
 
-test(
-  'Flashmap dry-run',
-  find_program('bash'),
-  args: [meson.current_source_dir() / 'test_flashmap.sh', '--builddir', meson.project_build_root()],
-  depends: [qdl_exe],
-  suite: 'integration',
-  protocol: 'tap',
-)
-
 # --- hardware-in-the-loop tests ---
 # Each step is a separate test in the "hil" suite. Run explicitly against an
 # attached EDL device with:
@@ -64,6 +55,24 @@ endforeach
 
 # --- unit tests (cmocka) ---
 if cmocka_dep.found()
+  test_flashmap = executable('test_flashmap',
+    sources : [
+      'test_flashmap.c',
+      flashmap_src,
+      json_src,
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'flashmap loading',
+    test_flashmap,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
   test_program_load_xml = executable('test_program_load_xml',
     sources : [
       'test_program_load_xml.c',

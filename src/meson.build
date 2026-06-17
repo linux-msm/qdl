@@ -17,6 +17,8 @@ qdl_sources = files(
 )
 
 # Individual sources reused by the cmocka unit tests.
+flashmap_src = files('flashmap.c')
+json_src     = files('json.c')
 pathbuf_src = files('pathbuf.c')
 program_src = files('program.c')
 util_src    = files('util.c')
