@@ -290,6 +290,124 @@ static int flashmap_enumerate_programmables(struct json_value *list, struct list
 	return 0;
 }
 
+static int flashmap_decode_storage_filter(char *filter, unsigned int *type_filter)
+{
+	enum qdl_storage_type type;
+	char *save = NULL;
+	char *tmp;
+
+	for (tmp = strtok_r(filter, ",", &save); tmp; tmp = strtok_r(NULL, ",", &save)) {
+		type = decode_storage_type(tmp);
+		if (type == QDL_STORAGE_UNKNOWN) {
+			ux_err("unknown storage type \"%s\"\n", tmp);
+			return -1;
+		}
+
+		*type_filter |= 1U << type;
+	}
+
+	return 0;
+}
+
+static int flashmap_decode_specifier(char *specifier, unsigned int *type_filter,
+				     char **layout_selector)
+{
+	char *storage_filter;
+	char *slash;
+
+	*type_filter = 0;
+	*layout_selector = NULL;
+
+	if (!specifier)
+		return 0;
+
+	slash = strchr(specifier, '/');
+	if (slash) {
+		*slash = '\0';
+		storage_filter = slash + 1;
+
+		if (!specifier[0]) {
+			ux_err("empty flashmap layout selector\n");
+			return -1;
+		}
+		if (!storage_filter[0]) {
+			ux_err("empty flashmap storage selector\n");
+			return -1;
+		}
+
+		*layout_selector = specifier;
+		return flashmap_decode_storage_filter(storage_filter, type_filter);
+	}
+
+	if (decode_storage_type(specifier) != QDL_STORAGE_UNKNOWN || strchr(specifier, ','))
+		return flashmap_decode_storage_filter(specifier, type_filter);
+
+	*layout_selector = specifier;
+
+	return 0;
+}
+
+static void flashmap_print_available_layouts(struct json_value *layouts)
+{
+	struct json_value *layout;
+	const char *name;
+	int count;
+	int i;
+
+	count = json_count_children(layouts);
+	if (count <= 0)
+		return;
+
+	ux_err("flashmap: available layouts:\n");
+	for (i = 0; i < count; i++) {
+		layout = json_get_element_object(layouts, i);
+		name = json_get_string(layout, "name");
+		if (name)
+			ux_err("flashmap:   %s\n", name);
+	}
+}
+
+static struct json_value *flashmap_select_layout(struct json_value *layouts, const char *selector)
+{
+	struct json_value *layout;
+	const char *name;
+	int count;
+	int i;
+
+	count = json_count_children(layouts);
+	if (count < 0) {
+		ux_err("flashmap: layouts is not an array\n");
+		return NULL;
+	}
+	if (!count) {
+		ux_err("flashmap: layouts list is empty\n");
+		return NULL;
+	}
+
+	if (!selector) {
+		if (count == 1)
+			return json_get_element_object(layouts, 0);
+
+		ux_err("flashmap: multiple layouts found, select one with ::<layout> or ::<layout>/<storage>[,<storage>...]\n");
+		flashmap_print_available_layouts(layouts);
+		return NULL;
+	}
+
+	for (i = 0; i < count; i++) {
+		layout = json_get_element_object(layouts, i);
+		name = json_get_string(layout, "name");
+		if (name && !strcmp(name, selector)) {
+			ux_debug("flashmap: selected layout: %s\n", name);
+			return layout;
+		}
+	}
+
+	ux_err("flashmap: layout \"%s\" not found\n", selector);
+	flashmap_print_available_layouts(layouts);
+
+	return NULL;
+}
+
 int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 		  struct sahara_image *images, const char *incdir)
 {
@@ -306,11 +424,8 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 	struct qdl_zip *zip;
 	unsigned int type_filter = 0;
 	unsigned int matched_ops = 0;
-	char *filter = specifier;
-	char *save = NULL;
-	char *tmp;
-	enum qdl_storage_type type;
 	bool uses_programmer_map = false;
+	char *layout_selector;
 	const char *version;
 	const char *name;
 	size_t json_size;
@@ -318,17 +433,9 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 	int count;
 	int ret = -1;
 
-	if (filter) {
-		for (tmp = strtok_r(filter, ",", &save); tmp; tmp = strtok_r(NULL, ",", &save)) {
-			type = decode_storage_type(tmp);
-			if (type == QDL_STORAGE_UNKNOWN) {
-				ux_err("unknown storage type \"%s\"\n", tmp);
-				return -1;
-			}
-
-			type_filter |= 1U << type;
-		}
-	}
+	ret = flashmap_decode_specifier(specifier, &type_filter, &layout_selector);
+	if (ret)
+		return ret;
 
 	if (!type_filter)
 		type_filter = ~0U;
@@ -389,14 +496,11 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 
 	obj = json_get_child(product, "layouts");
 
-	count = json_count_children(obj);
-	if (count != 1) {
-		ux_err("flashmap: only one layout supported, found %d\n", count);
+	layout = flashmap_select_layout(obj, layout_selector);
+	if (!layout) {
 		ret = -1;
 		goto out_free_json;
 	}
-
-	layout = json_get_element_object(obj, 0);
 
 	ret = flashmap_get_programmers(zip, layout, images, zip ? NULL : incdir, uses_programmer_map);
 	if (ret)

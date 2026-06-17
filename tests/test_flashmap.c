@@ -27,6 +27,7 @@ const char *__progname = "test_flashmap";
 #endif
 
 #define FLASHMAP_JSON_FILENAME "flashmap.json"
+#define FLASHMAP_MULTI_JSON_FILENAME "flashmap-multi.json"
 #define FLASHMAP_ZIP_FILENAME "flashmap.zip"
 #define PROGRAMMER_FILENAME "prog_firehose_ddr.elf"
 #define PROGRAM0_FILENAME "rawprogram0.xml"
@@ -73,6 +74,45 @@ static const char flashmap_json[] =
 	"  ]"
 	"}";
 
+static const char flashmap_multi_json[] =
+	"{"
+	"  \"version\": \"1.1.0\","
+	"  \"products\": ["
+	"    {"
+	"      \"name\": \"unit-test\","
+	"      \"layouts\": ["
+	"        {"
+	"          \"name\": \"layout0\","
+	"          \"programmer\": [\"" PROGRAMMER_FILENAME "\"],"
+	"          \"programmable\": ["
+	"            {"
+	"              \"memory\": \"ufs\","
+	"              \"slot\": 0,"
+	"              \"files\": [\"" PROGRAM0_FILENAME "\"]"
+	"            }"
+	"          ]"
+	"        },"
+	"        {"
+	"          \"name\": \"layout1\","
+	"          \"programmer\": [\"" PROGRAMMER_FILENAME "\"],"
+	"          \"programmable\": ["
+	"            {"
+	"              \"memory\": \"spinor\","
+	"              \"slot\": 0,"
+	"              \"files\": ["
+	"                \"" PROGRAM0_FILENAME "\","
+	"                \"" PROGRAM1_FILENAME "\","
+	"                \"" PATCH0_FILENAME "\","
+	"                \"" PATCH1_FILENAME "\""
+	"              ]"
+	"            }"
+	"          ]"
+	"        }"
+	"      ]"
+	"    }"
+	"  ]"
+	"}";
+
 static const char program_xml[] =
 	"<data>"
 	"  <program SECTOR_SIZE_IN_BYTES=\"512\" filename=\"payload.bin\" label=\"test\" "
@@ -87,6 +127,7 @@ static const char patch_xml[] =
 
 static const struct mock_file mock_files[] = {
 	{ FLASHMAP_JSON_FILENAME, flashmap_json },
+	{ FLASHMAP_MULTI_JSON_FILENAME, flashmap_multi_json },
 	{ PROGRAM0_FILENAME, program_xml },
 	{ PROGRAM1_FILENAME, program_xml },
 	{ PATCH0_FILENAME, patch_xml },
@@ -336,7 +377,9 @@ static size_t count_ops(struct list_head *ops, enum firehose_op_type type)
 	return count;
 }
 
-static void assert_flashmap_loads(const char *filename, char *specifier)
+static void assert_loads_as(const char *filename, char *specifier,
+			    enum qdl_storage_type storage_type,
+			    size_t program_count, size_t patch_count)
 {
 	struct sahara_image images[MAPPING_SZ] = {};
 	struct list_head ops = LIST_INIT(ops);
@@ -351,13 +394,18 @@ static void assert_flashmap_loads(const char *filename, char *specifier)
 
 	op = list_entry_first(&ops, struct firehose_op, node);
 	assert_int_equal(op->type, FIREHOSE_OP_CONFIGURE);
-	assert_int_equal(op->storage_type, QDL_STORAGE_SPINOR);
+	assert_int_equal(op->storage_type, storage_type);
 	assert_int_equal(count_ops(&ops, FIREHOSE_OP_CONFIGURE), 1);
-	assert_int_equal(count_ops(&ops, FIREHOSE_OP_PROGRAM), 2);
-	assert_int_equal(count_ops(&ops, FIREHOSE_OP_PATCH), 2);
+	assert_int_equal(count_ops(&ops, FIREHOSE_OP_PROGRAM), program_count);
+	assert_int_equal(count_ops(&ops, FIREHOSE_OP_PATCH), patch_count);
 
 	firehose_free_ops(&ops);
 	sahara_images_free(images, MAPPING_SZ);
+}
+
+static void assert_flashmap_loads(const char *filename, char *specifier)
+{
+	assert_loads_as(filename, specifier, QDL_STORAGE_SPINOR, 2, 2);
 }
 
 static void test_flashmap_json_loads(void **state)
@@ -386,12 +434,66 @@ static void test_flashmap_storage_filter_loads(void **state)
 	reset_mock_state();
 }
 
+static void test_flashmap_multi_layout_requires_selector(void **state)
+{
+	struct sahara_image images[MAPPING_SZ] = {};
+	struct list_head ops = LIST_INIT(ops);
+	int ret;
+
+	(void)state;
+	reset_mock_state();
+
+	ret = flashmap_load(&ops, FLASHMAP_MULTI_JSON_FILENAME, NULL, images, NULL);
+	assert_int_equal(ret, -1);
+	assert_true(list_empty(&ops));
+	assert_null(loaded_programmer);
+
+	sahara_images_free(images, MAPPING_SZ);
+}
+
+static void test_flashmap_multi_layout_selects_layout(void **state)
+{
+	char specifier[] = "layout1";
+
+	(void)state;
+	reset_mock_state();
+	assert_loads_as(FLASHMAP_MULTI_JSON_FILENAME, specifier,
+			QDL_STORAGE_SPINOR, 2, 2);
+	reset_mock_state();
+}
+
+static void test_flashmap_multi_layout_selects_layout_and_storage(void **state)
+{
+	char specifier[] = "layout1/spinor";
+
+	(void)state;
+	reset_mock_state();
+	assert_loads_as(FLASHMAP_MULTI_JSON_FILENAME, specifier,
+			QDL_STORAGE_SPINOR, 2, 2);
+	reset_mock_state();
+}
+
+static void test_flashmap_multi_layout_can_select_first_layout(void **state)
+{
+	char specifier[] = "layout0/ufs";
+
+	(void)state;
+	reset_mock_state();
+	assert_loads_as(FLASHMAP_MULTI_JSON_FILENAME, specifier,
+			QDL_STORAGE_UFS, 1, 0);
+	reset_mock_state();
+}
+
 int main(void)
 {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_flashmap_json_loads),
 		cmocka_unit_test(test_flashmap_zip_loads),
 		cmocka_unit_test(test_flashmap_storage_filter_loads),
+		cmocka_unit_test(test_flashmap_multi_layout_requires_selector),
+		cmocka_unit_test(test_flashmap_multi_layout_selects_layout),
+		cmocka_unit_test(test_flashmap_multi_layout_selects_layout_and_storage),
+		cmocka_unit_test(test_flashmap_multi_layout_can_select_first_layout),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
