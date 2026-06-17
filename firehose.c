@@ -672,6 +672,9 @@ static int qdl_should_skipblock(struct qdl_device *qdl,
 	    qdl->vip_data.state != VIP_DISABLED)
 		return 0;
 
+	ux_info("hashing \"%s\" locally (%zu MiB)...\n",
+		program->label, total >> 20);
+
 	SHA256Init(&ctx);
 	qdl_file_seek(file, (off_t)program->file_offset * sector_size, SEEK_SET);
 
@@ -720,9 +723,14 @@ static int qdl_should_skipblock(struct qdl_device *qdl,
 		.start_sector = program->start_sector,
 	};
 
+	ux_info("requesting flash digest for \"%s\"...\n", program->label);
+
 	if (firehose_getsha256digest(qdl, &digest_op) == 0 &&
 	    !memcmp(local_digest, digest_op.digest, SHA256_DIGEST_LENGTH))
 		return 1;
+
+	ux_info("sha256 mismatch for \"%s\", flashing partition\n",
+		program->label);
 
 	return 0;
 }
