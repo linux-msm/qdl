@@ -634,16 +634,15 @@ out:
 static int firehose_getsha256digest(struct qdl_device *qdl, struct firehose_op *op);
 
 /*
- * Decide whether the @program op can be skipped because its bytes are
- * already on flash. Returns 1 if the program path can be bypassed, 0
- * to defer to the normal write. @buf is a scratch buffer of size
- * qdl->max_payload_size owned by the caller.
- *
- * Hash the bytes that would have been written, ask the device for the
- * digest of the same region, and compare. Any failure on the way (read error,
- * digest query failure, mismatch) returns 0 so the caller proceeds with
- * the normal program flow; the file pointer is restored by the
- * qdl_file_seek() at the top of the write loop.
+ * Skipblock compares the bytes that would be written against the digest
+ * the device reports for the same flash region and, on a match, avoids
+ * rewriting them. Rather than digest the whole <program> region in one
+ * <getsha256digest> - which on a multi-GB partition like rootfs reads the
+ * entire region on the device and easily blows past
+ * firehose_getsha256digest()'s read timeout - the region is walked one
+ * bounded chunk at a time. Each chunk is hashed locally, compared against
+ * the device digest for that sub-region, and reflashed on its own only when
+ * it differs.
  *
  * Restricted to non-sparse, non-NAND programs with VIP disabled:
  *   - Sparse chunks would each need their own digest; v1 keeps them on
@@ -652,39 +651,45 @@ static int firehose_getsha256digest(struct qdl_device *qdl, struct firehose_op *
  *     programmers.
  *   - <getsha256digest> is not part of pre-built VIP digest tables.
  */
-static int qdl_should_skipblock(struct qdl_device *qdl,
-				struct firehose_op *program,
-				struct qdl_file *file,
-				unsigned int num_sectors,
-				unsigned int sector_size,
-				void *buf)
+#define SKIPBLOCK_CHUNK_BYTES (512ULL * 1024 * 1024)	/* 512 MiB */
+
+static bool firehose_skipblock_enabled(struct qdl_device *qdl,
+				       struct firehose_op *program)
 {
-	uint8_t local_digest[SHA256_DIGEST_LENGTH];
-	size_t total = (size_t)num_sectors * sector_size;
-	struct firehose_op digest_op;
+	return qdl->skipblock_mode == QDL_SKIPBLOCK_SHA256 &&
+	       !program->sparse &&
+	       !program->is_nand &&
+	       qdl->vip_data.state == VIP_DISABLED;
+}
+
+/*
+ * SHA-256 the @region_bytes of @file starting at @file_byte_off into @out.
+ * Mirrors the program path's trailing zero-pad (see the memset() of the
+ * residue in firehose_program_raw_region()): bytes past EOF are hashed as
+ * zeros so a chunk that is short, or read from a non-zero file offset,
+ * still produces a digest that can match flash. @buf is caller-owned
+ * scratch of qdl->max_payload_size. Returns -1 on read error.
+ */
+static int firehose_region_local_digest(struct qdl_device *qdl,
+					struct qdl_file *file,
+					off_t file_byte_off,
+					size_t region_bytes,
+					void *buf,
+					uint8_t out[SHA256_DIGEST_LENGTH])
+{
 	size_t hashed = 0;
 	SHA2_CTX ctx;
 	ssize_t hn;
 
-	if (qdl->skipblock_mode != QDL_SKIPBLOCK_SHA256 ||
-	    program->sparse ||
-	    program->is_nand ||
-	    qdl->vip_data.state != VIP_DISABLED)
-		return 0;
-
-	ux_info("hashing \"%s\" locally (%zu MiB)...\n",
-		program->label, total >> 20);
-
 	SHA256Init(&ctx);
-	qdl_file_seek(file, (off_t)program->file_offset * sector_size, SEEK_SET);
+	qdl_file_seek(file, file_byte_off, SEEK_SET);
 
-	/* Hash the file bytes that fall within the region. */
-	while (hashed < total) {
-		size_t want = MIN(qdl->max_payload_size, total - hashed);
+	while (hashed < region_bytes) {
+		size_t want = MIN(qdl->max_payload_size, region_bytes - hashed);
 
 		hn = qdl_file_read_exact(file, buf, want);
 		if (hn < 0)
-			return 0;
+			return -1;
 		if (hn > 0) {
 			SHA256Update(&ctx, buf, hn);
 			hashed += (size_t)hn;
@@ -693,44 +698,235 @@ static int qdl_should_skipblock(struct qdl_device *qdl,
 			break;	/* short read == EOF, remainder is zero-pad */
 	}
 
-	/*
-	 * The program path zero-pads everything past EOF up to the full
-	 * region (see the memset() of the trailing residue in
-	 * firehose_program()), so the bytes the device hashed on flash are
-	 * the file bytes followed by zeros up to `total`. Mirror that padding
-	 * here, otherwise a file shorter than the region - or one read from a
-	 * non-zero file_sector_offset, where `num_sectors` still covers the
-	 * whole file - would never produce a digest that can match flash, and
-	 * the partition would always be reprogrammed.
-	 */
-	if (hashed < total) {
+	if (hashed < region_bytes) {
 		memset(buf, 0, qdl->max_payload_size);
-		while (hashed < total) {
-			size_t pad = MIN(qdl->max_payload_size, total - hashed);
+		while (hashed < region_bytes) {
+			size_t pad = MIN(qdl->max_payload_size, region_bytes - hashed);
 
 			SHA256Update(&ctx, buf, pad);
 			hashed += pad;
 		}
 	}
 
-	SHA256Final(local_digest, &ctx);
+	SHA256Final(out, &ctx);
+	return 0;
+}
 
-	digest_op = (struct firehose_op){
-		.type = FIREHOSE_OP_GET_SHA256_DIGEST,
-		.sector_size = sector_size,
-		.num_sectors = num_sectors,
-		.partition = program->partition,
-		.start_sector = program->start_sector,
-	};
+/*
+ * Program the contiguous raw region [@start_sector, @start_sector +
+ * @num_sectors) from the current position of @file. A self-contained
+ * mirror of the non-sparse streaming in firehose_program(), used by the
+ * skipblock fast-path to reflash one sub-region at a time. @file and @buf
+ * (scratch of qdl->max_payload_size) are owned by the caller. Skipblock
+ * requires VIP disabled, so the vip_*() calls below are no-ops kept for
+ * parity with the main path.
+ */
+static int firehose_program_raw_region(struct qdl_device *qdl,
+				       struct firehose_op *program,
+				       struct qdl_file *file,
+				       const char *start_sector,
+				       unsigned int num_sectors,
+				       unsigned int sector_size,
+				       void *buf,
+				       unsigned int zlp_timeout)
+{
+	size_t chunk_size;
+	size_t left;
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	int ret;
+	int n;
 
-	ux_info("requesting flash digest for \"%s\"...\n", program->label);
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
+	xmlDocSetRootElement(doc, root);
 
-	if (firehose_getsha256digest(qdl, &digest_op) == 0 &&
-	    !memcmp(local_digest, digest_op.digest, SHA256_DIGEST_LENGTH))
-		return 1;
+	node = xmlNewChild(root, NULL, (xmlChar *)"program", NULL);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%d", sector_size);
+	xml_setpropf(node, "num_partition_sectors", "%d", num_sectors);
+	xml_setpropf(node, "physical_partition_number", "%d", program->partition);
+	xml_setpropf(node, "start_sector", "%s", start_sector);
+	if (qdl->slot != UINT_MAX)
+		xml_setpropf(node, "slot", "%u", qdl->slot);
+	if (program->filename)
+		xml_setpropf(node, "filename", "%s", program->filename);
 
-	ux_info("sha256 mismatch for \"%s\", flashing partition\n",
-		program->label);
+	ret = firehose_write(qdl, doc);
+	if (ret < 0) {
+		ux_err("failed to send program request\n");
+		goto out;
+	}
+
+	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
+	if (ret) {
+		ux_err("failed to setup programming\n");
+		goto out;
+	}
+
+	left = num_sectors;
+	while (left > 0) {
+		vip_gen_chunk_init(qdl);
+		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
+
+		n = qdl_file_read_exact(file, buf, chunk_size * sector_size);
+		if (n < 0) {
+			ux_err("failed to read %s\n", program->filename);
+			ret = -1;
+			goto out;
+		}
+		if ((size_t)n < chunk_size * sector_size)
+			memset(buf + n, 0, chunk_size * sector_size - n);
+
+		vip_gen_chunk_update(qdl, buf, chunk_size * sector_size);
+
+		ret = firehose_vip_send_table(qdl);
+		if (ret) {
+			ret = -1;
+			goto out;
+		}
+
+		n = qdl_write(qdl, buf, chunk_size * sector_size, zlp_timeout);
+		if (n < 0) {
+			ux_err("USB write failed for data chunk\n");
+			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+			if (ret)
+				ux_err("flashing of chunk failed\n");
+			ret = -1;
+			goto out;
+		}
+
+		if ((size_t)n != chunk_size * sector_size) {
+			ux_err("USB write truncated\n");
+			ret = -1;
+			goto out;
+		}
+
+		left -= chunk_size;
+		vip_gen_chunk_store(qdl);
+
+		ux_progress("%s", num_sectors - left, num_sectors, program->label);
+	}
+
+	ret = firehose_read(qdl, 120000, firehose_generic_parser, NULL);
+	if (ret != FIREHOSE_ACK) {
+		ux_err("flashing of %s failed\n", program->label);
+		ret = -1;
+		goto out;
+	}
+
+	ret = 0;
+out:
+	xmlFreeDoc(doc);
+	return ret;
+}
+
+/*
+ * Walk the @program region in SKIPBLOCK_CHUNK_BYTES chunks. For each chunk
+ * compare the locally computed digest against the device's digest for the
+ * matching flash sub-region; flash just that chunk when they differ, leave
+ * it untouched when they match. Returns 0 on success, -1 on a flashing
+ * failure. @buf is caller-owned scratch of qdl->max_payload_size.
+ */
+static int firehose_program_skipblock(struct qdl_device *qdl,
+				      struct firehose_op *program,
+				      struct qdl_file *file,
+				      unsigned int num_sectors,
+				      unsigned int sector_size,
+				      void *buf,
+				      unsigned int zlp_timeout)
+{
+	unsigned int chunk_max = SKIPBLOCK_CHUNK_BYTES / sector_size;
+	uint64_t base = strtoull(program->start_sector, NULL, 0);
+	unsigned int nchunks = num_sectors / chunk_max +
+			       !!(num_sectors % chunk_max);
+	bool split = nchunks > 1;
+	unsigned int skipped = 0;
+	unsigned int flashed = 0;
+	unsigned int idx = 0;
+	unsigned int off;
+
+	for (off = 0; off < num_sectors; off += chunk_max, idx++) {
+		unsigned int chunk_sectors = MIN(chunk_max, num_sectors - off);
+		size_t region_bytes = (size_t)chunk_sectors * sector_size;
+		off_t file_byte_off = (off_t)(program->file_offset + off) * sector_size;
+		uint8_t local_digest[SHA256_DIGEST_LENGTH];
+		struct firehose_op digest_op;
+		const char *chunk_start;
+		char start_sector[24];
+		char chunk_id[32];
+		bool match = false;
+
+		/*
+		 * start_sector is a firehose expression that may be symbolic
+		 * (e.g. "NUM_DISK_SECTORS-33."), so the first chunk must reuse
+		 * the original string verbatim - parsing it would mis-address
+		 * the write. Only subsequent chunks of a split region need an
+		 * offset, and those regions always carry a numeric start.
+		 */
+		if (off == 0) {
+			chunk_start = program->start_sector;
+		} else {
+			snprintf(start_sector, sizeof(start_sector), "%llu",
+				 (unsigned long long)(base + off));
+			chunk_start = start_sector;
+		}
+
+		/*
+		 * A region that fits in a single chunk keeps the original
+		 * unqualified wording; only split regions name the chunk.
+		 */
+		if (split)
+			snprintf(chunk_id, sizeof(chunk_id), " chunk %u of %u",
+				 idx + 1, nchunks);
+		else
+			chunk_id[0] = '\0';
+
+		ux_info("hashing \"%s\"%s locally (%zu KiB)...\n",
+			program->label, chunk_id, region_bytes >> 10);
+
+		if (firehose_region_local_digest(qdl, file, file_byte_off,
+						 region_bytes, buf,
+						 local_digest) == 0) {
+			digest_op = (struct firehose_op){
+				.type = FIREHOSE_OP_GET_SHA256_DIGEST,
+				.sector_size = sector_size,
+				.num_sectors = chunk_sectors,
+				.partition = program->partition,
+				.start_sector = chunk_start,
+			};
+
+			ux_info("requesting flash digest for \"%s\"%s...\n",
+				program->label, chunk_id);
+
+			if (firehose_getsha256digest(qdl, &digest_op) == 0 &&
+			    !memcmp(local_digest, digest_op.digest,
+				    SHA256_DIGEST_LENGTH))
+				match = true;
+		}
+
+		if (match) {
+			ux_info("skipped \"%s\"%s (sha256 match)\n",
+				program->label, chunk_id);
+			skipped++;
+			continue;
+		}
+
+		ux_info("sha256 mismatch for \"%s\"%s, flashing\n",
+			program->label, chunk_id);
+
+		qdl_file_seek(file, file_byte_off, SEEK_SET);
+		if (firehose_program_raw_region(qdl, program, file, chunk_start,
+						chunk_sectors, sector_size, buf,
+						zlp_timeout) < 0)
+			return -1;
+
+		flashed++;
+	}
+
+	if (split)
+		ux_info("\"%s\": %u chunk(s) flashed, %u skipped\n",
+			program->label, flashed, skipped);
 
 	return 0;
 }
@@ -791,11 +987,12 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 		goto err_close_fd;
 	}
 
-	if (qdl_should_skipblock(qdl, program, &file, num_sectors, sector_size, buf)) {
-		ux_info("skipped \"%s\" (sha256 match)\n", program->label);
+	if (firehose_skipblock_enabled(qdl, program)) {
+		ret = firehose_program_skipblock(qdl, program, &file, num_sectors,
+						 sector_size, buf, zlp_timeout);
 		free(buf);
 		qdl_file_close(&file);
-		return 0;
+		return ret;
 	}
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
