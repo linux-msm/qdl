@@ -404,7 +404,7 @@ static void test_load_xml_parses_file_entries(void **state)
 
 	init_contents(&contents);
 	assert_int_equal(contents_load_xml(&contents, fixture->contents_xml), 0);
-	assert_int_equal(count_entries(&contents), 6);
+	assert_int_equal(count_entries(&contents), 7);
 
 	assert_entry(fixture, &contents, "programmer.xml",
 		     CONTENTS_FILE_PROGRAMMER_XML, QDL_STORAGE_UNKNOWN, NULL, 2,
@@ -424,18 +424,20 @@ static void test_load_xml_parses_file_entries(void **state)
 	assert_entry(fixture, &contents, "spinor_rawprogram.xml",
 		     CONTENTS_FILE_PROGRAM, QDL_STORAGE_SPINOR, "flavor_b", 0,
 		     "spinor/spinor_rawprogram.xml");
+	assert_entry(fixture, &contents, "ignored.bin",
+		     CONTENTS_FILE_OTHER, QDL_STORAGE_UFS, NULL, 0,
+		     "ignored/ignored.bin");
 
 	free_contents(&contents);
 }
 
-static void test_load_xml_skips_ignored_and_wildcards(void **state)
+static void test_load_xml_skips_wildcards(void **state)
 {
 	struct xml_fixture *fixture = *state;
 	struct contents contents = {};
 
 	init_contents(&contents);
 	assert_int_equal(contents_load_xml(&contents, fixture->contents_xml), 0);
-	assert_null(find_entry(&contents, "ignored.bin"));
 	assert_null(find_entry(&contents, "*.bin"));
 
 	free_contents(&contents);
@@ -533,7 +535,7 @@ int main(void)
 						setup_xml_fixture, teardown_xml_fixture),
 		cmocka_unit_test_setup_teardown(test_load_xml_parses_file_entries,
 						setup_xml_fixture, teardown_xml_fixture),
-		cmocka_unit_test_setup_teardown(test_load_xml_skips_ignored_and_wildcards,
+		cmocka_unit_test_setup_teardown(test_load_xml_skips_wildcards,
 						setup_xml_fixture, teardown_xml_fixture),
 		cmocka_unit_test_setup_teardown(test_load_xml_rejects_non_contents_document,
 						setup_xml_fixture, teardown_xml_fixture),
