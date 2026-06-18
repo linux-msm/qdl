@@ -468,7 +468,7 @@ static void print_usage(FILE *out)
 
 	fprintf(out, "Usage: %s [options] <prog.mbn> (<program-xml> | <patch-xml> | <read-xml>)...\n", __progname);
 	fprintf(out, "       %s [options] <prog.mbn> ((read | write) <address> <binary>)...\n", __progname);
-	fprintf(out, "       %s [options] <prog.mbn> (erase <address>)...\n", __progname);
+	fprintf(out, "       %s [options] <prog.mbn> (erase (<address> | all))...\n", __progname);
 	fprintf(out, "       %s [options] <prog.mbn> (sha256 <address>)...\n", __progname);
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
