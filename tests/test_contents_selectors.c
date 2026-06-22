@@ -108,6 +108,23 @@ int program_load(struct list_head *ops, const char *program_file, bool is_nand,
 	return -1;
 }
 
+/*
+ * contents.c references firehose_alloc_op(), but this test pulls it in via
+ * #include and links neither firehose.c nor libqdl_common. Provide a stub so
+ * the test links regardless of whether the optimizer drops the unreachable
+ * call (it does at -O2 but not at -O0), matching the other contents tests.
+ */
+struct firehose_op *firehose_alloc_op(int type)
+{
+	struct firehose_op *op = calloc(1, sizeof(*op));
+
+	if (!op)
+		return NULL;
+
+	op->type = type;
+	return op;
+}
+
 int patch_load(struct list_head *ops, const char *patch_file)
 {
 	(void)ops;
