@@ -73,6 +73,15 @@ Please consult your device’s documentation for instructions on how to enter ED
 
 ### Flashing from WSL2 (usbipd-win)
 
+> [!WARNING]
+> This is unreliable with current usbipd-win.
+
+See:
+
+* <https://github.com/dorssel/usbipd-win/issues/924>
+* <https://github.com/dorssel/usbipd-win/issues/1022>
+* <https://github.com/dorssel/usbipd-win/issues/1067>
+
 On Windows, QDL can run inside a WSL2 distribution, but WSL2 does not see USB
 devices by default — they must be forwarded from the Windows host with
 [usbipd-win](https://github.com/dorssel/usbipd-win). Install it on the Windows
