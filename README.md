@@ -4,7 +4,7 @@
 [![Build on push](https://github.com/linux-msm/qdl/actions/workflows/build.yml/badge.svg)](https://github.com/linux-msm/qdl/actions/workflows/build.yml/badge.svg)
 
 This tool communicates with Qualcomm EDL USB devices (Vendor ID `05c6`, Product
-IDs `9008`, `900e`, `901d`) to upload a flash loader and use it to flash images.
+IDs `9008`, `900e`, `901d`, `90db`) to upload a flash loader and use it to flash images.
 
 ## Build
 
@@ -88,8 +88,8 @@ devices by default — they must be forwarded from the Windows host with
 side (`winget install usbipd`), then forward the EDL device into WSL.
 
 EDL devices enumerate under Vendor ID `05c6` with Product ID `9008` (Firehose),
-`900e` (crash dump), or `901d`. From a Windows terminal, list the connected
-devices and note the **BUSID** of the EDL device:
+`900e` (crash dump), `90db` (diag dump), or `901d`. From a Windows terminal, list the
+connected devices and note the **BUSID** of the EDL device:
 
 ```powershell
 usbipd list
@@ -126,7 +126,7 @@ After each entry into EDL, re-detect the BUSID and attach again. This can be
 scripted from WSL so the BUSID does not have to be looked up by hand:
 
 ```bash
-BUSID=$(usbipd.exe list | grep -iE '9008|900e|901d' | awk '{print $1}' | tr -d '\r')
+BUSID=$(usbipd.exe list | grep -iE '9008|900e|901d|90db' | awk '{print $1}' | tr -d '\r')
 usbipd.exe attach --wsl --busid "$BUSID"
 ```
 
