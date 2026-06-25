@@ -777,7 +777,7 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 		num_sectors = (qdl_file_getsize(&file) + sector_size - 1) / sector_size;
 
 		if (program->num_sectors && num_sectors > program->num_sectors) {
-			ux_err("%s to big for %s truncated to %d\n",
+			ux_err("%s too big for %s truncated to %d\n",
 			       program->filename,
 			       program->label,
 			       program->num_sectors * sector_size);
