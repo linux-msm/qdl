@@ -23,6 +23,45 @@ test(
   protocol: 'tap',
 )
 
+# --- hardware-in-the-loop tests ---
+# Each step is a separate test in the "hil" suite. Run explicitly against an
+# attached EDL device with:
+#   QDL_HIL_BUILD=... QDL_HIL_STORAGE=... meson test --suite hil
+# Without that environment every step exits 77 (SKIP), so the suite is
+# harmless if picked up by a plain "meson test" run.
+#
+# The steps are stateful (flash -> read -> erase -> write -> reboot), so they
+# must not overlap and must run in order: is_parallel:false serializes them
+# and a descending priority fixes the order. Flashing a full build can take a
+# while, hence the long timeout.
+hil_steps = [
+  ['flash whole build',       'flash_full',         100],
+  ['read EFI partition',      'read_partition',      90],
+  ['read GPT table',          'read_gpt',            80],
+  ['read address P/S+L',      'read_addr_sectors',   70],
+  ['read address P/name',     'read_addr_partname',  60],
+  ['flash skipblock sha256',  'flash_skipblock',     50],
+  ['sha256 command',          'sha256',              40],
+  ['erase EFI partition',     'erase',               30],
+  ['write EFI partition',     'write_image',         20],
+  ['reboot board',            'reboot',              10],
+]
+
+foreach s : hil_steps
+  test(
+    'HIL ' + s[0],
+    find_program('bash'),
+    args: [meson.current_source_dir() / 'test_hil.sh',
+           '--builddir', meson.project_build_root(),
+           '--step', s[1]],
+    depends: [qdl_exe],
+    suite: 'hil',
+    is_parallel: false,
+    priority: s[2],
+    timeout: 1800,
+  )
+endforeach
+
 # --- unit tests (cmocka) ---
 if cmocka_dep.found()
   test_program_load_xml = executable('test_program_load_xml',
