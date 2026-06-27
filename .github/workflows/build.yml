@@ -43,11 +43,32 @@ jobs:
 
       - name: Package
         run: |
+          set -euo pipefail
           mkdir dist
-          cp `pkg-config --variable=libdir libusb-1.0`/libusb-1.0.so.0 dist
-          chmod 0644 dist/*
           cp ./build/qdl dist
-          patchelf --set-rpath '$ORIGIN' dist/qdl
+          # Bundle every shared-library dependency except the C runtime and
+          # the dynamic loader, so the binary runs without libxml2/libzip/etc.
+          # installed on the host.
+          ldd ./build/qdl | awk '/=> \//{print $3}' | while read -r lib; do
+            case "$lib" in
+              */libc.so.*|*/libm.so.*|*/libpthread.so.*|*/libdl.so.*|*/librt.so.*|*/ld-linux*|*/ld64.so.*) ;;
+              *) cp -vL "$lib" dist/ ;;
+            esac
+          done
+          chmod 0755 dist/qdl
+          chmod 0644 dist/*.so*
+          # RUNPATH is not inherited by transitively-loaded libraries, so point
+          # the binary and every bundled library at their own directory.
+          for f in dist/qdl dist/*.so*; do patchelf --set-rpath '$ORIGIN' "$f"; done
+          # Fail the build if anything is unresolved or resolves outside dist/.
+          if ldd dist/qdl | grep -q 'not found'; then
+            ldd dist/qdl; echo "::error::qdl has unresolved libraries"; exit 1
+          fi
+          leaked=$(ldd dist/qdl | awk '/=> \//{print $3}' \
+            | grep -vE '/lib(c|m|pthread|dl|rt)\.so' | grep -v "$PWD/dist/" || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::qdl depends on unbundled libraries:"; echo "$leaked"; exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -73,7 +94,7 @@ jobs:
 
       - name: Dependencies
         run: |
-          brew install cmocka libxml2 libzip meson ninja help2man zip
+          brew install cmocka libxml2 libzip meson ninja help2man zip dylibbundler
 
       - name: Configure
         run: meson setup build
@@ -89,26 +110,20 @@ jobs:
 
       - name: Package
         run: |
-          set -x
+          set -euxo pipefail
           mkdir dist
-          cp `pkg-config --variable=libdir libusb-1.0`/libusb-1.0.0.dylib dist
-          cp `pkg-config --variable=libdir liblzma`/liblzma.5.dylib dist
-          chmod 0644 dist/*
+          # Recursively copy every non-system dylib next to the binary and
+          # rewrite the load commands to @executable_path. Apple-provided
+          # libraries under /usr/lib and /System are left as system references.
+          dylibbundler --overwrite-dir --bundle-deps \
+            --fix-file ./build/qdl --dest-dir dist --install-path @executable_path/
           cp ./build/qdl dist
-
-          if uname -a | grep -q arm64; then
-            LIBUSB_DIR=/opt/homebrew/opt/libusb/lib
-            LIBLZMA_DIR=/usr/lib
-          else
-            LIBUSB_DIR=/usr/local/opt/libusb/lib
-            LIBLZMA_DIR=/usr/local/opt/xz/lib
-          fi
-
-          install_name_tool -add_rpath @executable_path dist/qdl
-          install_name_tool -change $LIBUSB_DIR/libusb-1.0.0.dylib @rpath/libusb-1.0.0.dylib dist/qdl
-          install_name_tool -change $LIBLZMA_DIR/liblzma.5.dylib @rpath/liblzma.5.dylib dist/qdl
           otool -L dist/qdl
           dist/qdl || true
+          # Fail the build if the binary still references Homebrew locations.
+          if otool -L dist/qdl | awk 'NR>1{print $1}' | grep -E '/(opt/homebrew|usr/local)/'; then
+            echo "::error::qdl still references non-bundled Homebrew libraries"; exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
