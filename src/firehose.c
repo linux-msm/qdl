@@ -1015,11 +1015,18 @@ static int firehose_issue_read(struct qdl_device *qdl, struct firehose_op *read_
 				ret = -1;
 				goto out;
 			}
-			if (n == 0) {
-				ux_err("unexpected EOF while reading sector data\n");
-				ret = -1;
-				goto out;
-			}
+			/*
+			 * A 0-byte return is not EOF on a USB bulk-in pipe: it's
+			 * a zero-length packet. Windows libusb (WinUSB) surfaces
+			 * the ZLP that the device sends when transitioning from
+			 * the XML/ACK phase to the rawmode binary phase before
+			 * the first sector chunk of a large <read>; Linux's
+			 * usbfs path generally hides it. If qdl_read() really
+			 * has nothing more to deliver it will eventually return
+			 * -ETIMEDOUT, which is handled above.
+			 */
+			if (n == 0)
+				continue;
 			got += (size_t)n;
 		}
 
