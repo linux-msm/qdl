@@ -137,6 +137,22 @@ if cmocka_dep.found()
     protocol: 'tap',
     env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
   )
+
+  test_oscompat = executable('test_oscompat',
+    sources : [
+      'test_oscompat.c',
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'oscompat path helpers',
+    test_oscompat,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
 else
   warning('cmocka not found; skipping unit tests')
 endif

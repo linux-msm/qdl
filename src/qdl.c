@@ -605,6 +605,12 @@ static int qdl_ramdump(int argc, char **argv)
 
 	ux_init();
 
+	if (qdl_mkdir_p(ramdump_path) < 0) {
+		ux_err("failed to create ramdump directory \"%s\": %s\n",
+		       ramdump_path, strerror(errno));
+		return 1;
+	}
+
 	qdl = qdl_init(qdl_dev_type);
 	if (!qdl) {
 		ux_err("backend not available\n");
