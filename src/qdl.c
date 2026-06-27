@@ -505,10 +505,11 @@ static void print_usage(FILE *out)
 	fprintf(out, " <id:file-path>\t\tmap a Sahara image id to a host file, repeatable (ks)\n");
 	fprintf(out, " <flashmap>\tflashmap JSON file, or ZIP archive with flashmap.json\n");
 	fprintf(out, " <contents>\tcontents XML file\n");
-	fprintf(out, " <specifier>\tcomma-separated list of specifiers, such as storage type and flavors\n");
+	fprintf(out, " <specifier>\tcomma-separated list of specifiers, such as storage type, layout, and flavors\n");
 	fprintf(out, "\n");
 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
 	fprintf(out, "         %s flash contents.xml::ufs,spinor/safe_rtos\n", __progname);
+	fprintf(out, "         %s flash installer.zip::layout1/ufs\n", __progname);
 }
 
 static int qdl_list(FILE *out)

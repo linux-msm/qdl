@@ -169,6 +169,14 @@ These can of course be combined with e.g. *--serial*.
 A subset of the installer package can be selected for installation by appending
 a **::storage1[,storage2...]** suffix to the file name.
 
+If a flashmap contains multiple layouts, select the desired layout by appending
+**::layout-name**. The layout selector can be combined with storage filters
+using **::layout-name/storage1[,storage2...]**, for example:
+
+```bash
+qdl flash installer.zip::layout1/ufs
+```
+
 ### Flashing contents.xml
 
 QDL also supports flashing builds described by *contents.xml* files:
