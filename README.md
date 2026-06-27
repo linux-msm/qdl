@@ -78,9 +78,9 @@ Please consult your device’s documentation for instructions on how to enter ED
 
 See:
 
-* <https://github.com/dorssel/usbipd-win/issues/924>
-* <https://github.com/dorssel/usbipd-win/issues/1022>
-* <https://github.com/dorssel/usbipd-win/issues/1067>
+- <https://github.com/dorssel/usbipd-win/issues/924>
+- <https://github.com/dorssel/usbipd-win/issues/1022>
+- <https://github.com/dorssel/usbipd-win/issues/1067>
 
 On Windows, QDL can run inside a WSL2 distribution, but WSL2 does not see USB
 devices by default — they must be forwarded from the Windows host with
