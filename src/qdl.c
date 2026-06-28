@@ -252,6 +252,10 @@ static int decode_programmer_archive(struct sahara_image *blob, struct sahara_im
 			images[id].name = strdup(tok);
 		images[id].len = filesize;
 		images[id].ptr = malloc(filesize);
+		if (!images[id].ptr) {
+			ux_err("failed to allocate memory for programmer archive entry\n");
+			goto err;
+		}
 		memcpy(images[id].ptr, ptr, filesize);
 
 		ptr += filesize;
