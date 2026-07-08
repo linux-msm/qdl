@@ -26,6 +26,11 @@ struct qdl_device_usb {
 	size_t out_chunk_size;
 };
 
+static bool usb_is_edl_pid(uint16_t pid)
+{
+	return pid == 0x9008 || pid == 0x900e || pid == 0x901d || pid == 0x90db;
+}
+
 /*
  * libusb commit f0cce43f882d ("core: Fix definition and use of enum
  * libusb_transfer_type") split transfer type and endpoint transfer types.
@@ -101,7 +106,7 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
 	/* Consider only devices with vid 0x0506 and known product id */
 	if (desc.idVendor != 0x05c6)
 		return 0;
-	if (desc.idProduct != 0x9008 && desc.idProduct != 0x900e && desc.idProduct != 0x901d)
+	if (!usb_is_edl_pid(desc.idProduct))
 		return 0;
 
 	ret = libusb_get_active_config_descriptor(dev, &config);
@@ -188,11 +193,6 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
 	libusb_free_config_descriptor(config);
 
 	return !!qdl->usb_handle;
-}
-
-static bool usb_is_edl_pid(uint16_t pid)
-{
-	return pid == 0x9008 || pid == 0x900e || pid == 0x901d;
 }
 
 /*
@@ -372,7 +372,7 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 
 		if (desc.idVendor != 0x05c6)
 			continue;
-		if (desc.idProduct != 0x9008 && desc.idProduct != 0x900e && desc.idProduct != 0x901d)
+		if (!usb_is_edl_pid(desc.idProduct))
 			continue;
 
 		ret = libusb_open(dev, &handle);
