@@ -97,6 +97,14 @@ typedef struct {
 #define SAHARA_DONE_LENGTH		0x8
 #define SAHARA_DONE_RESP_LENGTH		0xc
 #define SAHARA_RESET_LENGTH		0x8
+#define SAHARA_EXECUTE_LENGTH		0xc
+#define SAHARA_SWITCH_MODE_LENGTH	0xc
+
+/* Sahara command-mode client commands, carried by SAHARA_EXECUTE_CMD */
+#define SAHARA_EXEC_CMD_SERIAL_NUM_READ		0x01
+#define SAHARA_EXEC_CMD_MSM_HW_ID_READ		0x02
+#define SAHARA_EXEC_CMD_OEM_PK_HASH_READ	0x03
+#define SAHARA_EXEC_CMD_READ_CHIP_ID_V3		0x0a
 
 #define DEBUG_BLOCK_SIZE (512u * 1024u)
 
@@ -144,6 +152,16 @@ struct sahara_pkt {
 			uint64_t offset;
 			uint64_t length;
 		} read64_req;
+		struct {
+			uint32_t client_cmd;
+		} exec_req;
+		struct {
+			uint32_t client_cmd;
+			uint32_t data_length;
+		} exec_resp;
+		struct {
+			uint32_t mode;
+		} switch_mode;
 	};
 };
 
@@ -165,13 +183,14 @@ static void sahara_send_reset(struct qdl_device *qdl)
 	qdl_write(qdl, &resp, resp.length, SAHARA_CMD_TIMEOUT_MS);
 }
 
-static int sahara_send_hello_resp(struct qdl_device *qdl, unsigned int mode)
+static int sahara_send_hello_resp(struct qdl_device *qdl, unsigned int version,
+				  unsigned int mode)
 {
 	struct sahara_pkt resp = {};
 
 	resp.cmd = SAHARA_HELLO_RESP_CMD;
 	resp.length = SAHARA_HELLO_LENGTH;
-	resp.hello_resp.version = SAHARA_VERSION;
+	resp.hello_resp.version = version;
 	resp.hello_resp.compatible = 1;
 	resp.hello_resp.status = SAHARA_SUCCESS;
 	resp.hello_resp.mode = mode;
@@ -191,7 +210,7 @@ static int sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	ux_debug("HELLO version: 0x%x compatible: 0x%x max_len: %d mode: %d\n",
 		 pkt->hello_req.version, pkt->hello_req.compatible, pkt->hello_req.max_len, pkt->hello_req.mode);
 
-	return sahara_send_hello_resp(qdl, pkt->hello_req.mode);
+	return sahara_send_hello_resp(qdl, SAHARA_VERSION, pkt->hello_req.mode);
 }
 
 static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
@@ -785,6 +804,305 @@ static void sahara_debug_list_images(const struct sahara_image *images)
 	}
 }
 
+static uint16_t sahara_le16(const uint8_t *p)
+{
+	return (uint16_t)(p[0] | (p[1] << 8));
+}
+
+static uint32_t sahara_le32(const uint8_t *p)
+{
+	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+	       ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static uint64_t sahara_le64(const uint8_t *p)
+{
+	return (uint64_t)sahara_le32(p) | ((uint64_t)sahara_le32(p + 4) << 32);
+}
+
+static void sahara_hexstr(const uint8_t *buf, size_t len, char *out, size_t out_sz)
+{
+	static const char hex[] = "0123456789abcdef";
+	size_t i;
+
+	for (i = 0; i < len && (2 * i + 2) < out_sz; i++) {
+		out[2 * i] = hex[buf[i] >> 4];
+		out[2 * i + 1] = hex[buf[i] & 0xf];
+	}
+	out[2 * i] = '\0';
+}
+
+/*
+ * Normalise the raw OEM PK hash payload down to a single digest. Targets return
+ * it in a few shapes: the bare digest, the digest repeated once per root
+ * certificate, or the digest in a wider fixed-size field zero-padded to the
+ * full width. Trim a repeated copy (detected by the first block recurring in
+ * full), then strip trailing zero padding and round the length back up
+ * to the nearest standard digest size (SHA-256/384/512), so a hash whose final
+ * bytes are legitimately zero is not truncated. The rounding never grows the
+ * result beyond the bytes actually read.
+ */
+static size_t sahara_pkhash_trim(const uint8_t *buf, size_t len)
+{
+	static const size_t digest_sizes[] = { 32, 48, 64 };
+	size_t orig_len = len;
+	size_t i;
+
+	for (i = 4; i * 2 <= len; i++) {
+		if (!memcmp(buf, buf + i, i)) {
+			len = i;
+			break;
+		}
+	}
+
+	while (len > 0 && buf[len - 1] == 0)
+		len--;
+
+	for (i = 0; i < ARRAY_SIZE(digest_sizes); i++) {
+		if (len <= digest_sizes[i] && digest_sizes[i] <= orig_len) {
+			len = digest_sizes[i];
+			break;
+		}
+	}
+
+	return len;
+}
+
+static int sahara_read_payload(struct qdl_device *qdl, void *buf, size_t len)
+{
+	uint8_t *p = buf;
+	size_t off = 0;
+	int n;
+
+	while (off < len) {
+		n = qdl_read(qdl, p + off, len - off, SAHARA_CMD_TIMEOUT_MS);
+		if (n < 0)
+			return -1;
+		if (n == 0)
+			break;
+		off += n;
+	}
+
+	return (int)off;
+}
+
+/*
+ * Run one Sahara command-mode client command: send EXECUTE, learn the reply
+ * size from EXECUTE_RESP, request the payload with EXECUTE_DATA and read it.
+ */
+static int sahara_command_exec(struct qdl_device *qdl, uint32_t client_cmd,
+			       void *buf, size_t buf_len, size_t *out_len)
+{
+	struct sahara_pkt req = {};
+	struct sahara_pkt *resp;
+	uint8_t rxbuf[64];
+	uint32_t data_len;
+	int n;
+
+	req.cmd = SAHARA_EXECUTE_CMD;
+	req.length = SAHARA_EXECUTE_LENGTH;
+	req.exec_req.client_cmd = client_cmd;
+	if (qdl_write(qdl, &req, req.length, SAHARA_CMD_TIMEOUT_MS) < 0)
+		return -1;
+
+	n = qdl_read(qdl, rxbuf, sizeof(rxbuf), SAHARA_CMD_TIMEOUT_MS);
+	if (n < 0)
+		return -1;
+
+	resp = (struct sahara_pkt *)rxbuf;
+	if ((size_t)n < 4 * sizeof(uint32_t) || resp->cmd != SAHARA_EXECUTE_RESP_CMD) {
+		ux_debug("Sahara: unexpected reply to exec cmd 0x%x\n", client_cmd);
+		return -1;
+	}
+
+	data_len = resp->exec_resp.data_length;
+	if (data_len == 0 || data_len > buf_len) {
+		ux_debug("Sahara: exec cmd 0x%x reported invalid length %u\n",
+			 client_cmd, data_len);
+		return -1;
+	}
+
+	req.cmd = SAHARA_EXECUTE_DATA_CMD;
+	req.length = SAHARA_EXECUTE_LENGTH;
+	req.exec_req.client_cmd = client_cmd;
+	if (qdl_write(qdl, &req, req.length, SAHARA_CMD_TIMEOUT_MS) < 0)
+		return -1;
+
+	n = sahara_read_payload(qdl, buf, data_len);
+	if (n < 0 || (size_t)n < data_len)
+		return -1;
+
+	*out_len = data_len;
+	return 0;
+}
+
+/*
+ * Query and print the chip identity exposed over Sahara command mode. The set
+ * of readable items depends on the protocol version: pre-v3 targets answer
+ * MSM_HW_ID_READ, while v3 targets no longer do and instead expose the same
+ * fields through READ_CHIP_ID_V3. The serial number and (where still permitted)
+ * the OEM PK hash are read on all versions.
+ */
+static int sahara_command_info(struct qdl_device *qdl, unsigned int version)
+{
+	uint8_t payload[512];
+	char hexbuf[2 * sizeof(payload) + 1];
+	const char *pkhash = NULL;
+	bool have_serial = false;
+	bool have_hwid = false;
+	uint32_t serial = 0;
+	uint64_t hwid = 0;
+	uint32_t msm_id = 0;
+	unsigned int oem_id = 0;
+	unsigned int model_id = 0;
+	size_t len;
+
+	if (sahara_command_exec(qdl, SAHARA_EXEC_CMD_SERIAL_NUM_READ,
+				payload, sizeof(payload), &len) == 0 && len >= 4) {
+		serial = sahara_le32(payload);
+		have_serial = true;
+	}
+
+	if (version < 3) {
+		if (sahara_command_exec(qdl, SAHARA_EXEC_CMD_MSM_HW_ID_READ,
+					payload, sizeof(payload), &len) == 0 && len >= 8) {
+			hwid = sahara_le64(payload);
+			msm_id = hwid >> 32;
+			oem_id = (hwid >> 16) & 0xffff;
+			model_id = hwid & 0xffff;
+			have_hwid = true;
+		}
+	} else {
+		if (sahara_command_exec(qdl, SAHARA_EXEC_CMD_READ_CHIP_ID_V3,
+					payload, sizeof(payload), &len) == 0 && len >= 44) {
+			msm_id = sahara_le32(payload + 36);
+			oem_id = sahara_le16(payload + 40);
+			model_id = sahara_le16(payload + 42);
+			/* Some v3 targets carry the OEM ID in an alternate slot */
+			if (oem_id == 0 && len >= 46)
+				oem_id = sahara_le16(payload + 44);
+			hwid = ((uint64_t)msm_id << 32) |
+			       ((uint64_t)oem_id << 16) | model_id;
+			have_hwid = true;
+		}
+	}
+
+	if (sahara_command_exec(qdl, SAHARA_EXEC_CMD_OEM_PK_HASH_READ,
+				payload, sizeof(payload), &len) == 0 && len > 0) {
+		len = sahara_pkhash_trim(payload, len);
+		sahara_hexstr(payload, len, hexbuf, sizeof(hexbuf));
+		pkhash = hexbuf;
+	}
+
+	if (!have_serial && !have_hwid && !pkhash) {
+		ux_err("device did not return any chip identity information\n");
+		return -1;
+	}
+
+	ux_info("Sahara protocol version: %u\n", version);
+	if (have_serial)
+		ux_info("Chip serial number:      0x%08x\n", serial);
+	if (have_hwid)
+		ux_info("HW ID:                   0x%016" PRIx64
+			" (MSM_ID:0x%08x, OEM_ID:0x%04x, MODEL_ID:0x%04x)\n",
+			hwid, msm_id, oem_id, model_id);
+	if (pkhash)
+		ux_info("OEM PK hash:             0x%s\n", pkhash);
+
+	return 0;
+}
+
+static void sahara_send_switch_mode(struct qdl_device *qdl, unsigned int mode)
+{
+	struct sahara_pkt pkt = {};
+
+	pkt.cmd = SAHARA_SWITCH_MODE_CMD;
+	pkt.length = SAHARA_SWITCH_MODE_LENGTH;
+	pkt.switch_mode.mode = mode;
+
+	qdl_write(qdl, &pkt, pkt.length, SAHARA_CMD_TIMEOUT_MS);
+}
+
+/*
+ * Read and print the chip identity (serial, HW ID and OEM PK hash) by entering
+ * Sahara command mode. Unlike the image-transfer path this requests
+ * SAHARA_MODE_COMMAND in the HELLO response and drives EXECUTE transactions.
+ * Command mode is left by switching back to image transfer, which returns the
+ * device to its initial HELLO state.
+ */
+int sahara_chipinfo(struct qdl_device *qdl)
+{
+	unsigned int version = SAHARA_VERSION;
+	struct sahara_pkt *pkt;
+	char buf[4096];
+	int ret;
+	int n;
+
+	if (qdl->dev_type == QDL_DEVICE_SIM)
+		return 0;
+
+	n = qdl_read(qdl, buf, sizeof(buf), SAHARA_CMD_TIMEOUT_MS);
+
+	/* A Firehose programmer is already running; chip info needs Sahara */
+	if (n >= 5 && !memcmp(buf, "<?xml", 5)) {
+		ux_err("device is already in Firehose mode; chip info is only available via Sahara\n");
+		return -1;
+	}
+
+	if (n < 0) {
+		/*
+		 * The QUD driver eats the HELLO request on many targets; recover
+		 * by prodding the device with an unsolicited command-mode HELLO
+		 * response. The version is unknown here, so assume the baseline.
+		 */
+		if (n != -ETIMEDOUT ||
+		    (qdl->dev_type != QDL_DEVICE_QUD && qdl->dev_type != QDL_DEVICE_AUTO)) {
+			ux_err("failed to read Sahara HELLO from device\n");
+			return -1;
+		}
+		sahara_send_hello_resp(qdl, SAHARA_VERSION, SAHARA_MODE_COMMAND);
+	} else {
+		pkt = (struct sahara_pkt *)buf;
+		if ((uint32_t)n != pkt->length || pkt->cmd != SAHARA_HELLO_CMD) {
+			ux_err("unexpected Sahara packet 0x%x while waiting for HELLO\n",
+			       pkt->cmd);
+			return -1;
+		}
+
+		version = pkt->hello_req.version;
+		ux_debug("Sahara HELLO version %u mode %u\n",
+			 version, pkt->hello_req.mode);
+		sahara_send_hello_resp(qdl, version, SAHARA_MODE_COMMAND);
+	}
+
+	n = qdl_read(qdl, buf, sizeof(buf), SAHARA_CMD_TIMEOUT_MS);
+	if (n < 0) {
+		ux_err("no Sahara CMD_READY received; device may not support command mode\n");
+		return -1;
+	}
+
+	pkt = (struct sahara_pkt *)buf;
+	if (pkt->cmd != SAHARA_CMD_READY_CMD) {
+		if (pkt->cmd == SAHARA_END_OF_IMAGE_CMD)
+			ux_err("device rejected command mode (end-of-image status %u)\n",
+			       pkt->eoi.status);
+		else
+			ux_err("unexpected Sahara packet 0x%x while entering command mode\n",
+			       pkt->cmd);
+		return -1;
+	}
+
+	ret = sahara_command_info(qdl, version);
+
+	/*
+	 * Switch back to image-transfer mode so the device re-issues its HELLO
+	 * and stays usable for a subsequent query or flash, without a reset.
+	 */
+	sahara_send_switch_mode(qdl, SAHARA_MODE_IMAGE_TX_PENDING);
+
+	return ret;
+}
+
 int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	       const char *ramdump_path,
 	       const char *ramdump_filter)
@@ -828,7 +1146,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 				 * trigger below detection of a <?xml response.
 				 */
 				if (qdl->dev_type == QDL_DEVICE_QUD || qdl->dev_type == QDL_DEVICE_AUTO) {
-					sahara_send_hello_resp(qdl, 0);
+					sahara_send_hello_resp(qdl, SAHARA_VERSION, 0);
 					continue;
 				}
 				ux_info("no Sahara HELLO received; assuming Firehose programmer is already running\n");
