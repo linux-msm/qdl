@@ -47,6 +47,7 @@ enum {
 	QDL_CMD_ERASE,
 	QDL_CMD_FLASH,
 	QDL_CMD_SHA256,
+	QDL_CMD_RESET,
 };
 
 bool qdl_debug;
@@ -68,6 +69,8 @@ static int detect_type(const char *verb)
 		return QDL_CMD_FLASH;
 	if (!strcmp(verb, "sha256"))
 		return QDL_CMD_SHA256;
+	if (!strcmp(verb, "reset"))
+		return QDL_CMD_RESET;
 
 	if (access(verb, F_OK)) {
 		ux_err("%s is not a verb and not a XML file\n", verb);
@@ -471,6 +474,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "       %s [options] <prog.mbn> ((read | write) <address> <binary>)...\n", __progname);
 	fprintf(out, "       %s [options] <prog.mbn> (erase <address>)...\n", __progname);
 	fprintf(out, "       %s [options] <prog.mbn> (sha256 <address>)...\n", __progname);
+	fprintf(out, "       %s [options] <prog.mbn> (reset)\n", __progname);
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
 	fprintf(out, "       %s ks -p <sahara-dev-node> -s <id:file-path>...\n", __progname);
@@ -870,6 +874,18 @@ static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
 	return ret;
 }
 
+static int qdl_cmd_reset(struct list_head *ops)
+{
+	struct firehose_op *reset_op = firehose_alloc_op(FIREHOSE_OP_RESET);
+
+	if (!reset_op)
+		return -1;
+
+	list_append(ops, &reset_op->node);
+
+	return 0;
+}
+
 static int qdl_create_zip(int argc, char **argv)
 {
 	struct sahara_image images[MAPPING_SZ] = {};
@@ -1210,6 +1226,15 @@ static int qdl_flash(int argc, char **argv)
 				goto out_cleanup;
 			optind += 1;
 			break;
+		case QDL_CMD_RESET:
+			/* Do no allocate two reset commands */
+			skip_reset = true;
+			/* Stop processing chained commands */
+			optind = argc;
+			ret = qdl_cmd_reset(&firehose_ops);
+			if (ret < 0)
+				goto out_cleanup;
+			break;
 		default:
 			errx(1, "%s type not yet supported", argv[optind]);
 			break;
@@ -1230,13 +1255,9 @@ static int qdl_flash(int argc, char **argv)
 	 * to leave the programmer alive across qdl invocations.
 	 */
 	if (!skip_reset) {
-		struct firehose_op *reset_op = firehose_alloc_op(FIREHOSE_OP_RESET);
-
-		if (!reset_op) {
-			ret = -1;
+		ret = qdl_cmd_reset(&firehose_ops);
+		if (ret < 0)
 			goto out_cleanup;
-		}
-		list_append(&firehose_ops, &reset_op->node);
 	}
 
 	ret = qdl_open(qdl, serial);
