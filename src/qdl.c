@@ -227,13 +227,18 @@ static int decode_programmer_archive(struct sahara_image *blob, struct sahara_im
 			goto err;
 		}
 
-		if (namesize > sizeof(name)) {
+		if (namesize == 0 || namesize > sizeof(name)) {
 			ux_err("unexpected filename length in programmer archive\n");
 			goto err;
 		}
 		memcpy(name, ptr, namesize);
 
-		if (!memcmp(name, "TRAILER!!!", 11))
+		if (name[namesize - 1] != '\0') {
+			ux_err("malformed filename in programmer archive\n");
+			goto err;
+		}
+
+		if (!strcmp(name, "TRAILER!!!"))
 			break;
 
 		tok = strtok_r(name, ":", &save);
@@ -242,7 +247,7 @@ static int decode_programmer_archive(struct sahara_image *blob, struct sahara_im
 			goto err;
 		}
 		id = strtoul(tok, NULL, 0);
-		if (id == 0 || id >= MAPPING_SZ) {
+		if (id <= 0 || id >= MAPPING_SZ) {
 			ux_err("invalid image id \"%s\" in programmer archive\n", tok);
 			goto err;
 		}
@@ -345,7 +350,7 @@ int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images,
 		image_id = attr_as_unsigned(image_node, "image_id", &errors);
 		image_path = attr_as_string(image_node, "image_path", &errors);
 
-		if (image_id == 0 || image_id >= MAPPING_SZ || errors) {
+		if (image_id == 0 || image_id >= MAPPING_SZ || errors || !image_path) {
 			ux_err("invalid sahara_config image in \"%s\"\n", blob->name);
 			free((void *)image_path);
 			goto err_free_doc;
@@ -437,7 +442,7 @@ static int decode_programmer(char *s, struct sahara_image *images)
 				return -1;
 			}
 
-			if (id == 0 || id >= MAPPING_SZ) {
+			if (id <= 0 || id >= MAPPING_SZ) {
 				ux_err("invalid image id \"%s\"\n", pair);
 				return -1;
 			}
