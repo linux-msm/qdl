@@ -133,25 +133,16 @@ static int zipper_add_name_entry(struct list_head *names, const char *name)
 	return 0;
 }
 
-static int zipper_add_buffer(zip_t *zip, const char *name, const void *data, size_t len)
+/* Takes ownership of "data"; the buffer is freed on error as well. */
+static int zipper_add_buffer_owned(zip_t *zip, const char *name, void *data, size_t len)
 {
 	zip_source_t *source;
 	zip_int64_t idx;
-	void *copy = NULL;
 
-	if (len) {
-		copy = malloc(len);
-		if (!copy) {
-			ux_err("failed to allocate zip member \"%s\"\n", name);
-			return -1;
-		}
-		memcpy(copy, data, len);
-	}
-
-	source = zip_source_buffer(zip, copy, len, 1);
+	source = zip_source_buffer(zip, data, len, 1);
 	if (!source) {
 		ux_err("failed to create zip source for \"%s\"\n", name);
-		free(copy);
+		free(data);
 		return -1;
 	}
 
@@ -163,6 +154,22 @@ static int zipper_add_buffer(zip_t *zip, const char *name, const void *data, siz
 	}
 
 	return 0;
+}
+
+static int zipper_add_buffer(zip_t *zip, const char *name, const void *data, size_t len)
+{
+	void *copy = NULL;
+
+	if (len) {
+		copy = malloc(len);
+		if (!copy) {
+			ux_err("failed to allocate zip member \"%s\"\n", name);
+			return -1;
+		}
+		memcpy(copy, data, len);
+	}
+
+	return zipper_add_buffer_owned(zip, name, copy, len);
 }
 
 static int zipper_add_file(zip_t *zip, const char *name, const char *path)
@@ -434,8 +441,7 @@ static int zipper_register_fill_program_file(zip_t *zip, struct list_head *name_
 		i++;
 	}
 
-	ret = zipper_add_buffer(zip, filename, buf, fill_size);
-	free(buf);
+	ret = zipper_add_buffer_owned(zip, filename, buf, fill_size);
 	if (ret) {
 		free(filename);
 		return -1;
@@ -1052,6 +1058,7 @@ int zipper_write(const char *filename, struct list_head *ops, struct sahara_imag
 	goto out_cleanup;
 
 out_discard_zip:
+	ret = -1;
 	zip_discard(zip);
 
 out_cleanup:
