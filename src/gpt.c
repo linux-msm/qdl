@@ -12,6 +12,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
@@ -58,8 +59,8 @@ struct gpt_entry {
 struct gpt_partition {
 	const char *name;
 	unsigned int partition;
-	unsigned int start_sector;
-	unsigned int num_sectors;
+	uint64_t start_sector;
+	uint64_t num_sectors;
 
 	struct gpt_partition *next;
 };
@@ -82,7 +83,7 @@ static void utf16le_to_utf8(uint16_t *in, size_t in_len, uint8_t *out, size_t ou
 		if (w >= 0xd800 && w <= 0xdbff) {
 			high = w - 0xd800;
 
-			if (i < in_len) {
+			if (i + 1 < in_len) {
 				w = in[++i];
 				if (w >= 0xdc00 && w <= 0xdfff) {
 					low = w - 0xdc00;
@@ -169,7 +170,15 @@ static int gpt_load_table_from_partition(struct qdl_device *qdl, unsigned int ph
 		return 0;
 	}
 
-	if (gpt.part_entry_size > qdl->sector_size || gpt.num_part_entries > 1024) {
+	/*
+	 * The entry read loop below assumes entries never straddle a sector
+	 * boundary, which only holds when the entry size is a non-zero divisor
+	 * of the sector size and is at least as large as a GPT entry.
+	 */
+	if (gpt.part_entry_size < sizeof(struct gpt_entry) ||
+	    gpt.part_entry_size > qdl->sector_size ||
+	    qdl->sector_size % gpt.part_entry_size != 0 ||
+	    gpt.num_part_entries > 1024) {
 		ux_debug("partition %d has invalid GPT header\n", phys_partition);
 		return -1;
 	}
@@ -186,7 +195,8 @@ static int gpt_load_table_from_partition(struct qdl_device *qdl, unsigned int ph
 			memset(buf, 0, sizeof(buf));
 			ret = firehose_read_buf(qdl, &op, buf, sizeof(buf));
 			if (ret) {
-				ux_err("failed to read GPT partition entries from %d:%u\n", phys_partition, lba);
+				ux_err("failed to read GPT partition entries from %d:%" PRIu64 "\n",
+				       phys_partition, lba);
 				return -1;
 			}
 		}
@@ -200,14 +210,16 @@ static int gpt_load_table_from_partition(struct qdl_device *qdl, unsigned int ph
 		utf16le_to_utf8(name_utf16le, 36, (uint8_t *)name, sizeof(name));
 
 		partition = calloc(1, sizeof(*partition));
+		if (!partition)
+			return -1;
 		partition->name = strdup(name);
 		partition->partition = phys_partition;
 		partition->start_sector = entry->first_lba;
 		/* if first_lba == last_lba there is 1 sector worth of data (IE: add 1 below) */
 		partition->num_sectors = entry->last_lba - entry->first_lba + 1;
 
-		ux_debug("  %3d: %s start sector %u, num sectors %u\n", i, partition->name,
-			 partition->start_sector, partition->num_sectors);
+		ux_debug("  %3d: %s start sector %" PRIu64 ", num sectors %" PRIu64 "\n", i,
+			 partition->name, partition->start_sector, partition->num_sectors);
 
 		if (gpt_partitions) {
 			gpt_partitions_last->next = partition;
@@ -240,14 +252,17 @@ static int gpt_load_tables(struct qdl_device *qdl)
 }
 
 int gpt_find_by_name(struct qdl_device *qdl, const char *name, int *phys_partition,
-		     unsigned int *start_sector, unsigned int *num_sectors)
+		     uint64_t *start_sector, uint64_t *num_sectors)
 {
 	struct gpt_partition *gpt_part;
 	bool found = false;
 	int ret;
 
-	if (qdl->dev_type == QDL_DEVICE_SIM)
+	if (qdl->dev_type == QDL_DEVICE_SIM) {
+		*start_sector = 0;
+		*num_sectors = 0;
 		return 0;
+	}
 
 	ret = gpt_load_tables(qdl);
 	if (ret < 0)
@@ -285,9 +300,10 @@ int gpt_find_by_name(struct qdl_device *qdl, const char *name, int *phys_partiti
 
 int gpt_resolve_deferrals(struct qdl_device *qdl, struct list_head *ops)
 {
-	unsigned int start_sector;
+	uint64_t start_sector;
+	uint64_t num_sectors;
 	struct firehose_op *op;
-	char buf[20];
+	char buf[21];
 	int ret;
 
 	list_for_each_entry(op, ops, node) {
@@ -301,11 +317,18 @@ int gpt_resolve_deferrals(struct qdl_device *qdl, struct list_head *ops)
 			continue;
 
 		ret = gpt_find_by_name(qdl, op->gpt_partition, &op->partition,
-				       &start_sector, &op->num_sectors);
+				       &start_sector, &num_sectors);
 		if (ret < 0)
 			return -1;
 
-		sprintf(buf, "%u", start_sector);
+		if (num_sectors > UINT_MAX) {
+			ux_err("partition \"%s\" has too many sectors (%" PRIu64 ")\n",
+			       op->gpt_partition, num_sectors);
+			return -1;
+		}
+		op->num_sectors = (unsigned int)num_sectors;
+
+		snprintf(buf, sizeof(buf), "%" PRIu64, start_sector);
 		op->start_sector = strdup(buf);
 	}
 
