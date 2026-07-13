@@ -262,6 +262,8 @@ static int flashmap_enumerate_programmables(struct json_value *list, struct list
 		is_nand = !strcmp(memory, "nand");
 
 		op = firehose_alloc_op(FIREHOSE_OP_CONFIGURE);
+		if (!op)
+			return -1;
 		op->storage_type = decode_storage_type(memory);
 		list_append(ops, &op->node);
 
@@ -454,12 +456,15 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 
 	json_blob = qdl_file_load(&flashmap, &json_size);
 	qdl_file_close(&flashmap);
-	if (!json_blob)
+	if (!json_blob) {
+		ret = -1;
 		goto out_put_zip;
+	}
 
 	json = json_parse_buf(json_blob, json_size);
 	if (!json) {
 		ux_err("failed to parse flashmap json\n");
+		ret = -1;
 		goto out_free_blob;
 	}
 
