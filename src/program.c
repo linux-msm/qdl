@@ -81,16 +81,27 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 		 * for a partition node but lacks a sparse header,
 		 * it will be validated against the defined partition size.
 		 * If the sizes match, it is likely that the 'sparse="true"' attribute
-		 * was set by mistake, fix the sparse flag and add the
-		 * program entry to the list.
+		 * was set by mistake, fix the sparse flag and let the caller add the
+		 * program entry to the list as a regular (non-sparse) program.
 		 */
 		if ((off_t)program->sector_size * program->num_sectors == qdl_file_seek(file, 0, SEEK_END)) {
 			program->sparse = false;
-			list_append(ops, &program->node);
-			return 0;
+			return 1;
 		}
 
 		ux_err("[PROGRAM] Unable to parse sparse header at %s...failed\n",
+		       program->filename);
+		return -1;
+	}
+
+	if (program->sector_size == 0) {
+		ux_err("[PROGRAM] SECTOR_SIZE_IN_BYTES is zero for sparse image %s\n",
+		       program->filename);
+		return -1;
+	}
+
+	if (!program->start_sector) {
+		ux_err("[PROGRAM] missing start_sector for sparse image %s\n",
 		       program->filename);
 		return -1;
 	}
@@ -127,12 +138,14 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 
 		if (chunk_type == CHUNK_TYPE_RAW || chunk_type == CHUNK_TYPE_FILL) {
 			program_sparse = firehose_alloc_op(FIREHOSE_OP_PROGRAM);
+			if (!program_sparse)
+				return -1;
 
 			program_sparse->pages_per_block = program->pages_per_block;
 			program_sparse->sector_size = program->sector_size;
 			program_sparse->file_offset = program->file_offset;
 			program_sparse->filename = strdup(program->filename);
-			program_sparse->label = strdup(program->label);
+			program_sparse->label = program->label ? strdup(program->label) : NULL;
 			program_sparse->partition = program->partition;
 			program_sparse->sparse = program->sparse;
 			program_sparse->start_sector = strdup(program->start_sector);
@@ -286,11 +299,16 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand,
 			goto err_free_op;
 
 		/*
-		 * Chunks were added to the program list, drop the filename of
-		 * the parent, to prevent this from being written to the device
+		 * ret == 0 means the sparse chunks were added to the program
+		 * list as separate ops; drop the filename of the parent to
+		 * prevent it from being written to the device. ret == 1 means
+		 * the image was not actually sparse and the parent op should be
+		 * programmed normally, so keep its filename.
 		 */
-		free((void *)program->filename);
-		program->filename = NULL;
+		if (ret == 0) {
+			free((void *)program->filename);
+			program->filename = NULL;
+		}
 	}
 
 	list_append(ops, &program->node);
