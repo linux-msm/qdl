@@ -725,13 +725,85 @@ static int firehose_region_local_digest(struct qdl_device *qdl,
 }
 
 /*
+ * Stream @num_sectors of @sector_size bytes to the device after a program
+ * request has been accepted. When @fill is set the data is already present in
+ * @buf (a repeating fill pattern) and reused for every chunk; otherwise each
+ * chunk is read from @file and the trailing partial sector is zero-padded. The
+ * per-chunk VIP digest hooks and progress reporting are handled here so the
+ * regular, sparse and skipblock program paths share one implementation.
+ */
+static int firehose_stream_out(struct qdl_device *qdl, struct firehose_op *program,
+			       struct qdl_file *file, unsigned int sector_size,
+			       size_t num_sectors, void *buf, bool fill,
+			       unsigned int zlp_timeout)
+{
+	size_t chunk_size;
+	size_t left = num_sectors;
+	int ret;
+	int n;
+
+	while (left > 0) {
+		/*
+		 * The hash is computed per raw packet sent, not over the whole
+		 * binary.
+		 */
+		vip_gen_chunk_init(qdl);
+		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
+
+		if (!fill) {
+			n = qdl_file_read_exact(file, buf, chunk_size * sector_size);
+			if (n < 0) {
+				ux_err("failed to read %s\n", program->filename);
+				return -1;
+			}
+
+			/*
+			 * qdl_file_read_exact() only returns short on true EOF.
+			 * The wire protocol expects exactly chunk_size *
+			 * sector_size bytes, so zero-pad the residue (at most the
+			 * trailing partial sector of the file).
+			 */
+			if ((size_t)n < chunk_size * sector_size)
+				memset((char *)buf + n, 0, chunk_size * sector_size - n);
+		}
+
+		vip_gen_chunk_update(qdl, buf, chunk_size * sector_size);
+
+		ret = firehose_vip_send_table(qdl);
+		if (ret)
+			return -1;
+
+		n = qdl_write(qdl, buf, chunk_size * sector_size, zlp_timeout);
+		if (n < 0) {
+			ux_err("USB write failed for data chunk\n");
+			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
+			if (ret)
+				ux_err("flashing of chunk failed\n");
+			return -1;
+		}
+
+		if ((size_t)n != chunk_size * sector_size) {
+			ux_err("USB write truncated\n");
+			return -1;
+		}
+
+		left -= chunk_size;
+		vip_gen_chunk_store(qdl);
+
+		ux_progress("%s", num_sectors - left, num_sectors, program->label);
+	}
+
+	return 0;
+}
+
+/*
  * Program the contiguous raw region [@start_sector, @start_sector +
- * @num_sectors) from the current position of @file. A self-contained
- * mirror of the non-sparse streaming in firehose_program(), used by the
- * skipblock fast-path to reflash one sub-region at a time. @file and @buf
- * (scratch of qdl->max_payload_size) are owned by the caller. Skipblock
- * requires VIP disabled, so the vip_*() calls below are no-ops kept for
- * parity with the main path.
+ * @num_sectors) from the current position of @file: send the program
+ * request, stream the data through firehose_stream_out() and consume the
+ * final response. Used by the skipblock fast-path to reflash one
+ * sub-region at a time; skipblock requires VIP disabled, so the VIP
+ * hooks inside the streaming loop are no-ops on this path. @file and
+ * @buf (scratch of qdl->max_payload_size) are owned by the caller.
  */
 static int firehose_program_raw_region(struct qdl_device *qdl,
 				       struct firehose_op *program,
@@ -742,13 +814,10 @@ static int firehose_program_raw_region(struct qdl_device *qdl,
 				       void *buf,
 				       unsigned int zlp_timeout)
 {
-	size_t chunk_size;
-	size_t left;
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
 	int ret;
-	int n;
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
 	root = xmlNewNode(NULL, (xmlChar *)"data");
@@ -777,49 +846,10 @@ static int firehose_program_raw_region(struct qdl_device *qdl,
 		goto out;
 	}
 
-	left = num_sectors;
-	while (left > 0) {
-		vip_gen_chunk_init(qdl);
-		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
-
-		n = qdl_file_read_exact(file, buf, chunk_size * sector_size);
-		if (n < 0) {
-			ux_err("failed to read %s\n", program->filename);
-			ret = -1;
-			goto out;
-		}
-		if ((size_t)n < chunk_size * sector_size)
-			memset(buf + n, 0, chunk_size * sector_size - n);
-
-		vip_gen_chunk_update(qdl, buf, chunk_size * sector_size);
-
-		ret = firehose_vip_send_table(qdl);
-		if (ret) {
-			ret = -1;
-			goto out;
-		}
-
-		n = qdl_write(qdl, buf, chunk_size * sector_size, zlp_timeout);
-		if (n < 0) {
-			ux_err("USB write failed for data chunk\n");
-			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
-			if (ret)
-				ux_err("flashing of chunk failed\n");
-			ret = -1;
-			goto out;
-		}
-
-		if ((size_t)n != chunk_size * sector_size) {
-			ux_err("USB write truncated\n");
-			ret = -1;
-			goto out;
-		}
-
-		left -= chunk_size;
-		vip_gen_chunk_store(qdl);
-
-		ux_progress("%s", num_sectors - left, num_sectors, program->label);
-	}
+	ret = firehose_stream_out(qdl, program, file, sector_size, num_sectors, buf,
+				  false, zlp_timeout);
+	if (ret)
+		goto out;
 
 	ret = firehose_read(qdl, 120000, firehose_generic_parser, NULL);
 	if (ret != FIREHOSE_ACK) {
@@ -950,16 +980,14 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	unsigned int sector_size;
 	unsigned int zlp_timeout = 10000;
 	struct qdl_file file;
-	size_t chunk_size;
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
 	void *buf;
 	time_t t0;
 	time_t t;
-	size_t left;
+	bool fill;
 	int ret;
-	int n;
 	size_t i;
 	uint32_t fill_value;
 
@@ -1065,66 +1093,14 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 		}
 	}
 
-	left = num_sectors;
-
 	ux_debug("FIREHOSE RAW BINARY WRITE: %s, %d bytes\n",
 		 program->filename, sector_size * num_sectors);
 
-	while (left > 0) {
-		/*
-		 * We should calculate hash for every raw packet sent,
-		 * not for the whole binary.
-		 */
-		vip_gen_chunk_init(qdl);
-		chunk_size = MIN(qdl->max_payload_size / sector_size, left);
-
-		if (!program->sparse || program->sparse_chunk_type != CHUNK_TYPE_FILL) {
-			n = qdl_file_read_exact(&file, buf, chunk_size * sector_size);
-			if (n < 0) {
-				ux_err("failed to read %s\n", program->filename);
-				goto err_free_doc;
-			}
-
-			/*
-			 * qdl_file_read_exact() only returns short on true
-			 * EOF. The wire protocol expects exactly
-			 * chunk_size * sector_size bytes, so zero-pad the
-			 * residue (which is at most the trailing partial
-			 * sector of the file).
-			 */
-			if ((size_t)n < chunk_size * sector_size)
-				memset(buf + n, 0, chunk_size * sector_size - n);
-		}
-
-		vip_gen_chunk_update(qdl, buf, chunk_size * sector_size);
-
-		ret = firehose_vip_send_table(qdl);
-		if (ret) {
-			ret = -1;
-			goto err_free_doc;
-		}
-
-		n = qdl_write(qdl, buf, chunk_size * sector_size, zlp_timeout);
-		if (n < 0) {
-			ux_err("USB write failed for data chunk\n");
-			ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
-			if (ret)
-				ux_err("flashing of chunk failed\n");
-			ret = -1;
-			goto err_free_doc;
-		}
-
-		if ((size_t)n != chunk_size * sector_size) {
-			ux_err("USB write truncated\n");
-			ret = -1;
-			goto err_free_doc;
-		}
-
-		left -= chunk_size;
-		vip_gen_chunk_store(qdl);
-
-		ux_progress("%s", num_sectors - left, num_sectors, program->label);
-	}
+	fill = program->sparse && program->sparse_chunk_type == CHUNK_TYPE_FILL;
+	ret = firehose_stream_out(qdl, program, &file, sector_size, num_sectors, buf,
+				  fill, zlp_timeout);
+	if (ret)
+		goto err_free_doc;
 
 	t = time(NULL) - t0;
 
