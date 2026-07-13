@@ -21,21 +21,29 @@ test(
 # Without that environment every step exits 77 (SKIP), so the suite is
 # harmless if picked up by a plain "meson test" run.
 #
-# The steps are stateful (flash -> read -> erase -> write -> reboot), so they
+# The steps are stateful (flash -> read -> erase -> write -> reset), so they
 # must not overlap and must run in order: is_parallel:false serializes them
 # and a descending priority fixes the order. Flashing a full build can take a
 # while, hence the long timeout.
 hil_steps = [
+  ['list devices',            'list',               110],
+  ['chipinfo via Sahara',     'chipinfo',           105],
   ['flash whole build',       'flash_full',         100],
+  ['create-zip and flash',    'create_zip',          97],
+  ['flash sparse build',      'sparse_flash',        96],
   ['read EFI partition',      'read_partition',      90],
   ['read GPT table',          'read_gpt',            80],
   ['read address P/S+L',      'read_addr_sectors',   70],
   ['read address P/name',     'read_addr_partname',  60],
+  ['NAK on bad partition',    'nak_read',            55],
   ['flash skipblock sha256',  'flash_skipblock',     50],
   ['sha256 command',          'sha256',              40],
+  ['sha256 by partition name', 'sha256_name',        35],
   ['erase EFI partition',     'erase',               30],
   ['write EFI partition',     'write_image',         20],
-  ['reboot board',            'reboot',              10],
+  ['write chunked',           'write_chunked',       18],
+  ['verify write integrity',  'verify_write',        15],
+  ['reset board',             'reset',               10],
 ]
 
 foreach s : hil_steps
