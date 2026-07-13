@@ -986,6 +986,8 @@ static int qdl_flash(int argc, char **argv)
 	bool allow_fusing = false;
 	bool allow_missing = false;
 	bool skip_reset = false;
+	bool saw_file = false;
+	bool saw_verb = false;
 	long out_chunk_size = 0;
 	unsigned int slot = UINT_MAX;
 	struct qdl_device *qdl = NULL;
@@ -1139,6 +1141,22 @@ static int qdl_flash(int argc, char **argv)
 		type = detect_type(argv[optind]);
 		if (type < 0 || type == QDL_FILE_UNKNOWN)
 			errx(1, "failed to detect file type of %s\n", argv[optind]);
+
+		/*
+		 * The usage synopsis lists input XML files and command verbs
+		 * (read/write/erase/sha256/flash/reset) as separate forms; they
+		 * must not be mixed. Combining them once let a verb like "reset"
+		 * be appended out of order relative to ops added after parsing.
+		 * QDL_CMD_* follow the QDL_FILE_* values in the enum.
+		 */
+		if (type >= QDL_CMD_READ)
+			saw_verb = true;
+		else
+			saw_file = true;
+
+		if (saw_file && saw_verb)
+			errx(1, "input XML files cannot be combined with command "
+			     "verbs (read/write/erase/sha256/flash/reset)");
 
 		switch (type) {
 		case QDL_FILE_PATCH:
