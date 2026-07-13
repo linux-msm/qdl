@@ -15,8 +15,6 @@
 #include "firehose.h"
 #include "qdl.h"
 
-static bool patches_loaded;
-
 int patch_load_xml(struct list_head *ops, xmlDoc *doc, const char *patch_file)
 {
 	struct firehose_op *patch;
@@ -37,6 +35,8 @@ int patch_load_xml(struct list_head *ops, xmlDoc *doc, const char *patch_file)
 		errors = 0;
 
 		patch = firehose_alloc_op(FIREHOSE_OP_PATCH);
+		if (!patch)
+			return -ENOMEM;
 
 		patch->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
 		patch->byte_offset = attr_as_unsigned(node, "byte_offset", &errors);
@@ -54,13 +54,11 @@ int patch_load_xml(struct list_head *ops, xmlDoc *doc, const char *patch_file)
 			free((void *)patch->value);
 			free((void *)patch->what);
 			free(patch);
-			continue;
+			return -EINVAL;
 		}
 
 		list_append(ops, &patch->node);
 	}
-
-	patches_loaded = true;
 
 	return 0;
 }
