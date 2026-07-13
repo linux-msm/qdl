@@ -70,8 +70,13 @@ int sparse_chunk_header_parse(struct qdl_file *file,
 		return -EINVAL;
 	}
 
-	if (sparse_header->chunk_hdr_sz > sizeof(chunk_header_t))
-		qdl_file_seek(file, sparse_header->chunk_hdr_sz - sizeof(chunk_header_t), SEEK_CUR);
+	if (sparse_header->chunk_hdr_sz > sizeof(chunk_header_t)) {
+		if (qdl_file_seek(file, sparse_header->chunk_hdr_sz - sizeof(chunk_header_t),
+				  SEEK_CUR) < 0) {
+			ux_err("[SPARSE] Unable to seek past extended chunk header\n");
+			return -EINVAL;
+		}
+	}
 
 	type = chunk_header.chunk_type;
 	*chunk_size = (uint64_t)chunk_header.chunk_sz * sparse_header->blk_sz;
@@ -85,9 +90,16 @@ int sparse_chunk_header_parse(struct qdl_file *file,
 
 		/* Save the current file offset in the 'value' variable */
 		*offset = qdl_file_seek(file, 0, SEEK_CUR);
+		if (*offset < 0) {
+			ux_err("[SPARSE] Unable to determine chunk offset\n");
+			return -EINVAL;
+		}
 
 		/* Move the file cursor forward by the size of the chunk */
-		qdl_file_seek(file, *chunk_size, SEEK_CUR);
+		if (qdl_file_seek(file, *chunk_size, SEEK_CUR) < 0) {
+			ux_err("[SPARSE] Unable to seek past raw chunk data\n");
+			return -EINVAL;
+		}
 		break;
 	case CHUNK_TYPE_DONT_CARE:
 		if (chunk_header.total_sz != sparse_header->chunk_hdr_sz) {
