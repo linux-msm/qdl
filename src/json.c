@@ -33,7 +33,6 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <ctype.h>
-#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -434,9 +433,14 @@ static int json_parse_number(struct json_value *value)
 	memcpy(token, input_buf + start, len);
 	token[len] = '\0';
 
-	errno = 0;
 	parsed = strtod(token, &endptr);
-	if (endptr != token + len || errno == ERANGE || !isfinite(parsed)) {
+	/*
+	 * Reject a token that was not fully consumed, and overflow (strtod
+	 * returns +/-inf, caught by !isfinite). Underflow to a subnormal or
+	 * zero also sets ERANGE but yields a finite, valid JSON number, so it
+	 * must not be rejected.
+	 */
+	if (endptr != token + len || !isfinite(parsed)) {
 		json_set_error("invalid or out-of-range number at offset %d", start);
 		free(token);
 		return -1;
