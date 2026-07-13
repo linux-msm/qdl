@@ -521,9 +521,11 @@ static int contents_find_programmers(struct contents *contents, struct sahara_im
 			continue;
 		} else if (ret < 0) {
 			ux_err("failed to parse programmer xml \"%s\"\n", qdl_pathbuf_str(&entry->path));
+			sahara_images_free(&blob, 1);
 			return -1;
 		}
 
+		sahara_images_free(&blob, 1);
 		return 0;
 	}
 
@@ -897,6 +899,10 @@ int contents_load(struct list_head *ops, const char *filename, char *specifier,
 		flavor = selectors[i].flavor;
 
 		op = firehose_alloc_op(FIREHOSE_OP_CONFIGURE);
+		if (!op) {
+			ret = -1;
+			goto out_free_contents;
+		}
 		op->storage_type = storage_type;
 		list_append(ops, &op->node);
 
