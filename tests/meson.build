@@ -203,6 +203,24 @@ if cmocka_dep.found()
     env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
   )
 
+  test_input_type = executable('test_input_type',
+    sources : [
+      'test_input_type.c',
+      'common.c',
+      input_type_src,
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'input type detection',
+    test_input_type,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
   test_program_load_xml = executable('test_program_load_xml',
     sources : [
       'test_program_load_xml.c',
