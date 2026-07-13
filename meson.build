@@ -82,6 +82,22 @@ qdl_exe = executable('qdl',
   install : true
 )
 
+# --- optional nbdkit plugin ---
+# nbdkit dlopens plugins, so there is no library to link against; the plugin
+# just needs <nbdkit-plugin.h> and compiles all non-main sources into a shared
+# module named exactly "nbdkit-qdl-plugin.so".
+nbdkit_dep = dependency('nbdkit', required: get_option('nbdkit'))
+if nbdkit_dep.found()
+  shared_module('nbdkit-qdl-plugin',
+    sources : nbdkit_plugin_src + lib_sources + common_sources + [version_h],
+    dependencies : common_dep + [nbdkit_dep],
+    include_directories : inc,
+    name_prefix : '',
+    install : true,
+    install_dir : get_option('libdir') / 'nbdkit' / 'plugins',
+  )
+endif
+
 # --- tests ---
 subdir('tests')
 

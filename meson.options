@@ -1,2 +1,3 @@
 option('VERSION', type: 'string', value: '', description: 'Project version')
 option('tests', type: 'feature', value: 'auto', description: 'Build unit tests (requires cmocka)')
+option('nbdkit', type: 'feature', value: 'auto', description: 'Build the nbdkit plugin (requires nbdkit)')
