@@ -427,8 +427,21 @@ static int sim_read(struct qdl_device *qdl, void *buf, size_t len,
 	 */
 	resp = qdl_sim->resp_head;
 	if (resp) {
-		copy_len = resp->len;
+		copy_len = MIN(len, resp->len);
 		memcpy(buf, resp->data, copy_len);
+
+		/*
+		 * If the caller's buffer could not hold the whole response,
+		 * keep the remainder queued for the next read instead of
+		 * overflowing @buf or dropping data.
+		 */
+		if (copy_len < resp->len) {
+			memmove(resp->data, resp->data + copy_len,
+				resp->len - copy_len);
+			resp->len -= copy_len;
+			return copy_len;
+		}
+
 		qdl_sim->resp_head = resp->next;
 		if (!qdl_sim->resp_head)
 			qdl_sim->resp_tail = NULL;
