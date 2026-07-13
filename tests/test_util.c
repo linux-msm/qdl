@@ -197,6 +197,60 @@ static void test_attr_accessors(void **state)
 	xmlFreeDoc(doc);
 }
 
+/* --- decode_backend --- */
+
+static void test_decode_backend(void **state)
+{
+	enum QDL_DEVICE_TYPE t = QDL_DEVICE_SIM;
+	(void)state;
+
+	assert_int_equal(decode_backend("auto", &t), 0);
+	assert_int_equal(t, QDL_DEVICE_AUTO);
+
+	/* A NULL name defaults to auto. */
+	t = QDL_DEVICE_SIM;
+	assert_int_equal(decode_backend(NULL, &t), 0);
+	assert_int_equal(t, QDL_DEVICE_AUTO);
+
+	assert_int_equal(decode_backend("usb", &t), 0);
+	assert_int_equal(t, QDL_DEVICE_USB);
+
+	assert_int_equal(decode_backend("qud", &t), 0);
+	assert_int_equal(t, QDL_DEVICE_QUD);
+
+	assert_int_equal(decode_backend("bogus", &t), -1);
+}
+
+/* --- qdl_split_specifier --- */
+
+static void test_split_specifier(void **state)
+{
+	char *spec = (char *)0x1;
+	char *file;
+	(void)state;
+
+	/* Plain filename: no specifier. */
+	file = qdl_split_specifier("contents.xml", &spec);
+	assert_non_null(file);
+	assert_string_equal(file, "contents.xml");
+	assert_null(spec);
+	free(file);
+
+	/* file::selector splits into the two parts. */
+	file = qdl_split_specifier("contents.xml::ufs,safe", &spec);
+	assert_non_null(file);
+	assert_string_equal(file, "contents.xml");
+	assert_non_null(spec);
+	assert_string_equal(spec, "ufs,safe");
+	free(file);
+
+	/* Malformed: empty, double "::", empty filename, empty selector. */
+	assert_null(qdl_split_specifier("", &spec));
+	assert_null(qdl_split_specifier("a::b::c", &spec));
+	assert_null(qdl_split_specifier("::ufs", &spec));
+	assert_null(qdl_split_specifier("file::", &spec));
+}
+
 int main(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -207,6 +261,8 @@ int main(void)
 		cmocka_unit_test(test_parse_addr_errors),
 		cmocka_unit_test(test_storage_type_roundtrip),
 		cmocka_unit_test(test_attr_accessors),
+		cmocka_unit_test(test_decode_backend),
+		cmocka_unit_test(test_split_specifier),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
