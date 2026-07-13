@@ -47,6 +47,10 @@ int read_op_load(struct list_head *ops, const char *read_op_file, const char *in
 		errors = 0;
 
 		read_op = firehose_alloc_op(FIREHOSE_OP_READ);
+		if (!read_op) {
+			xmlFreeDoc(doc);
+			return -ENOMEM;
+		}
 
 		read_op->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
 		read_op->filename = attr_as_string(node, "filename", &errors);
@@ -56,14 +60,19 @@ int read_op_load(struct list_head *ops, const char *read_op_file, const char *in
 
 		if (errors) {
 			ux_err("errors while parsing read-type file \"%s\"\n", read_op_file);
+			free((void *)read_op->filename);
+			free((void *)read_op->start_sector);
 			free(read_op);
-			continue;
+			xmlFreeDoc(doc);
+			return -EINVAL;
 		}
 
-		if (incdir) {
+		if (incdir && read_op->filename) {
 			snprintf(tmp, PATH_MAX, "%s/%s", incdir, read_op->filename);
-			if (access(tmp, F_OK) != -1)
+			if (access(tmp, F_OK) != -1) {
+				free((void *)read_op->filename);
 				read_op->filename = strdup(tmp);
+			}
 		}
 
 		list_append(ops, &read_op->node);
