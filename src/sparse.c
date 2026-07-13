@@ -3,7 +3,6 @@
  * Copyright (c) 2025, Maksim Paimushkin <maxim.paymushkin.development@gmail.com>
  * All rights reserved.
  */
-#define _FILE_OFFSET_BITS 64
 #ifdef _WIN32
 #include <winsock2.h>
 #else
