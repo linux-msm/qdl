@@ -420,6 +420,15 @@ makes it possible to wire `qdl ks` into a single udev rule that covers
 multiple device configurations (for example, an optional DDR training
 image that is only present on some setups).
 
+## nbdkit plugin
+
+In addition to the `qdl` programmer, an
+[nbdkit](https://gitlab.com/nbdkit/nbdkit) plugin can be built. It uploads
+the firehose programmer and exposes a physical partition (LUN) as a block
+device on the host, so its partition table can be edited and its partitions
+mounted with ordinary tools. See [docs/nbd.md](docs/nbd.md) for build
+instructions and a usage walkthrough.
+
 ## Run tests
 
 To run the integration test suite for QDL, use the `meson` tool with `test`
