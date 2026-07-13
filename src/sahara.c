@@ -213,7 +213,7 @@ static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		 pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
 	image_idx = pkt->read_req.image;
-	if (image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
+	if (!images || image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
 		ux_err("device requested unknown image id %u, ensure that all Sahara images are provided\n",
 		       image_idx);
 		sahara_send_reset(qdl);
@@ -224,7 +224,7 @@ static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	len = pkt->read_req.length;
 
 	image = &images[image_idx];
-	if (offset > image->len || offset + len > image->len) {
+	if (offset > image->len || len > image->len - offset) {
 		ux_err("device requested invalid range of image %d\n", image_idx);
 		return -1;
 	}
@@ -262,7 +262,7 @@ static int sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		 pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
 
 	image_idx = pkt->read64_req.image;
-	if (image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
+	if (!images || image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
 		ux_err("device requested unknown image id %u, ensure that all Sahara images are provided\n",
 		       image_idx);
 		sahara_send_reset(qdl);
@@ -273,7 +273,7 @@ static int sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	len = pkt->read64_req.length;
 
 	image = &images[image_idx];
-	if (offset > image->len || offset + len > image->len) {
+	if (offset > image->len || len > image->len - offset) {
 		ux_err("device requested invalid range of image %d\n", image_idx);
 		return -1;
 	}
@@ -338,7 +338,8 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 	uint64_t remain;
 	size_t offset, buf_offset;
 	size_t chunk;
-	size_t written;
+	ssize_t written;
+	ssize_t ret = -1;
 	ssize_t n;
 	void *buf;
 	int fd;
@@ -349,9 +350,20 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 
 	char path[PATH_MAX];
 
+	/*
+	 * region.filename is provided by the device. Reject empty names and
+	 * any name containing a path separator so a malicious or malformed
+	 * device cannot direct the dump outside of ramdump_path.
+	 */
+	if (region.filename[0] == '\0' || strpbrk(region.filename, "/\\")) {
+		ux_err("device provided unsafe ramdump region filename\n");
+		free(buf);
+		return -1;
+	}
+
 	snprintf(path, sizeof(path), "%s/%s", ramdump_path, region.filename);
 
-	fd = open(path, O_WRONLY | O_CREAT | O_BINARY, 0644);
+	fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 	if (fd < 0) {
 		warn("failed to open \"%s\"", region.filename);
 		free(buf);
@@ -367,8 +379,10 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 		read_req.debug64_req.addr = region.addr + chunk;
 		read_req.debug64_req.length = remain;
 		n = qdl_write(qdl, &read_req, read_req.length, SAHARA_CMD_TIMEOUT_MS);
-		if (n < 0)
-			break;
+		if (n < 0) {
+			warn("failed to send ramdump read request");
+			goto out;
+		}
 
 		offset = 0;
 		while (offset < remain) {
@@ -397,12 +411,14 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 
 		ux_progress("%s", chunk, region.length, region.filename);
 	}
+
+	ret = 0;
 out:
 
 	close(fd);
 	free(buf);
 
-	return 0;
+	return ret;
 }
 
 // simple pattern matching function supporting * and ?
@@ -694,6 +710,7 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 {
 	struct sahara_debug_region64 *table;
 	struct sahara_pkt read_req;
+	size_t num_regions;
 	ssize_t n;
 	size_t i;
 
@@ -725,13 +742,22 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	if (!table)
 		return;
 
-	n = qdl_read(qdl, table, pkt->debug64_req.length, SAHARA_CMD_TIMEOUT_MS);
+	n = qdl_read(qdl, table, read_req.debug64_req.length, SAHARA_CMD_TIMEOUT_MS);
 	if (n < 0) {
 		free(table);
 		return;
 	}
 
-	for (i = 0; i < pkt->debug64_req.length / sizeof(table[0]); i++) {
+	/* Only iterate over region entries actually received. */
+	num_regions = (size_t)n / sizeof(table[0]);
+
+	/* The device-provided name fields may not be NUL-terminated. */
+	for (i = 0; i < num_regions; i++) {
+		table[i].region[sizeof(table[i].region) - 1] = '\0';
+		table[i].filename[sizeof(table[i].filename) - 1] = '\0';
+	}
+
+	for (i = 0; i < num_regions; i++) {
 		if (sahara_debug64_filter(table[i].filename, filter)) {
 			ux_info("%s skipped per filter\n", table[i].filename);
 			continue;
@@ -749,8 +775,7 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		ux_info("%s dumped successfully\n", table[i].filename);
 	}
 
-	sahara_build_minidump_elf(ramdump_path, filter, table,
-				  pkt->debug64_req.length / sizeof(table[0]));
+	sahara_build_minidump_elf(ramdump_path, filter, table, num_regions);
 
 	free(table);
 
@@ -761,6 +786,9 @@ static bool sahara_has_done_pending_quirk(const struct sahara_image *images)
 {
 	unsigned int count = 0;
 	int i;
+
+	if (!images)
+		return false;
 
 	/*
 	 * E.g MSM8916 EDL reports done = pending, allow this when one a single
