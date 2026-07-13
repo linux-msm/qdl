@@ -221,6 +221,26 @@ if cmocka_dep.found()
     env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
   )
 
+  test_op_loaders = executable('test_op_loaders',
+    sources : [
+      'test_op_loaders.c',
+      'common.c',
+      read_src,
+      patch_src,
+      util_src,
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'read/patch loaders',
+    test_op_loaders,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
   test_program_load_xml = executable('test_program_load_xml',
     sources : [
       'test_program_load_xml.c',
