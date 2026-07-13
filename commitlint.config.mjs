@@ -3,7 +3,7 @@
 // Expected format:
 //   subsystem: short description (max 72 chars)
 //   <blank line>
-//   Body text wrapped at 72 chars.
+//   Body text wrapped at 75 chars.
 //   <blank line>
 //   Signed-off-by: Name <email>
 
@@ -12,10 +12,10 @@ export default {
     // Subject line limit (Linux kernel style uses up to 72)
     'header-max-length': [2, 'always', 72],
 
-    // Body and footer lines wrapped at 72 chars.
+    // Body and footer lines wrapped at 75 chars.
     // Footer limit is relaxed to 200 to accommodate long Signed-off-by
     // addresses without false positives.
-    'body-max-line-length': [2, 'always', 72],
+    'body-max-line-length': [2, 'always', 75],
     'footer-max-line-length': [2, 'always', 200],
 
     // Require a blank line between subject and body, and before footers
