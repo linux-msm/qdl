@@ -115,6 +115,41 @@ if cmocka_dep.found()
     env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
   )
 
+  # test_firehose below relies on the linker discarding the unreferenced
+  # rest of firehose.c. GNU ld cannot reliably garbage-collect sections on
+  # PE/COFF - the surviving firehose internals then demand the whole
+  # device/vip/json surface as undefined symbols - so the target is
+  # skipped on Windows. The parsers are platform-independent, and stay
+  # covered by the ELF and Mach-O builds.
+  if host_machine.system() != 'windows'
+    # test_firehose.c #includes firehose.c to reach its static response
+    # parsers. The rest of firehose.c (and its device/vip/ufs dependencies)
+    # is unreferenced by the tests and stripped as dead code at link time,
+    # so only the ux_* logging stubs are required. GNU ld spells the
+    # stripping --gc-sections, Apple's ld64 spells it -dead_strip; ask the
+    # linker which one it supports.
+    gc_sections = meson.get_compiler('c').get_supported_link_arguments(
+      ['-Wl,--gc-sections', '-Wl,-dead_strip'])
+
+    test_firehose = executable('test_firehose',
+      sources : [
+        'test_firehose.c',
+      ],
+      dependencies : common_dep + [cmocka_dep],
+      include_directories : inc,
+      c_args : ['-ffunction-sections', '-fdata-sections'],
+      link_args : gc_sections,
+    )
+
+    test(
+      'firehose response parsers',
+      test_firehose,
+      suite: 'unit',
+      protocol: 'tap',
+      env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+    )
+  endif
+
   test_program_load_xml = executable('test_program_load_xml',
     sources : [
       'test_program_load_xml.c',
