@@ -25,7 +25,7 @@
 #
 # Optional environment:
 #   QDL_HIL_PROGRAMMER  Firehose programmer .elf (needed by the read/write/
-#                       erase/sha256/reboot steps). Defaults to the first
+#                       erase/sha256/reset steps). Defaults to the first
 #                       prog_firehose_*.elf next to QDL_HIL_BUILD.
 #   QDL_HIL_PARTITION   Partition for the read/erase/write steps. The EFI
 #                       system partition is small and quick to read and write,
@@ -34,9 +34,13 @@
 #                       data the read step reads back, so erase/write
 #                       round-trip the partition's own content.
 #   QDL_HIL_SERIAL      -S serial, to select one of several attached devices.
+#   QDL_HIL_CONTENTS    contents.xml (optionally with ::specifier) for the
+#                       create-zip step; when unset that step is skipped.
+#   QDL_HIL_SPARSE      flashmap/contents/zip that flashes sparse images, for
+#                       the sparse-flash step; when unset that step is skipped.
 #
 # Every step runs with --skip-reset to keep the programmer alive across
-# invocations; only the final reboot step omits it to reset the board.
+# invocations; only the final step ends the session with the reset verb.
 
 set -e
 
@@ -128,7 +132,7 @@ fi
 # otherwise the readback captured by the read step.
 IMAGE="${IMAGE:-${SAVED_IMAGE}}"
 
-# Common qdl prefix. -R suppresses the reset everywhere but the final reboot.
+# Common qdl prefix. -R suppresses the reset everywhere but the final step.
 COMMON=( -s "${STORAGE}" )
 [[ -n "${SERIAL}" ]] && COMMON+=( -S "${SERIAL}" )
 
@@ -140,6 +144,18 @@ need_programmer() {
         echo "no prog_firehose_*.elf found (set QDL_HIL_PROGRAMMER)" >&2
         exit ${SKIP}
     }
+}
+
+# Print the hex sha256 of a file, using whichever tool is available.
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        echo "no sha256 tool (sha256sum/shasum) available" >&2
+        exit ${SKIP}
+    fi
 }
 
 # --- step implementations -------------------------------------------------
@@ -229,26 +245,148 @@ t_write_image() {
     qdl_noreset "${PROGRAMMER}" write "${PARTITION}" "${IMAGE}"
 }
 
-# Final step: reboot the board (the only command without --skip-reset).
-t_reboot() {
+# Final step: reset the board with the explicit reset verb, ending the
+# Firehose session that every other step kept alive with --skip-reset.
+t_reset() {
+    need_programmer
+    qdl_reset "${PROGRAMMER}" reset
+    rm -f "${SAVED_IMAGE}"	# done; drop the readback backup
+}
+
+# h) Enumerate EDL devices; the attached device must appear.
+t_list() {
+    local out; out="$(mktemp -p "${HIL_TMPDIR}")"
+    trap 'rm -f "${out}"' RETURN
+    "${QEXE}" list >"${out}" 2>&1 || { echo "qdl list failed" >&2; cat "${out}" >&2; return 1; }
+    if grep -qi "No devices found" "${out}" ||
+       ! grep -qiE '^[0-9a-f]{4}:[0-9a-f]{4}' "${out}"; then
+        echo "qdl list did not report an attached device:" >&2
+        cat "${out}" >&2
+        return 1
+    fi
+}
+
+# i) Package a contents.xml into a zip with create-zip, then flash the zip
+# (the programmer comes from inside the zip).
+t_create_zip() {
+    [[ -n "${QDL_HIL_CONTENTS}" ]] || {
+        echo "set QDL_HIL_CONTENTS to test create-zip" >&2
+        exit ${SKIP}
+    }
+    local zip="${HIL_TMPDIR}/hil-created.zip"
+    trap 'rm -f "${zip}"' RETURN
+    "${QEXE}" create-zip "${zip}" "${QDL_HIL_CONTENTS}" ||
+        { echo "create-zip failed" >&2; return 1; }
+    [[ -s "${zip}" ]] || { echo "create-zip produced no output" >&2; return 1; }
+    qdl_noreset flash "${zip}"
+}
+
+# j) Flash a build that uses sparse (Android sparse format) images.
+t_sparse_flash() {
+    [[ -n "${QDL_HIL_SPARSE}" && -f "${QDL_HIL_SPARSE}" ]] || {
+        echo "set QDL_HIL_SPARSE to a flashmap/contents/zip using sparse images" >&2
+        exit ${SKIP}
+    }
+    qdl_noreset flash "${QDL_HIL_SPARSE}"
+}
+
+# k) Error handling: a read of a nonexistent physical partition must be NAKed
+# by the device and reported as a failure, not silently succeed.
+t_nak_read() {
     need_programmer
     local out; out="$(mktemp -p "${HIL_TMPDIR}")"
     trap 'rm -f "${out}"' RETURN
-    qdl_reset "${PROGRAMMER}" read 0/0+1 "${out}"	# 1-sector read, then reset
-    rm -f "${SAVED_IMAGE}"	# done; drop the readback backup
+    if qdl_noreset "${PROGRAMMER}" read 99/0+1 "${out}" >/dev/null 2>&1; then
+        echo "reading nonexistent physical partition 99 unexpectedly succeeded" >&2
+        return 1
+    fi
+}
+
+# l) sha256 digest of a partition addressed by GPT name.
+t_sha256_name() {
+    need_programmer
+    local out; out="$(mktemp -p "${HIL_TMPDIR}")"
+    trap 'rm -f "${out}"' RETURN
+    qdl_noreset "${PROGRAMMER}" sha256 "${PARTITION}" >"${out}" 2>&1
+    grep -qiE '[0-9a-f]{64}' "${out}" ||
+        { echo "no sha256 digest for ${PARTITION}:" >&2; cat "${out}" >&2; return 1; }
+}
+
+# m) Re-write the image with an overridden transfer chunk size.
+t_write_chunked() {
+    need_programmer
+    [[ -f "${IMAGE}" ]] || {
+        echo "no image to write (run the read step or set QDL_HIL_IMAGE)" >&2
+        exit ${SKIP}
+    }
+    "${QEXE}" "${COMMON[@]}" -R --out-chunk-size=16384 \
+        "${PROGRAMMER}" write "${PARTITION}" "${IMAGE}"
+}
+
+# n) Integrity check: the device's digest of the partition must match a local
+# sha256 of the bytes we read back (and just wrote), proving the erase/write
+# round-trip preserved the content.
+t_verify_write() {
+    need_programmer
+    [[ -f "${SAVED_IMAGE}" ]] || {
+        echo "no readback to verify against (the read step did not run)" >&2
+        exit ${SKIP}
+    }
+    local out; out="$(mktemp -p "${HIL_TMPDIR}")"
+    trap 'rm -f "${out}"' RETURN
+    qdl_noreset "${PROGRAMMER}" sha256 "${PARTITION}" >"${out}" 2>&1 ||
+        { echo "sha256 command failed" >&2; cat "${out}" >&2; return 1; }
+    local dev_digest local_digest
+    dev_digest="$(grep -oiE '[0-9a-f]{64}' "${out}" | head -1)"
+    [[ -n "${dev_digest}" ]] || { echo "no device digest:" >&2; cat "${out}" >&2; return 1; }
+    local_digest="$(sha256_file "${SAVED_IMAGE}")"
+    [[ "${dev_digest}" == "${local_digest}" ]] || {
+        echo "partition digest mismatch: device=${dev_digest} local=${local_digest}" >&2
+        return 1
+    }
+}
+
+# o) Chip identity through Sahara command mode. Must run before the
+# programmer upload: chipinfo is only available while the device still
+# speaks Sahara. The verb switches the device back to image-transfer mode
+# on exit, so the following flash step still gets its Sahara HELLO.
+t_chipinfo() {
+    local out; out="$(mktemp -p "${HIL_TMPDIR}")"
+    trap 'rm -f "${out}"' RETURN
+    local args=()
+    [[ -n "${SERIAL}" ]] && args+=( -S "${SERIAL}" )
+    if ! "${QEXE}" "${args[@]}" chipinfo >"${out}" 2>&1; then
+        if grep -qi "already in Firehose mode" "${out}"; then
+            echo "programmer already running; chipinfo needs a fresh Sahara device" >&2
+            exit ${SKIP}
+        fi
+        echo "chipinfo failed:" >&2
+        cat "${out}" >&2
+        return 1
+    fi
+    grep -qiE 'chip serial number|hw id' "${out}" ||
+        { echo "chipinfo reported no chip identity:" >&2; cat "${out}" >&2; return 1; }
 }
 
 # --- dispatch -------------------------------------------------------------
 case "${step}" in
+    list)               t_list ;;
+    chipinfo)           t_chipinfo ;;
     flash_full)         t_flash_full ;;
+    create_zip)         t_create_zip ;;
+    sparse_flash)       t_sparse_flash ;;
     read_partition)     t_read_partition ;;
     read_gpt)           t_read_gpt ;;
     read_addr_sectors)  t_read_addr_sectors ;;
     read_addr_partname) t_read_addr_partname ;;
+    nak_read)           t_nak_read ;;
     flash_skipblock)    t_flash_skipblock ;;
     sha256)             t_sha256 ;;
+    sha256_name)        t_sha256_name ;;
     erase)              t_erase ;;
     write_image)        t_write_image ;;
-    reboot)             t_reboot ;;
+    write_chunked)      t_write_chunked ;;
+    verify_write)       t_verify_write ;;
+    reset)              t_reset ;;
     *) echo "unknown step: ${step}" >&2; exit 99 ;;
 esac
