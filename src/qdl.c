@@ -114,37 +114,6 @@ static int detect_type(const char *verb)
 	return type;
 }
 
-/*
- * Parse a --backend= value into an enum. "auto" maps to the meta-backend
- * QDL_DEVICE_AUTO, which inside its open path runs a unified wait loop
- * over libusb and (on Windows) the QUD SetupAPI enumeration, binding
- * whichever first reaches an EDL device. Explicit "usb"/"qud" pin to a
- * single concrete transport and skip the meta layer entirely.
- *
- * QDL_DEVICE_SIM is intentionally not selectable via --backend; --dry-run /
- * --create-digests pick it implicitly.
- */
-static int decode_backend(const char *name, enum QDL_DEVICE_TYPE *out)
-{
-	if (!name || !strcmp(name, "auto")) {
-		*out = QDL_DEVICE_AUTO;
-		return 0;
-	}
-
-	if (!strcmp(name, "usb")) {
-		*out = QDL_DEVICE_USB;
-		return 0;
-	}
-
-	if (!strcmp(name, "qud")) {
-		*out = QDL_DEVICE_QUD;
-		return 0;
-	}
-
-	return -1;
-}
-
-
 static void print_usage(FILE *out)
 {
 	extern const char *__progname;
@@ -621,41 +590,6 @@ static int qdl_ensure_configured(struct list_head *ops, enum qdl_storage_type st
 	list_prepend(ops, &op->node);
 
 	return 0;
-}
-
-static char *qdl_split_specifier(const char *param, char **specifier)
-{
-	char *filename;
-	char *tmp;
-
-	if (!param || !param[0])
-		return NULL;
-
-	filename = strdup(param);
-	if (!filename) {
-		ux_err("internal error: unable to allocate memory for argument\n");
-		return NULL;
-	}
-
-	*specifier = NULL;
-
-	tmp = strstr(filename, "::");
-	if (tmp) {
-		if (strstr(tmp + 2, "::")) {
-			free(filename);
-			return NULL;
-		}
-
-		*tmp = '\0';
-		if (!filename[0] || !tmp[2]) {
-			free(filename);
-			return NULL;
-		}
-
-		*specifier = tmp + 2;
-	}
-
-	return filename;
 }
 
 static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
