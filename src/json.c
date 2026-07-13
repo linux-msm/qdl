@@ -34,6 +34,7 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -553,7 +554,7 @@ static int json_parse_array(struct json_value *array)
 		ret = json_parse_value(value);
 		if (ret <= 0) {
 			json_set_error("invalid array element at offset %d", input_pos);
-			free(value);
+			json_free(value);
 			json_leave_nesting();
 			return -1;
 		}
@@ -613,7 +614,7 @@ static int json_parse_object(struct json_value *object)
 		ret = json_parse_property(value);
 		if (ret <= 0) {
 			json_set_error("invalid object property at offset %d", input_pos);
-			free(value);
+			json_free(value);
 			json_leave_nesting();
 			return -1;
 		}
@@ -675,12 +676,18 @@ static struct json_value *json_parse_internal(const char *json, size_t len)
 	struct json_value *root;
 	int ret;
 
+	json_error[0] = '\0';
+
+	if (len > INT_MAX) {
+		json_set_error("json input too large");
+		return NULL;
+	}
+
 	input_buf = json;
 	input_pos = 0;
 	input_len = len;
 	input_can_unput = false;
 	nesting_depth = 0;
-	json_error[0] = '\0';
 
 	root = calloc(1, sizeof(*root));
 	if (!root) {
