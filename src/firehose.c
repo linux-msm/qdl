@@ -1662,7 +1662,7 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 	return 0;
 }
 
-int firehose_provision(struct qdl_device *qdl, bool skip_reset)
+int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, bool skip_reset)
 {
 	int ret;
 
@@ -1670,7 +1670,7 @@ int firehose_provision(struct qdl_device *qdl, bool skip_reset)
 	if (ret)
 		return ret;
 
-	ret = ufs_provisioning_execute(qdl, firehose_apply_ufs_common,
+	ret = ufs_provisioning_execute(ufs, qdl, firehose_apply_ufs_common,
 				       firehose_apply_ufs_body,
 				       firehose_apply_ufs_epilogue);
 	if (!ret)

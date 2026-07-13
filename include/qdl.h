@@ -183,8 +183,10 @@ struct qud_device_desc {
 
 struct qud_device_desc *qud_list(unsigned int *devices_found);
 
+struct ufs_provisioning;
+
 int firehose_run(struct qdl_device *qdl, struct list_head *ops);
-int firehose_provision(struct qdl_device *qdl, bool skip_reset);
+int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, bool skip_reset);
 int firehose_read_buf(struct qdl_device *qdl, struct firehose_op *read_op, void *out_buf, size_t out_size);
 
 /* Block-level entry points used by the nbdkit plugin */

@@ -17,10 +17,6 @@
 #include "list.h"
 #include "patch.h"
 
-struct ufs_common *ufs_common_p;
-struct ufs_epilogue *ufs_epilogue_p;
-static struct list_head ufs_bodies = LIST_INIT(ufs_bodies);
-
 static const char notice_bconfigdescrlock[] = "\n"
 "Please pay attention that UFS provisioning is irreversible (OTP) operation unless parameter bConfigDescrLock = 0.\n"
 "In order to prevent unintentional device locking the tool has the following safety:\n\n"
@@ -30,12 +26,37 @@ static const char notice_bconfigdescrlock[] = "\n"
 "	and don't use command line parameter --finalize-provisioning.\n\n"
 "In case of mismatch between CL and XML provisioning is not performed.\n\n";
 
-bool ufs_need_provisioning(void)
+void ufs_provisioning_init(struct ufs_provisioning *ufs)
 {
-	return !!ufs_epilogue_p;
+	ufs->common = NULL;
+	ufs->epilogue = NULL;
+	list_init(&ufs->bodies);
 }
 
-struct ufs_common *ufs_parse_common_params(xmlNode *node, bool finalize_provisioning __unused)
+void ufs_provisioning_cleanup(struct ufs_provisioning *ufs)
+{
+	struct ufs_body *body;
+	struct ufs_body *tmp;
+
+	free(ufs->common);
+	ufs->common = NULL;
+
+	list_for_each_entry_safe(body, tmp, &ufs->bodies, node) {
+		list_del(&body->node);
+		free((void *)body->desc);
+		free(body);
+	}
+
+	free(ufs->epilogue);
+	ufs->epilogue = NULL;
+}
+
+bool ufs_need_provisioning(const struct ufs_provisioning *ufs)
+{
+	return !!ufs->epilogue;
+}
+
+static struct ufs_common *ufs_parse_common_params(xmlNode *node, bool finalize_provisioning __unused)
 {
 	struct ufs_common *result;
 	int errors;
@@ -71,7 +92,7 @@ struct ufs_common *ufs_parse_common_params(xmlNode *node, bool finalize_provisio
 	return result;
 }
 
-struct ufs_body *ufs_parse_body(xmlNode *node)
+static struct ufs_body *ufs_parse_body(xmlNode *node)
 {
 	struct ufs_body *result;
 	int errors;
@@ -99,7 +120,7 @@ struct ufs_body *ufs_parse_body(xmlNode *node)
 	return result;
 }
 
-struct ufs_epilogue *ufs_parse_epilogue(xmlNode *node)
+static struct ufs_epilogue *ufs_parse_epilogue(xmlNode *node)
 {
 	struct ufs_epilogue *result;
 	int errors = 0;
@@ -116,16 +137,15 @@ struct ufs_epilogue *ufs_parse_epilogue(xmlNode *node)
 	return result;
 }
 
-int ufs_load(const char *ufs_file, bool finalize_provisioning)
+int ufs_load(struct ufs_provisioning *ufs, const char *ufs_file, bool finalize_provisioning)
 {
 	xmlNode *node;
 	xmlNode *root;
 	xmlDoc *doc;
 	int retval = 0;
 	struct ufs_body *ufs_body_tmp;
-	struct ufs_body *ufs_body;
 
-	if (ufs_common_p) {
+	if (ufs->common) {
 		ux_err("Only one UFS provisioning XML allowed, \"%s\" ignored\n",
 		       ufs_file);
 		return -EEXIST;
@@ -150,9 +170,9 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 		}
 
 		if (xmlGetProp(node, (xmlChar *)"bNumberLU")) {
-			if (!ufs_common_p) {
-				ufs_common_p = ufs_parse_common_params(node,
-								       finalize_provisioning);
+			if (!ufs->common) {
+				ufs->common = ufs_parse_common_params(node,
+								      finalize_provisioning);
 			} else {
 				ux_err("multiple UFS common tags found in \"%s\"\n",
 				       ufs_file);
@@ -160,7 +180,7 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 				break;
 			}
 
-			if (!ufs_common_p) {
+			if (!ufs->common) {
 				ux_err("invalid UFS common tag found in \"%s\"\n",
 				       ufs_file);
 				retval = -EINVAL;
@@ -169,7 +189,7 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 		} else if (xmlGetProp(node, (xmlChar *)"LUNum")) {
 			ufs_body_tmp = ufs_parse_body(node);
 			if (ufs_body_tmp) {
-				list_append(&ufs_bodies, &ufs_body_tmp->node);
+				list_append(&ufs->bodies, &ufs_body_tmp->node);
 			} else {
 				ux_err("invalid UFS body tag found in \"%s\"\n",
 				       ufs_file);
@@ -177,9 +197,9 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 				break;
 			}
 		} else if (xmlGetProp(node, (xmlChar *)"commit")) {
-			if (!ufs_epilogue_p) {
-				ufs_epilogue_p = ufs_parse_epilogue(node);
-				if (ufs_epilogue_p)
+			if (!ufs->epilogue) {
+				ufs->epilogue = ufs_parse_epilogue(node);
+				if (ufs->epilogue)
 					continue;
 			} else {
 				ux_err("multiple UFS finalizing tags found in \"%s\"\n",
@@ -188,7 +208,7 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 				break;
 			}
 
-			if (!ufs_epilogue_p) {
+			if (!ufs->epilogue) {
 				ux_err("invalid UFS finalizing tag found in \"%s\"\n",
 				       ufs_file);
 				retval = -EINVAL;
@@ -204,33 +224,25 @@ int ufs_load(const char *ufs_file, bool finalize_provisioning)
 
 	xmlFreeDoc(doc);
 
-	if (!retval && (!ufs_common_p || list_empty(&ufs_bodies) || !ufs_epilogue_p)) {
+	if (!retval && (!ufs->common || list_empty(&ufs->bodies) || !ufs->epilogue)) {
 		ux_err("incomplete UFS provisioning information in \"%s\"\n", ufs_file);
 		retval = -EINVAL;
 	}
 
-	if (retval) {
-		if (ufs_common_p) {
-			free(ufs_common_p);
-		}
-		list_for_each_entry_safe(ufs_body, ufs_body_tmp, &ufs_bodies, node) {
-			free(ufs_body);
-		}
-		if (ufs_epilogue_p) {
-			free(ufs_epilogue_p);
-		}
-		return retval;
-	}
-	if (!finalize_provisioning != !ufs_common_p->bConfigDescrLock) {
+	if (!retval && !finalize_provisioning != !ufs->common->bConfigDescrLock) {
 		ux_err("UFS provisioning value bConfigDescrLock %d in file \"%s\" don't match command line parameter --finalize-provisioning %d\n",
-		       ufs_common_p->bConfigDescrLock, ufs_file, finalize_provisioning);
+		       ufs->common->bConfigDescrLock, ufs_file, finalize_provisioning);
 		ux_err(notice_bconfigdescrlock);
-		return -EINVAL;
+		retval = -EINVAL;
 	}
-	return 0;
+
+	if (retval)
+		ufs_provisioning_cleanup(ufs);
+
+	return retval;
 }
 
-int ufs_provisioning_execute(struct qdl_device *qdl,
+int ufs_provisioning_execute(struct ufs_provisioning *ufs, struct qdl_device *qdl,
 			     int (*apply_ufs_common)(struct qdl_device *, struct ufs_common*),
 	int (*apply_ufs_body)(struct qdl_device *, struct ufs_body*),
 	int (*apply_ufs_epilogue)(struct qdl_device *, struct ufs_epilogue*, bool))
@@ -238,7 +250,7 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 	int ret;
 	struct ufs_body *body;
 
-	if (ufs_common_p->bConfigDescrLock) {
+	if (ufs->common->bConfigDescrLock) {
 		int i;
 
 		ux_info("WARNING: irreversible provisioning will start in 5s");
@@ -251,28 +263,28 @@ int ufs_provisioning_execute(struct qdl_device *qdl,
 	}
 
 	// Just ask a target to check the XML w/o real provisioning
-	ret = apply_ufs_common(qdl, ufs_common_p);
+	ret = apply_ufs_common(qdl, ufs->common);
 	if (ret)
 		return ret;
-	list_for_each_entry(body, &ufs_bodies, node) {
+	list_for_each_entry(body, &ufs->bodies, node) {
 		ret = apply_ufs_body(qdl, body);
 		if (ret)
 			return ret;
 	}
-	ret = apply_ufs_epilogue(qdl, ufs_epilogue_p, false);
+	ret = apply_ufs_epilogue(qdl, ufs->epilogue, false);
 	if (ret) {
 		ux_err("UFS provisioning impossible, provisioning XML may be corrupted\n");
 		return ret;
 	}
 
 	// Real provisioning -- target didn't refuse a given XML
-	ret = apply_ufs_common(qdl, ufs_common_p);
+	ret = apply_ufs_common(qdl, ufs->common);
 	if (ret)
 		return ret;
-	list_for_each_entry(body, &ufs_bodies, node) {
+	list_for_each_entry(body, &ufs->bodies, node) {
 		ret = apply_ufs_body(qdl, body);
 		if (ret)
 			return ret;
 	}
-	return apply_ufs_epilogue(qdl, ufs_epilogue_p, true);
+	return apply_ufs_epilogue(qdl, ufs->epilogue, true);
 }

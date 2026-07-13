@@ -47,11 +47,26 @@ struct ufs_epilogue {
 	bool		commit;
 };
 
-int ufs_load(const char *ufs_file, bool finalize_provisioning);
-int ufs_provisioning_execute(struct qdl_device *qdl,
+/*
+ * Parsed UFS provisioning description. Owned by the caller (instead of the
+ * former module globals) so it can be loaded, inspected and freed without
+ * shared state - which also makes the loader independently testable.
+ * Initialise with ufs_provisioning_init() and release with
+ * ufs_provisioning_cleanup().
+ */
+struct ufs_provisioning {
+	struct ufs_common *common;
+	struct ufs_epilogue *epilogue;
+	struct list_head bodies;
+};
+
+void ufs_provisioning_init(struct ufs_provisioning *ufs);
+void ufs_provisioning_cleanup(struct ufs_provisioning *ufs);
+int ufs_load(struct ufs_provisioning *ufs, const char *ufs_file, bool finalize_provisioning);
+int ufs_provisioning_execute(struct ufs_provisioning *ufs, struct qdl_device *qdl,
 			     int (*apply_ufs_common)(struct qdl_device *qdl, struct ufs_common *ufs),
 			     int (*apply_ufs_body)(struct qdl_device *qdl, struct ufs_body *ufs),
 			     int (*apply_ufs_epilogue)(struct qdl_device *qdl, struct ufs_epilogue *ufs, bool commit));
-bool ufs_need_provisioning(void);
+bool ufs_need_provisioning(const struct ufs_provisioning *ufs);
 
 #endif
