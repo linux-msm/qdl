@@ -207,6 +207,16 @@ static bool usb_match_edl_interface(const struct libusb_interface_descriptor *if
 		}
 	}
 
+	/*
+	 * A matching interface is only usable if it exposes both a bulk
+	 * IN and a bulk OUT endpoint with a non-zero max packet size.
+	 * Without this check a malformed descriptor leads to a division
+	 * by zero (out_maxpktsize == 0) or transfers on endpoint -1.
+	 */
+	if (edl->in_ep < 0 || edl->out_ep < 0 ||
+	    !edl->in_maxpktsize || !edl->out_maxpktsize)
+		return false;
+
 	return true;
 }
 
