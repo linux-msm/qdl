@@ -1111,7 +1111,11 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	ret = firehose_read(qdl, 120000, firehose_generic_parser, NULL);
 	if (ret != FIREHOSE_ACK) {
 		ux_err("flashing of %s failed\n", program->label);
-	} else if (t) {
+		ret = -1;
+		goto err_free_doc;
+	}
+
+	if (t) {
 		ux_info("flashed \"%s\" successfully at %lukB/s\n",
 			program->label,
 			(unsigned long)sector_size * num_sectors / t / 1024);
