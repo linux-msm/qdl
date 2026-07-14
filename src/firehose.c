@@ -269,7 +269,8 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 	 * consumption of incoming data.
 	 */
 	for (;;) {
-		n = qdl_read(qdl, buf, sizeof(buf), 100);
+		/* Reserve one byte for the NUL terminator written below. */
+		n = qdl_read(qdl, buf, sizeof(buf) - 1, 100);
 
 		/* Timeout after seeing a response, we're done waiting for logs */
 		if (n == -ETIMEDOUT && resp >= 0)
