@@ -476,6 +476,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "       %s [options] <prog.mbn> (sha256 <address>)...\n", __progname);
 	fprintf(out, "       %s [options] <prog.mbn> (reset)\n", __progname);
 	fprintf(out, "       %s list\n", __progname);
+	fprintf(out, "       %s chipinfo\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
 	fprintf(out, "       %s ks -p <sahara-dev-node> -s <id:file-path>...\n", __progname);
 	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", __progname);
@@ -636,6 +637,86 @@ static int qdl_ramdump(int argc, char **argv)
 		ret = 1;
 		goto out_cleanup;
 	}
+
+out_cleanup:
+	qdl_close(qdl);
+	qdl_deinit(qdl);
+
+	return ret;
+}
+
+/*
+ * Chip identity ("chipinfo") subcommand.
+ *
+ * Enters Sahara command mode to read and print the device's serial number,
+ * hardware ID (MSM/OEM/model) and OEM PK hash, then resets the device.
+ */
+static int qdl_chipinfo(int argc, char **argv)
+{
+	struct qdl_device *qdl;
+	char *serial = NULL;
+	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_AUTO;
+	int ret = 0;
+	int opt;
+
+	static struct option options[] = {
+		{"debug", no_argument, 0, 'd'},
+		{"version", no_argument, 0, 'v'},
+		{"serial", required_argument, 0, 'S'},
+		{"backend", required_argument, 0, OPT_BACKEND},
+		{"help", no_argument, 0, 'h'},
+		{0, 0, 0, 0}
+	};
+
+	while ((opt = getopt_long(argc, argv, "dvS:h", options, NULL)) != -1) {
+		switch (opt) {
+		case 'd':
+			qdl_debug = true;
+			break;
+		case 'v':
+			print_version();
+			return 0;
+		case 'S':
+			serial = optarg;
+			break;
+		case OPT_BACKEND:
+			if (decode_backend(optarg, &qdl_dev_type) < 0)
+				errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
+			break;
+		case 'h':
+			print_usage(stdout);
+			return 0;
+		default:
+			print_usage(stderr);
+			return 1;
+		}
+	}
+
+	if (optind != argc) {
+		print_usage(stderr);
+		return 1;
+	}
+
+	ux_init();
+
+	qdl = qdl_init(qdl_dev_type);
+	if (!qdl) {
+		ux_err("backend not available\n");
+		return 1;
+	}
+
+	if (qdl_debug)
+		print_version();
+
+	ret = qdl_open(qdl, serial);
+	if (ret) {
+		ret = 1;
+		goto out_cleanup;
+	}
+
+	ret = sahara_chipinfo(qdl);
+	if (ret < 0)
+		ret = 1;
 
 out_cleanup:
 	qdl_close(qdl);
@@ -1308,6 +1389,8 @@ int main(int argc, char **argv)
 			return qdl_list(stdout);
 		if (!strcmp(argv[i], "ramdump"))
 			return qdl_ramdump(argc - i, argv + i);
+		if (!strcmp(argv[i], "chipinfo"))
+			return qdl_chipinfo(argc - i, argv + i);
 		if (!strcmp(argv[i], "ks"))
 			return qdl_ks(argc - i, argv + i);
 		if (!strcmp(argv[i], "create-zip"))

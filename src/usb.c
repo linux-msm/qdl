@@ -276,7 +276,7 @@ int try_usb_open(struct qdl_device *qdl, const char *serial, int *visible_out)
 		*visible_out = visible;
 
 	if (found) {
-		const char *action = matched_pid == 0x900e ? "Collecting crash dump from" : "Flashing";
+		const char *action = matched_pid == 0x900e ? "Collecting crash dump from" : "Talking to";
 
 		libusb_free_device_list(devs, 1);
 		if (matched_serial[0])
