@@ -200,6 +200,7 @@ static int win_enumerate_qcom(struct qud_device_desc *out, size_t out_max)
 		return -1;
 
 	for (i = 0; SetupDiEnumDeviceInfo(devinfo, i, &info); i++) {
+		unsigned int pid;
 		DWORD type = 0;
 		DWORD size = 0;
 
@@ -214,6 +215,17 @@ static int win_enumerate_qcom(struct qud_device_desc *out, size_t out_max)
 			    sizeof(QCOM_HWID_PREFIX) - 1) != 0)
 			continue;
 
+		/*
+		 * The prefix match already guarantees Qualcomm's vid; apply
+		 * the same EDL pid policy as the libusb backend, so that all
+		 * backends agree on what an EDL device is and other Qualcomm
+		 * COM ports (for example the diag port of a phone in normal
+		 * composite mode) are not mistaken for one.
+		 */
+		pid = win_parse_pid(hwid);
+		if (!qdl_is_edl_device(QUALCOMM_VID, pid))
+			continue;
+
 		if (!SetupDiGetDeviceInstanceIdA(devinfo, &info, instance_id,
 						 sizeof(instance_id), NULL))
 			continue;
@@ -223,7 +235,7 @@ static int win_enumerate_qcom(struct qud_device_desc *out, size_t out_max)
 			continue;
 
 		if (count < out_max) {
-			out[count].pid = win_parse_pid(hwid);
+			out[count].pid = pid;
 			if (!win_read_iproduct_sn(devinfo, &info,
 						  out[count].serial,
 						  sizeof(out[count].serial)))
