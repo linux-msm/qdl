@@ -1,4 +1,19 @@
 // SPDX-License-Identifier: BSD-3-Clause
+/*
+ * libusb transport backend.
+ *
+ * Open-path layering, top to bottom:
+ *
+ *   auto_open()       - meta-backend (auto.c): picks the transport by
+ *                       alternating usb_open_once() with (on Windows)
+ *                       QUD probes until one reaches an EDL device
+ *   usb_open()        - this backend's .open op: wait loop retrying
+ *                       usb_open_once() every 250 ms
+ *   usb_open_once()   - one enumeration pass over the bus: counts
+ *                       visible EDL devices, tries to open each
+ *   usb_open_device() - matches and opens a single candidate device,
+ *                       claiming its EDL interface
+ */
 #include <sys/types.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -81,7 +96,7 @@ static bool usb_match_usb_serial(struct libusb_device_handle *handle, const char
 	return strcmp(buf, serial) == 0;
 }
 
-static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const char *serial)
+static int usb_open_device(libusb_device *dev, struct qdl_device_usb *qdl, const char *serial)
 {
 	const struct libusb_endpoint_descriptor *endpoint;
 	const struct libusb_interface_descriptor *ifc;
@@ -196,7 +211,7 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
 }
 
 /*
- * try_usb_open() - one libusb scan-and-open pass.
+ * usb_open_once() - one libusb scan-and-open pass.
  *
  * Used as the single iteration unit by both usb_open() (the --backend usb
  * wait loop) and auto_open() (the unified Windows libusb+QUD wait loop).
@@ -221,7 +236,7 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
  * fresh enumeration (libusb's udev-less backends otherwise cache the
  * list, which would mask newly-attached devices in containerised setups).
  */
-int try_usb_open(struct qdl_device *qdl, const char *serial, int *visible_out)
+int usb_open_once(struct qdl_device *qdl, const char *serial, int *visible_out)
 {
 	struct qdl_device_usb *qdl_usb = container_of(qdl, struct qdl_device_usb, base);
 	struct libusb_device_descriptor desc;
@@ -261,7 +276,7 @@ int try_usb_open(struct qdl_device *qdl, const char *serial, int *visible_out)
 
 		visible++;
 
-		ret = usb_try_open(dev, qdl_usb, serial);
+		ret = usb_open_device(dev, qdl_usb, serial);
 		if (ret == 1) {
 			found = true;
 			matched_pid = desc.idProduct;
@@ -300,7 +315,7 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 	int ret;
 
 	for (;;) {
-		ret = try_usb_open(qdl, serial, &visible);
+		ret = usb_open_once(qdl, serial, &visible);
 		if (ret == 0)
 			return 0;
 		if (ret == -EIO)

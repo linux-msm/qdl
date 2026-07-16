@@ -63,7 +63,7 @@ static int auto_open(struct qdl_device *qdl, const char *serial)
 #endif
 
 	for (;;) {
-		ret = try_usb_open(usb_dev, serial, &visible);
+		ret = usb_open_once(usb_dev, serial, &visible);
 		if (ret == 0) {
 #ifdef _WIN32
 			qdl_deinit(qud_dev);
