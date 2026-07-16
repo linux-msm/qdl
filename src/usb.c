@@ -365,11 +365,8 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 	struct qdl_device_desc *result;
 	struct libusb_device **devices;
 	struct libusb_device *dev;
-	unsigned long serial_len;
-	unsigned char buf[128];
 	ssize_t device_count;
 	unsigned int count = 0;
-	char *serial;
 	int ret;
 	int i;
 
@@ -415,29 +412,9 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 		if (ret < 0)
 			continue;
 
-		ret = libusb_get_string_descriptor_ascii(handle, desc.iProduct, buf, sizeof(buf) - 1);
-		if (ret < 0) {
-			warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
-			libusb_close(handle);
-			continue;
-		}
-		buf[ret] = '\0';
-
-		serial = strstr((char *)buf, "_SN:");
-		if (!serial) {
+		if (!usb_read_serial(handle, &desc, result[count].serial,
+				     sizeof(result[count].serial)))
 			memcpy(result[count].serial, "(none)", sizeof("(none)"));
-		} else {
-			serial += strlen("_SN:");
-			serial_len = strcspn(serial, " _");
-			if (serial_len + 1 > sizeof(result[count].serial)) {
-				ux_err("ignoring device with unexpectedly long serial number\n");
-				libusb_close(handle);
-				continue;
-			}
-
-			memcpy(result[count].serial, serial, serial_len);
-			result[count].serial[serial_len] = '\0';
-		}
 
 		result[count].vid = desc.idVendor;
 		result[count].pid = desc.idProduct;
