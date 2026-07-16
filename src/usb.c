@@ -133,8 +133,8 @@ static bool usb_read_serial(struct libusb_device_handle *handle,
 	return true;
 }
 
-static bool usb_match_usb_serial(struct libusb_device_handle *handle, const char *serial,
-				 const struct libusb_device_descriptor *desc)
+static bool usb_match_serial(struct libusb_device_handle *handle, const char *serial,
+			     const struct libusb_device_descriptor *desc)
 {
 	char buf[64];
 
@@ -206,71 +206,93 @@ static bool usb_match_edl_interface(const struct libusb_interface_descriptor *if
 	return true;
 }
 
-static int usb_open_device(libusb_device *dev,
-			   const struct libusb_device_descriptor *desc,
-			   struct qdl_device_usb *qdl, const char *serial)
+/*
+ * Device-level match, run on an opened EDL candidate: the unit must
+ * carry the serial the user asked for (if any) and expose an EDL
+ * interface. On a match, returns the number of the interface to
+ * claim and its bulk endpoint pair.
+ */
+static bool usb_match_device(struct libusb_device_handle *handle,
+			     const struct libusb_device_descriptor *desc,
+			     const char *serial,
+			     int *ifc_num, struct usb_edl_interface *edl)
 {
 	const struct libusb_interface_descriptor *ifc;
 	struct libusb_config_descriptor *config;
-	struct libusb_device_handle *handle;
-	struct usb_edl_interface edl;
+	bool found = false;
 	int ret;
 	int k;
 
-	ret = libusb_get_active_config_descriptor(dev, &config);
+	if (!usb_match_serial(handle, serial, desc))
+		return false;
+
+	ret = libusb_get_active_config_descriptor(libusb_get_device(handle), &config);
 	if (ret < 0) {
 		warnx("failed to acquire USB device's active config descriptor");
-		return -1;
+		return false;
 	}
 
-	for (k = 0; k < config->bNumInterfaces; k++) {
+	for (k = 0; k < config->bNumInterfaces && !found; k++) {
 		ifc = config->interface[k].altsetting;
 
-		if (!usb_match_edl_interface(ifc, &edl))
-			continue;
-
-		ret = libusb_open(dev, &handle);
-		if (ret < 0) {
-			warnx("unable to open USB device");
-			continue;
+		if (usb_match_edl_interface(ifc, edl)) {
+			*ifc_num = ifc->bInterfaceNumber;
+			found = true;
 		}
-
-		if (!usb_match_usb_serial(handle, serial, desc)) {
-			libusb_close(handle);
-			continue;
-		}
-
-		libusb_detach_kernel_driver(handle, ifc->bInterfaceNumber);
-
-		ret = libusb_claim_interface(handle, ifc->bInterfaceNumber);
-		if (ret < 0) {
-			warnx("failed to claim USB interface");
-			libusb_close(handle);
-			continue;
-		}
-
-		qdl->usb_handle = handle;
-		qdl->in_ep = edl.in_ep;
-		qdl->out_ep = edl.out_ep;
-		qdl->in_maxpktsize = edl.in_maxpktsize;
-		qdl->out_maxpktsize = edl.out_maxpktsize;
-
-		if (qdl->out_chunk_size && qdl->out_chunk_size % edl.out_maxpktsize) {
-			ux_err("WARNING: requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld\n",
-			       edl.out_maxpktsize, edl.out_maxpktsize);
-			qdl->out_chunk_size = edl.out_maxpktsize;
-		} else if (!qdl->out_chunk_size) {
-			qdl->out_chunk_size = DEFAULT_OUT_CHUNK_SIZE;
-		}
-
-		ux_debug("USB: using out-chunk-size of %ld\n", qdl->out_chunk_size);
-
-		break;
 	}
 
 	libusb_free_config_descriptor(config);
 
-	return !!qdl->usb_handle;
+	return found;
+}
+
+static int usb_open_device(libusb_device *dev,
+			   const struct libusb_device_descriptor *desc,
+			   struct qdl_device_usb *qdl, const char *serial)
+{
+	struct libusb_device_handle *handle;
+	struct usb_edl_interface edl;
+	int ifc_num;
+	int ret;
+
+	ret = libusb_open(dev, &handle);
+	if (ret < 0) {
+		warnx("unable to open USB device");
+		return 0;
+	}
+
+	if (!usb_match_device(handle, desc, serial, &ifc_num, &edl))
+		goto close;
+
+	libusb_detach_kernel_driver(handle, ifc_num);
+
+	ret = libusb_claim_interface(handle, ifc_num);
+	if (ret < 0) {
+		warnx("failed to claim USB interface");
+		goto close;
+	}
+
+	qdl->usb_handle = handle;
+	qdl->in_ep = edl.in_ep;
+	qdl->out_ep = edl.out_ep;
+	qdl->in_maxpktsize = edl.in_maxpktsize;
+	qdl->out_maxpktsize = edl.out_maxpktsize;
+
+	if (qdl->out_chunk_size && qdl->out_chunk_size % edl.out_maxpktsize) {
+		ux_err("WARNING: requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld\n",
+		       edl.out_maxpktsize, edl.out_maxpktsize);
+		qdl->out_chunk_size = edl.out_maxpktsize;
+	} else if (!qdl->out_chunk_size) {
+		qdl->out_chunk_size = DEFAULT_OUT_CHUNK_SIZE;
+	}
+
+	ux_debug("USB: using out-chunk-size of %ld\n", qdl->out_chunk_size);
+
+	return 1;
+
+close:
+	libusb_close(handle);
+	return 0;
 }
 
 /*
