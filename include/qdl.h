@@ -144,6 +144,25 @@ struct qdl_device *auto_init(void);
 int usb_open_once(struct qdl_device *qdl, const char *serial, int *visible_out);
 int qud_probe_present(void);
 
+/*
+ * EDL device identity, shared by all transport backends: Qualcomm's
+ * vendor id plus the known EDL/ramdump product ids. The libusb backend
+ * additionally requires a matching vendor-specific interface (see
+ * usb_match_edl_interface() in usb.c); on Windows the QDLoader driver
+ * performs the equivalent match before the QUD backend sees the device.
+ */
+#define QUALCOMM_VID 0x05c6
+
+static inline bool qdl_is_edl_pid(unsigned int pid)
+{
+	return pid == 0x9008 || pid == 0x900e || pid == 0x901d || pid == 0x90db;
+}
+
+static inline bool qdl_is_edl_device(unsigned int vid, unsigned int pid)
+{
+	return vid == QUALCOMM_VID && qdl_is_edl_pid(pid);
+}
+
 struct qdl_device_desc {
 	int vid;
 	int pid;
