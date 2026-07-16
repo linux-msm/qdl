@@ -130,7 +130,7 @@ struct qdl_device *qud_init(void);
 struct qdl_device *auto_init(void);
 
 /*
- * try_usb_open() - single libusb scan-and-open pass; shared between
+ * usb_open_once() - single libusb scan-and-open pass; shared between
  * the --backend usb wait loop in usb.c and the unified auto_open() loop.
  * Returns 0 on success (and emits the "Flashing/Collecting device" UX
  * line), -ENODEV when no EDL device is visible, -EBUSY when one is
@@ -141,7 +141,7 @@ struct qdl_device *auto_init(void);
  * qud_probe_present() returns the number of Qualcomm COM ports the QUD
  * backend enumerated via SetupAPI; 0 on non-Windows hosts.
  */
-int try_usb_open(struct qdl_device *qdl, const char *serial, int *visible_out);
+int usb_open_once(struct qdl_device *qdl, const char *serial, int *visible_out);
 int qud_probe_present(void);
 
 struct qdl_device_desc {
