@@ -350,8 +350,11 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 		libusb_exit(NULL);
 		return NULL;
 	}
-	if (device_count == 0)
+	if (device_count == 0) {
+		libusb_free_device_list(devices, 1);
+		libusb_exit(NULL);
 		return NULL;
+	}
 
 	result = calloc(device_count, sizeof(struct qdl_device_desc));
 	if (!result) {
@@ -410,6 +413,7 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 	}
 
 	libusb_free_device_list(devices, 1);
+	libusb_exit(NULL);
 	*devices_found = count;
 
 	return result;
