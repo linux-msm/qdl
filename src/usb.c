@@ -9,10 +9,16 @@
  *                       QUD probes until one reaches an EDL device
  *   usb_open()        - this backend's .open op: wait loop retrying
  *                       usb_open_once() every 250 ms
- *   usb_open_once()   - one enumeration pass over the bus: counts
- *                       visible EDL devices, tries to open each
- *   usb_open_device() - matches and opens a single candidate device,
- *                       claiming its EDL interface
+ *   usb_open_once()   - one enumeration pass over the bus: selects and
+ *                       counts the visible EDL devices, tries to open
+ *                       each
+ *   usb_open_device() - opens one already-selected candidate, claiming
+ *                       its EDL interface
+ *
+ * Candidate selection itself (enumeration plus the EDL identity
+ * policy) lives in usb_enumerate_edl_devices(), shared between the
+ * open path above and usb_list(), which reads descriptors without
+ * claiming anything.
  */
 #include <sys/types.h>
 #include <errno.h>
@@ -45,6 +51,51 @@ struct qdl_device_usb {
 static bool usb_is_edl_device(const struct libusb_device_descriptor *desc)
 {
 	return qdl_is_edl_device(desc->idVendor, desc->idProduct);
+}
+
+typedef int (*usb_edl_device_cb_t)(struct libusb_device *dev,
+				   const struct libusb_device_descriptor *desc,
+				   void *data);
+
+/*
+ * Enumerate the bus and hand every EDL candidate to @cb, stopping
+ * early if @cb returns nonzero. The single place the EDL identity
+ * policy is applied to libusb devices; shared by the open and list
+ * paths, which differ only in what they do with a candidate. The
+ * caller owns the libusb session.
+ *
+ * Returns the number of candidates seen up to and including the one
+ * @cb stopped at, or -EIO if the bus could not be enumerated.
+ */
+static int usb_enumerate_edl_devices(usb_edl_device_cb_t cb, void *data)
+{
+	struct libusb_device_descriptor desc;
+	struct libusb_device **devs;
+	int visible = 0;
+	ssize_t n;
+	int i;
+
+	n = libusb_get_device_list(NULL, &devs);
+	if (n < 0) {
+		ux_err("failed to list USB devices: %s\n", libusb_strerror(n));
+		return -EIO;
+	}
+
+	for (i = 0; devs[i]; i++) {
+		if (libusb_get_device_descriptor(devs[i], &desc) < 0)
+			continue;
+		if (!usb_is_edl_device(&desc))
+			continue;
+
+		visible++;
+
+		if (cb(devs[i], &desc, data))
+			break;
+	}
+
+	libusb_free_device_list(devs, 1);
+
+	return visible;
 }
 
 /*
@@ -155,24 +206,16 @@ static bool usb_match_edl_interface(const struct libusb_interface_descriptor *if
 	return true;
 }
 
-static int usb_open_device(libusb_device *dev, struct qdl_device_usb *qdl, const char *serial)
+static int usb_open_device(libusb_device *dev,
+			   const struct libusb_device_descriptor *desc,
+			   struct qdl_device_usb *qdl, const char *serial)
 {
 	const struct libusb_interface_descriptor *ifc;
 	struct libusb_config_descriptor *config;
-	struct libusb_device_descriptor desc;
 	struct libusb_device_handle *handle;
 	struct usb_edl_interface edl;
 	int ret;
 	int k;
-
-	ret = libusb_get_device_descriptor(dev, &desc);
-	if (ret < 0) {
-		warnx("failed to get USB device descriptor");
-		return -1;
-	}
-
-	if (!usb_is_edl_device(&desc))
-		return 0;
 
 	ret = libusb_get_active_config_descriptor(dev, &config);
 	if (ret < 0) {
@@ -192,7 +235,7 @@ static int usb_open_device(libusb_device *dev, struct qdl_device_usb *qdl, const
 			continue;
 		}
 
-		if (!usb_match_usb_serial(handle, serial, &desc)) {
+		if (!usb_match_usb_serial(handle, serial, desc)) {
 			libusb_close(handle);
 			continue;
 		}
@@ -256,19 +299,37 @@ static int usb_open_device(libusb_device *dev, struct qdl_device_usb *qdl, const
  * fresh enumeration (libusb's udev-less backends otherwise cache the
  * list, which would mask newly-attached devices in containerised setups).
  */
+struct usb_open_ctx {
+	struct qdl_device_usb *qdl;
+	const char *serial;
+	char matched_serial[64];
+	uint16_t matched_pid;
+	bool found;
+};
+
+static int usb_open_cb(libusb_device *dev,
+		       const struct libusb_device_descriptor *desc, void *data)
+{
+	struct usb_open_ctx *ctx = data;
+
+	if (usb_open_device(dev, desc, ctx->qdl, ctx->serial) != 1)
+		return 0;
+
+	ctx->found = true;
+	ctx->matched_pid = desc->idProduct;
+	if (!usb_read_serial(ctx->qdl->usb_handle, desc,
+			     ctx->matched_serial, sizeof(ctx->matched_serial)))
+		ctx->matched_serial[0] = '\0';
+
+	return 1;
+}
+
 int usb_open_once(struct qdl_device *qdl, const char *serial, int *visible_out)
 {
 	struct qdl_device_usb *qdl_usb = container_of(qdl, struct qdl_device_usb, base);
-	struct libusb_device_descriptor desc;
-	struct libusb_device **devs;
-	struct libusb_device *dev;
-	char matched_serial[64];
-	uint16_t matched_pid = 0;
-	bool found = false;
-	int visible = 0;
-	ssize_t n;
+	struct usb_open_ctx ctx = { .qdl = qdl_usb, .serial = serial };
+	int visible;
 	int ret;
-	int i;
 
 	if (visible_out)
 		*visible_out = 0;
@@ -279,50 +340,27 @@ int usb_open_once(struct qdl_device *qdl, const char *serial, int *visible_out)
 		return -EIO;
 	}
 
-	n = libusb_get_device_list(NULL, &devs);
-	if (n < 0) {
-		ux_err("failed to list USB devices: %s\n", libusb_strerror(n));
+	visible = usb_enumerate_edl_devices(usb_open_cb, &ctx);
+	if (visible < 0) {
 		libusb_exit(NULL);
 		return -EIO;
-	}
-
-	for (i = 0; devs[i]; i++) {
-		dev = devs[i];
-
-		if (libusb_get_device_descriptor(dev, &desc) < 0)
-			continue;
-		if (!usb_is_edl_device(&desc))
-			continue;
-
-		visible++;
-
-		ret = usb_open_device(dev, qdl_usb, serial);
-		if (ret == 1) {
-			found = true;
-			matched_pid = desc.idProduct;
-			if (!usb_read_serial(qdl_usb->usb_handle, &desc,
-					     matched_serial, sizeof(matched_serial)))
-				matched_serial[0] = '\0';
-			break;
-		}
 	}
 
 	if (visible_out)
 		*visible_out = visible;
 
-	if (found) {
-		const char *action = matched_pid == 0x900e ? "Collecting crash dump from" : "Talking to";
+	if (ctx.found) {
+		const char *action = ctx.matched_pid == 0x900e ?
+				     "Collecting crash dump from" : "Talking to";
 
-		libusb_free_device_list(devs, 1);
-		if (matched_serial[0])
+		if (ctx.matched_serial[0])
 			ux_info("%s device (PID 0x%04x, serial: %s)\n",
-				action, matched_pid, matched_serial);
+				action, ctx.matched_pid, ctx.matched_serial);
 		else
-			ux_info("%s device (PID 0x%04x)\n", action, matched_pid);
+			ux_info("%s device (PID 0x%04x)\n", action, ctx.matched_pid);
 		return 0;
 	}
 
-	libusb_free_device_list(devs, 1);
 	libusb_exit(NULL);
 
 	return visible == 0 ? -ENODEV : -EBUSY;
@@ -358,17 +396,50 @@ static int usb_open(struct qdl_device *qdl, const char *serial)
 	}
 }
 
+struct usb_list_ctx {
+	struct qdl_device_desc *result;
+	unsigned int capacity;
+	unsigned int count;
+};
+
+static int usb_list_cb(libusb_device *dev,
+		       const struct libusb_device_descriptor *desc, void *data)
+{
+	struct libusb_device_handle *handle;
+	struct usb_list_ctx *ctx = data;
+	struct qdl_device_desc *entry;
+
+	if (ctx->count == ctx->capacity) {
+		unsigned int capacity = ctx->capacity ? ctx->capacity * 2 : 8;
+
+		entry = realloc(ctx->result, capacity * sizeof(*entry));
+		if (!entry) {
+			ux_err("failed to allocate devices array\n");
+			return 1;
+		}
+		ctx->result = entry;
+		ctx->capacity = capacity;
+	}
+	entry = &ctx->result[ctx->count];
+
+	if (libusb_open(dev, &handle) < 0)
+		return 0;
+
+	if (!usb_read_serial(handle, desc, entry->serial, sizeof(entry->serial)))
+		memcpy(entry->serial, "(none)", sizeof("(none)"));
+
+	entry->vid = desc->idVendor;
+	entry->pid = desc->idProduct;
+	libusb_close(handle);
+	ctx->count++;
+
+	return 0;
+}
+
 struct qdl_device_desc *usb_list(unsigned int *devices_found)
 {
-	struct libusb_device_descriptor desc;
-	struct libusb_device_handle *handle;
-	struct qdl_device_desc *result;
-	struct libusb_device **devices;
-	struct libusb_device *dev;
-	ssize_t device_count;
-	unsigned int count = 0;
+	struct usb_list_ctx ctx = { 0 };
 	int ret;
-	int i;
 
 	ret = libusb_init(NULL);
 	if (ret < 0) {
@@ -376,57 +447,17 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 		return NULL;
 	}
 
-	device_count = libusb_get_device_list(NULL, &devices);
-	if (device_count < 0) {
-		ux_err("failed to list USB devices: %s\n", libusb_strerror(device_count));
-		libusb_exit(NULL);
-		return NULL;
-	}
-	if (device_count == 0) {
-		libusb_free_device_list(devices, 1);
-		libusb_exit(NULL);
-		return NULL;
-	}
-
-	result = calloc(device_count, sizeof(struct qdl_device_desc));
-	if (!result) {
-		ux_err("failed to allocate devices array\n");
-		libusb_free_device_list(devices, 1);
-		libusb_exit(NULL);
-		return NULL;
-	}
-
-	for (i = 0; i < device_count; i++) {
-		dev = devices[i];
-
-		ret = libusb_get_device_descriptor(dev, &desc);
-		if (ret < 0) {
-			warnx("failed to get USB device descriptor");
-			continue;
-		}
-
-		if (!usb_is_edl_device(&desc))
-			continue;
-
-		ret = libusb_open(dev, &handle);
-		if (ret < 0)
-			continue;
-
-		if (!usb_read_serial(handle, &desc, result[count].serial,
-				     sizeof(result[count].serial)))
-			memcpy(result[count].serial, "(none)", sizeof("(none)"));
-
-		result[count].vid = desc.idVendor;
-		result[count].pid = desc.idProduct;
-		libusb_close(handle);
-		count++;
-	}
-
-	libusb_free_device_list(devices, 1);
+	ret = usb_enumerate_edl_devices(usb_list_cb, &ctx);
 	libusb_exit(NULL);
-	*devices_found = count;
 
-	return result;
+	if (ret < 0) {
+		free(ctx.result);
+		return NULL;
+	}
+
+	*devices_found = ctx.count;
+
+	return ctx.result;
 }
 
 static void usb_close(struct qdl_device *qdl)
