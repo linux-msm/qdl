@@ -176,10 +176,14 @@ static bool usb_match_edl_interface(const struct libusb_interface_descriptor *if
 	if (ifc->bInterfaceSubClass != 0xff)
 		return false;
 
-	/* bInterfaceProtocol of 0xff, 0x10 and 0x11 has been seen */
+	/*
+	 * Sahara is identified by bInterfaceProtocol 0x10, 0x11, or 0x13
+	 * on modern devices, and 0xff on older targets.
+	 */
 	if (ifc->bInterfaceProtocol != 0xff &&
-	    ifc->bInterfaceProtocol != 16 &&
-	    ifc->bInterfaceProtocol != 17)
+	    ifc->bInterfaceProtocol != 0x10 &&
+	    ifc->bInterfaceProtocol != 0x11 &&
+	    ifc->bInterfaceProtocol != 0x13)
 		return false;
 
 	edl->in_ep = -1;
