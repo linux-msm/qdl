@@ -41,9 +41,10 @@ struct qdl_device_usb {
 	size_t out_chunk_size;
 };
 
-static bool usb_is_edl_pid(uint16_t pid)
+/* libusb-typed wrapper around the shared EDL identity check */
+static bool usb_is_edl_device(const struct libusb_device_descriptor *desc)
 {
-	return pid == 0x9008 || pid == 0x900e || pid == 0x901d || pid == 0x90db;
+	return qdl_is_edl_device(desc->idVendor, desc->idProduct);
 }
 
 /*
@@ -96,21 +97,73 @@ static bool usb_match_usb_serial(struct libusb_device_handle *handle, const char
 	return strcmp(buf, serial) == 0;
 }
 
-static int usb_open_device(libusb_device *dev, struct qdl_device_usb *qdl, const char *serial)
+/*
+ * The EDL interface of a matched device: the bulk endpoint pair the
+ * Sahara/Firehose protocols run over.
+ */
+struct usb_edl_interface {
+	int in_ep;
+	int out_ep;
+	size_t in_maxpktsize;
+	size_t out_maxpktsize;
+};
+
+/*
+ * Check whether one interface descriptor carries the EDL service and,
+ * if so, extract its bulk endpoint pair into @edl.
+ */
+static bool usb_match_edl_interface(const struct libusb_interface_descriptor *ifc,
+				    struct usb_edl_interface *edl)
 {
 	const struct libusb_endpoint_descriptor *endpoint;
+	uint8_t type;
+	int l;
+
+	if (ifc->bInterfaceClass != 0xff)
+		return false;
+
+	if (ifc->bInterfaceSubClass != 0xff)
+		return false;
+
+	/* bInterfaceProtocol of 0xff, 0x10 and 0x11 has been seen */
+	if (ifc->bInterfaceProtocol != 0xff &&
+	    ifc->bInterfaceProtocol != 16 &&
+	    ifc->bInterfaceProtocol != 17)
+		return false;
+
+	edl->in_ep = -1;
+	edl->out_ep = -1;
+	edl->in_maxpktsize = 0;
+	edl->out_maxpktsize = 0;
+
+	for (l = 0; l < ifc->bNumEndpoints; l++) {
+		endpoint = &ifc->endpoint[l];
+
+		type = endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK;
+		if (type != LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK)
+			continue;
+
+		if (endpoint->bEndpointAddress & LIBUSB_ENDPOINT_IN) {
+			edl->in_ep = endpoint->bEndpointAddress;
+			edl->in_maxpktsize = endpoint->wMaxPacketSize;
+		} else {
+			edl->out_ep = endpoint->bEndpointAddress;
+			edl->out_maxpktsize = endpoint->wMaxPacketSize;
+		}
+	}
+
+	return true;
+}
+
+static int usb_open_device(libusb_device *dev, struct qdl_device_usb *qdl, const char *serial)
+{
 	const struct libusb_interface_descriptor *ifc;
 	struct libusb_config_descriptor *config;
 	struct libusb_device_descriptor desc;
 	struct libusb_device_handle *handle;
-	size_t out_size;
-	size_t in_size;
-	uint8_t type;
+	struct usb_edl_interface edl;
 	int ret;
-	int out;
-	int in;
 	int k;
-	int l;
 
 	ret = libusb_get_device_descriptor(dev, &desc);
 	if (ret < 0) {
@@ -118,10 +171,7 @@ static int usb_open_device(libusb_device *dev, struct qdl_device_usb *qdl, const
 		return -1;
 	}
 
-	/* Consider only devices with vid 0x0506 and known product id */
-	if (desc.idVendor != 0x05c6)
-		return 0;
-	if (!usb_is_edl_pid(desc.idProduct))
+	if (!usb_is_edl_device(&desc))
 		return 0;
 
 	ret = libusb_get_active_config_descriptor(dev, &config);
@@ -133,37 +183,7 @@ static int usb_open_device(libusb_device *dev, struct qdl_device_usb *qdl, const
 	for (k = 0; k < config->bNumInterfaces; k++) {
 		ifc = config->interface[k].altsetting;
 
-		in = -1;
-		out = -1;
-		in_size = 0;
-		out_size = 0;
-
-		for (l = 0; l < ifc->bNumEndpoints; l++) {
-			endpoint = &ifc->endpoint[l];
-
-			type = endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK;
-			if (type != LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK)
-				continue;
-
-			if (endpoint->bEndpointAddress & LIBUSB_ENDPOINT_IN) {
-				in = endpoint->bEndpointAddress;
-				in_size = endpoint->wMaxPacketSize;
-			} else {
-				out = endpoint->bEndpointAddress;
-				out_size = endpoint->wMaxPacketSize;
-			}
-		}
-
-		if (ifc->bInterfaceClass != 0xff)
-			continue;
-
-		if (ifc->bInterfaceSubClass != 0xff)
-			continue;
-
-		/* bInterfaceProtocol of 0xff, 0x10 and 0x11 has been seen */
-		if (ifc->bInterfaceProtocol != 0xff &&
-		    ifc->bInterfaceProtocol != 16 &&
-		    ifc->bInterfaceProtocol != 17)
+		if (!usb_match_edl_interface(ifc, &edl))
 			continue;
 
 		ret = libusb_open(dev, &handle);
@@ -187,15 +207,15 @@ static int usb_open_device(libusb_device *dev, struct qdl_device_usb *qdl, const
 		}
 
 		qdl->usb_handle = handle;
-		qdl->in_ep = in;
-		qdl->out_ep = out;
-		qdl->in_maxpktsize = in_size;
-		qdl->out_maxpktsize = out_size;
+		qdl->in_ep = edl.in_ep;
+		qdl->out_ep = edl.out_ep;
+		qdl->in_maxpktsize = edl.in_maxpktsize;
+		qdl->out_maxpktsize = edl.out_maxpktsize;
 
-		if (qdl->out_chunk_size && qdl->out_chunk_size % out_size) {
+		if (qdl->out_chunk_size && qdl->out_chunk_size % edl.out_maxpktsize) {
 			ux_err("WARNING: requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld\n",
-			       out_size, out_size);
-			qdl->out_chunk_size = out_size;
+			       edl.out_maxpktsize, edl.out_maxpktsize);
+			qdl->out_chunk_size = edl.out_maxpktsize;
 		} else if (!qdl->out_chunk_size) {
 			qdl->out_chunk_size = DEFAULT_OUT_CHUNK_SIZE;
 		}
@@ -271,7 +291,7 @@ int usb_open_once(struct qdl_device *qdl, const char *serial, int *visible_out)
 
 		if (libusb_get_device_descriptor(dev, &desc) < 0)
 			continue;
-		if (desc.idVendor != 0x05c6 || !usb_is_edl_pid(desc.idProduct))
+		if (!usb_is_edl_device(&desc))
 			continue;
 
 		visible++;
@@ -388,9 +408,7 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 			continue;
 		}
 
-		if (desc.idVendor != 0x05c6)
-			continue;
-		if (!usb_is_edl_pid(desc.idProduct))
+		if (!usb_is_edl_device(&desc))
 			continue;
 
 		ret = libusb_open(dev, &handle);
