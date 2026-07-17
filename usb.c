@@ -101,7 +101,8 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
 	/* Consider only devices with vid 0x0506 and known product id */
 	if (desc.idVendor != 0x05c6)
 		return 0;
-	if (desc.idProduct != 0x9008 && desc.idProduct != 0x900e && desc.idProduct != 0x901d)
+	if (desc.idProduct != 0x9008 && desc.idProduct != 0x900e && desc.idProduct != 0x901d &&
+	    desc.idProduct != 0x9060)
 		return 0;
 
 	ret = libusb_get_active_config_descriptor(dev, &config);
@@ -192,7 +193,7 @@ static int usb_try_open(libusb_device *dev, struct qdl_device_usb *qdl, const ch
 
 static bool usb_is_edl_pid(uint16_t pid)
 {
-	return pid == 0x9008 || pid == 0x900e || pid == 0x901d;
+	return pid == 0x9008 || pid == 0x900e || pid == 0x901d || pid == 0x9060;
 }
 
 /*
@@ -372,7 +373,8 @@ struct qdl_device_desc *usb_list(unsigned int *devices_found)
 
 		if (desc.idVendor != 0x05c6)
 			continue;
-		if (desc.idProduct != 0x9008 && desc.idProduct != 0x900e && desc.idProduct != 0x901d)
+		if (desc.idProduct != 0x9008 && desc.idProduct != 0x900e &&
+		    desc.idProduct != 0x901d && desc.idProduct != 0x9060)
 			continue;
 
 		ret = libusb_open(dev, &handle);
