@@ -91,7 +91,13 @@ on_exit() {
 }
 trap on_exit EXIT
 
-if [[ "${step}" == "flash_full" ]]; then
+# The suite's first step (highest meson priority). Suite-level setup -
+# resetting the fail-fast sentinel, entering EDL mode - must anchor to it:
+# doing either in a later step breaks the steps running before it. Keep
+# this in sync with the priorities in tests/meson.build.
+FIRST_STEP="list"
+
+if [[ "${step}" == "${FIRST_STEP}" ]]; then
     rm -f "${ABORT_FILE}"
     rm -rf "${HIL_TMPDIR:?}"/*
 fi
@@ -109,8 +115,10 @@ if [[ -z "${BUILD}" || -z "${STORAGE}" ]]; then
     exit ${SKIP}
 fi
 
-# Fail-fast: if an earlier step already failed, stop the whole suite.
-if [[ "${step}" != "flash_full" && -e "${ABORT_FILE}" ]]; then
+# Fail-fast: if an earlier step already failed, stop the whole suite. No
+# step is exempt - the first step cleared the sentinel above before this
+# check, so a set sentinel always means a failure in this run.
+if [[ -e "${ABORT_FILE}" ]]; then
     echo "an earlier HIL step failed; stopping the suite" >&2
     exit ${SKIP}
 fi
