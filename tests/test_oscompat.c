@@ -39,7 +39,13 @@ static void rmtree(const char *path)
 			if (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, ".."))
 				continue;
 
-			snprintf(child, sizeof(child), "%s/%s", path, ent->d_name);
+			if (snprintf(child, sizeof(child), "%s/%s", path,
+				     ent->d_name) >= (int)sizeof(child)) {
+				fprintf(stderr,
+					"skipping overly-long path %s/%s\n",
+					path, ent->d_name);
+				continue;
+			}
 			if (stat(child, &st) == 0 && S_ISDIR(st.st_mode))
 				rmtree(child);
 			else
