@@ -367,7 +367,7 @@ int vip_transfer_init(struct qdl_device *qdl, const char *vip_table_path)
 
 	snprintf(fullpath, sizeof(fullpath), "%s/%s",
 		 vip_table_path, DIGEST_TABLE_TO_SIGN_FILE_MBN);
-	qdl->vip_data.signed_table_fd = open(fullpath, O_RDONLY);
+	qdl->vip_data.signed_table_fd = open(fullpath, O_RDONLY | O_BINARY);
 	if (!qdl->vip_data.signed_table_fd) {
 		ux_err("Can't open signed table %s\n", fullpath);
 		return -1;
@@ -379,7 +379,7 @@ int vip_transfer_init(struct qdl_device *qdl, const char *vip_table_path)
 		snprintf(fullpath, sizeof(fullpath), "%s/%s%d%s",
 			 vip_table_path, CHAINED_TABLE_FILE_PREF, i, ".bin");
 
-		int fd = open(fullpath, O_RDONLY);
+		int fd = open(fullpath, O_RDONLY | O_BINARY);
 
 		if (fd == -1) {
 			if (errno == ENOENT)
