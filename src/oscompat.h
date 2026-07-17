@@ -44,7 +44,9 @@ static inline bool path_is_absolute(const char *path)
 #ifndef _WIN32
 	return path[0] == '/';
 #else
-	return (isalpha(path[0]) && path[1] == ':') ||
+	if (path[0] == '\0')
+		return false;
+	return (isalpha((unsigned char)path[0]) && path[1] == ':') ||
 	       (path[0] == '\\' && path[1] == '\\');
 #endif
 }
