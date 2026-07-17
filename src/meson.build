@@ -6,15 +6,21 @@ common_sources = files(
   'sahara.c', 'util.c', 'ux.c', 'oscompat.c', 'file.c',
 )
 
-# qdl: the full flashing tool.
-qdl_sources = files(
+# Everything except main(); reused by the qdl binary and the nbdkit plugin.
+lib_sources = files(
   'auto.c', 'qud.c',
   'firehose.c',
-  'io.c', 'qdl.c', 'patch.c',
-  'program.c', 'read.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
+  'io.c', 'patch.c',
+  'program.c', 'read.c', 'sahara_config.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
   'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c', 'contents.c', 'pathbuf.c',
   'zipper.c',
 )
+
+# qdl: the full flashing tool (shared sources plus the CLI front-end).
+qdl_sources = lib_sources + files('qdl.c')
+
+# nbdkit plugin exposing a LUN as a block device.
+nbdkit_plugin_src = files('nbdkit-qdl-plugin.c')
 
 # Individual sources reused by the cmocka unit tests.
 flashmap_src = files('flashmap.c')

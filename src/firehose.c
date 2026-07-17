@@ -31,6 +31,7 @@
 #include "vip.h"
 #include "sparse.h"
 #include "gpt.h"
+#include "json.h"
 
 enum {
 	FIREHOSE_ACK = 0,
@@ -1568,7 +1569,7 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	return 0;
 }
 
-static int firehose_reset(struct qdl_device *qdl)
+int firehose_reset(struct qdl_device *qdl)
 {
 	xmlNode *root;
 	xmlNode *node;
@@ -1820,4 +1821,197 @@ int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 	ux_info("waiting for Firehose programmer...\n");
 
 	return firehose_execute_ops(qdl, ops);
+}
+
+/*
+ * Configure the programmer for block-level access without running any ops.
+ * Exposed for out-of-tree drivers (the nbdkit plugin) that only need to read
+ * and write sectors.
+ */
+int firehose_open(struct qdl_device *qdl, enum qdl_storage_type storage)
+{
+	return firehose_detect_and_configure(qdl, false, storage, 5);
+}
+
+struct firehose_getsize_args {
+	size_t sector_size;
+	size_t num_sectors;
+};
+
+/*
+ * The programmer answers <getstorageinfo> with the storage geometry encoded as
+ * a JSON blob inside a <log> value. Pick out the block size and block count.
+ */
+static int firehose_getstorageinfo_parser(xmlNode *node, void *data,
+					  bool *rawmode __unused)
+{
+	struct firehose_getsize_args *args = data;
+	struct json_value *info;
+	struct json_value *json;
+	double total_blocks = 0;
+	double block_size = 0;
+	const char *start;
+	xmlChar *value;
+	int ret = 0;
+
+	value = xmlGetProp(node, (xmlChar *)"value");
+	if (!value)
+		return -EINVAL;
+
+	if (!xmlStrcmp(node->name, (xmlChar *)"response")) {
+		ret = xmlStrcmp(value, (xmlChar *)"ACK") ? -1 : 1;
+		xmlFree(value);
+		return ret;
+	}
+
+	start = strchr((char *)value, '{');
+	if (start && strstr((char *)value, "\"total_blocks\":")) {
+		json = json_parse_buf(start, strlen(start));
+		if (json) {
+			info = json_get_child(json, "storage_info");
+			if (info) {
+				json_get_number(info, "total_blocks", &total_blocks);
+				json_get_number(info, "block_size", &block_size);
+				args->sector_size = block_size;
+				args->num_sectors = total_blocks;
+			}
+			json_free(json);
+		}
+	} else {
+		ux_debug("LOG: %s\n", value);
+	}
+
+	xmlFree(value);
+	return 0;
+}
+
+static int firehose_getstorageinfo(struct qdl_device *qdl, int lun,
+				   struct firehose_getsize_args *args)
+{
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	int ret;
+
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
+	xmlDocSetRootElement(doc, root);
+
+	node = xmlNewChild(root, NULL, (xmlChar *)"getstorageinfo", NULL);
+	xml_setpropf(node, "physical_partition_number", "%d", lun);
+
+	ret = firehose_write(qdl, doc);
+	xmlFreeDoc(doc);
+	if (ret < 0)
+		return ret;
+
+	return firehose_read(qdl, 30000, firehose_getstorageinfo_parser, args);
+}
+
+/*
+ * Query the sector size and sector count of a physical partition (LUN), used by
+ * the nbdkit plugin to report the block device size.
+ */
+int firehose_getsize(struct qdl_device *qdl, int lun, size_t *sector_size,
+		     size_t *num_sectors)
+{
+	struct firehose_getsize_args args = {};
+	int ret;
+
+	ret = firehose_getstorageinfo(qdl, lun, &args);
+	if (ret < 0)
+		return ret;
+
+	if (!args.sector_size || !args.num_sectors) {
+		ux_err("device did not report storage geometry for LUN %d\n", lun);
+		return -1;
+	}
+
+	*sector_size = args.sector_size;
+	*num_sectors = args.num_sectors;
+
+	return 0;
+}
+
+/*
+ * Read @num_sectors sectors starting at @sector_offset into @buf. Reuses the
+ * chunked read path (firehose_read_buf), so a single request is streamed in
+ * max_payload_size units rather than one USB transfer per sector.
+ */
+ssize_t firehose_pread(struct qdl_device *qdl, int lun, size_t sector_offset,
+		       void *buf, size_t sector_size, size_t num_sectors)
+{
+	char start_sector[24];
+	struct firehose_op op = {};
+	int ret;
+
+	snprintf(start_sector, sizeof(start_sector), "%zu", sector_offset);
+
+	op.partition = lun;
+	op.start_sector = start_sector;
+	op.num_sectors = num_sectors;
+	op.sector_size = sector_size;
+
+	ret = firehose_read_buf(qdl, &op, buf, num_sectors * sector_size);
+	if (ret < 0)
+		return ret;
+
+	return num_sectors * sector_size;
+}
+
+/*
+ * Write @num_sectors sectors from @buf starting at @sector_offset. The payload
+ * is streamed in max_payload_size chunks rather than one transfer per sector.
+ */
+ssize_t firehose_pwrite(struct qdl_device *qdl, int lun, size_t sector_offset,
+			const void *buf, size_t sector_size, size_t num_sectors)
+{
+	const uint8_t *p = buf;
+	xmlNode *root;
+	xmlNode *node;
+	xmlDoc *doc;
+	size_t left;
+	size_t chunk;
+	int ret;
+
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
+	xmlDocSetRootElement(doc, root);
+
+	node = xmlNewChild(root, NULL, (xmlChar *)"program", NULL);
+	xml_setpropf(node, "SECTOR_SIZE_IN_BYTES", "%zu", sector_size);
+	xml_setpropf(node, "num_partition_sectors", "%zu", num_sectors);
+	xml_setpropf(node, "physical_partition_number", "%d", lun);
+	xml_setpropf(node, "start_sector", "%zu", sector_offset);
+
+	ret = firehose_write(qdl, doc);
+	xmlFreeDoc(doc);
+	if (ret < 0)
+		return ret;
+
+	ret = firehose_read(qdl, 10000, firehose_generic_parser, NULL);
+	if (ret < 0) {
+		ux_err("failed to issue program request\n");
+		return ret;
+	}
+
+	left = num_sectors;
+	while (left > 0) {
+		chunk = MIN(qdl->max_payload_size / sector_size, left);
+
+		ret = qdl_write(qdl, p, chunk * sector_size, 10000);
+		if (ret < 0 || (size_t)ret != chunk * sector_size) {
+			ux_err("USB write failed for data chunk\n");
+			return -1;
+		}
+
+		p += chunk * sector_size;
+		left -= chunk;
+	}
+
+	ret = firehose_read(qdl, 120000, firehose_generic_parser, NULL);
+	if (ret < 0)
+		return ret;
+
+	return num_sectors * sector_size;
 }

@@ -8,8 +8,9 @@ ROOT_PATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )/../"
 # Run consistently from the repo root regardless of where the script is called
 cd "$ROOT_PATH"
 
-# Files to lint. Keep this in sync with .github/workflows/markdown-lint.yml
-MARKDOWN_FILES=("README.md")
+# Files to lint. mdl scans directories recursively, so everything under
+# docs/ is covered automatically.
+MARKDOWN_FILES=("README.md" "docs/")
 
 run_lint() {
 	if ! command -v mdl >/dev/null 2>&1; then
