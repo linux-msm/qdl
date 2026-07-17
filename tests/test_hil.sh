@@ -393,7 +393,11 @@ t_chipinfo() {
     trap 'rm -f "${out}"' RETURN
     local args=()
     [[ -n "${SERIAL}" ]] && args+=( -S "${SERIAL}" )
-    if ! "${QEXE}" "${args[@]}" chipinfo >"${out}" 2>&1; then
+    # The serial must follow the verb: qdl's verb dispatcher stops
+    # scanning at the first argument without a leading dash, so the
+    # value of a preceding "-S <serial>" derails it into the flash
+    # parser. The chipinfo subcommand parses -S itself.
+    if ! "${QEXE}" chipinfo "${args[@]}" >"${out}" 2>&1; then
         if grep -qi "already in Firehose mode" "${out}"; then
             echo "programmer already running; chipinfo needs a fresh Sahara device" >&2
             exit ${SKIP}
