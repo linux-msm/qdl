@@ -291,11 +291,12 @@ t_list() {
     while :; do
         "${QEXE}" list >"${out}" 2>&1 || { echo "qdl list failed" >&2; cat "${out}" >&2; return 1; }
         if ! grep -qi "No devices found" "${out}" &&
-           grep -qiE '^[0-9a-f]{4}:[0-9a-f]{4}' "${out}"; then
+           grep -qiE '^[0-9a-f]{4}:[0-9a-f]{4}' "${out}" &&
+           { [[ -z "${SERIAL}" ]] || grep -qi "${SERIAL}" "${out}"; }; then
             return 0
         fi
         if (( SECONDS >= deadline )); then
-            echo "no EDL device appeared within ${QDL_HIL_SETTLE:-30}s:" >&2
+            echo "no EDL device${SERIAL:+ with serial ${SERIAL}} appeared within ${QDL_HIL_SETTLE:-30}s:" >&2
             cat "${out}" >&2
             return 1
         fi
