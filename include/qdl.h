@@ -146,21 +146,19 @@ int qud_probe_present(void);
 
 /*
  * EDL device identity, shared by all transport backends: Qualcomm's
- * vendor id plus the known EDL/ramdump product ids. The libusb backend
- * additionally requires a matching vendor-specific interface (see
- * usb_match_edl_interface() in usb.c); on Windows the QDLoader driver
- * performs the equivalent match before the QUD backend sees the device.
+ * vendor id. Product ids are deliberately not filtered - EDL, crash-mode
+ * and ramdump devices enumerate with a growing set of ids that no
+ * allowlist keeps up with. The libusb backend requires a matching
+ * vendor-specific interface (see usb_match_edl_interface() in usb.c)
+ * before a device is opened; on Windows the QDLoader driver binding
+ * performs the equivalent selection before the QUD backend sees the
+ * device.
  */
 #define QUALCOMM_VID 0x05c6
 
-static inline bool qdl_is_edl_pid(unsigned int pid)
+static inline bool qdl_is_edl_device(unsigned int vid, unsigned int pid __unused)
 {
-	return pid == 0x9008 || pid == 0x900e || pid == 0x901d || pid == 0x90db;
-}
-
-static inline bool qdl_is_edl_device(unsigned int vid, unsigned int pid)
-{
-	return vid == QUALCOMM_VID && qdl_is_edl_pid(pid);
+	return vid == QUALCOMM_VID;
 }
 
 struct qdl_device_desc {

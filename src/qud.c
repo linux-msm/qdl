@@ -264,8 +264,6 @@ static int win_enumerate_qcom(struct qud_device_desc *out, size_t out_max)
 			continue;
 
 		pid = win_parse_pid(hwid);
-		if (!qdl_is_edl_device(QUALCOMM_VID, pid))
-			continue;
 
 		if (!SetupDiGetDeviceInstanceIdA(devinfo, &info, instance_id,
 						 sizeof(instance_id), NULL))
