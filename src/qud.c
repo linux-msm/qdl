@@ -184,6 +184,45 @@ static unsigned int win_parse_pid(const char *hwid)
 	return pid;
 }
 
+/*
+ * Windows encodes each USB interface's class/subclass/protocol triple
+ * in the devnode's compatible ids as "USB\Class_xx&SubClass_xx&Prot_xx".
+ * Match the same EDL interface signature as the libusb backend
+ * (usb_match_edl_interface() in usb.c): vendor-specific class and
+ * subclass with a known Sahara protocol - 0x10, 0x11 or 0x13 on modern
+ * devices, 0xff on older targets.
+ */
+static bool win_match_edl_interface(HDEVINFO devinfo, SP_DEVINFO_DATA *info)
+{
+	static const char * const edl_ids[] = {
+		"USB\\Class_FF&SubClass_FF&Prot_10",
+		"USB\\Class_FF&SubClass_FF&Prot_11",
+		"USB\\Class_FF&SubClass_FF&Prot_13",
+		"USB\\Class_FF&SubClass_FF&Prot_FF",
+	};
+	char ids[1024];
+	DWORD type = 0;
+	const char *p;
+	size_t i;
+
+	if (!SetupDiGetDeviceRegistryPropertyA(devinfo, info,
+					       SPDRP_COMPATIBLEIDS, &type,
+					       (BYTE *)ids, sizeof(ids), NULL))
+		return false;
+	if (type != REG_MULTI_SZ)
+		return false;
+
+	/* REG_MULTI_SZ: walk the NUL-separated entries */
+	for (p = ids; *p; p += strlen(p) + 1) {
+		for (i = 0; i < ARRAY_SIZE(edl_ids); i++) {
+			if (!_stricmp(p, edl_ids[i]))
+				return true;
+		}
+	}
+
+	return false;
+}
+
 static int win_enumerate_qcom(struct qud_device_desc *out, size_t out_max)
 {
 	HDEVINFO devinfo;
@@ -216,12 +255,14 @@ static int win_enumerate_qcom(struct qud_device_desc *out, size_t out_max)
 			continue;
 
 		/*
-		 * The prefix match already guarantees Qualcomm's vid; apply
-		 * the same EDL pid policy as the libusb backend, so that all
-		 * backends agree on what an EDL device is and other Qualcomm
-		 * COM ports (for example the diag port of a phone in normal
-		 * composite mode) are not mistaken for one.
+		 * The prefix match already guarantees Qualcomm's vid; require
+		 * the same EDL interface signature the libusb backend
+		 * matches, so both backends filter other Qualcomm COM ports
+		 * the same way.
 		 */
+		if (!win_match_edl_interface(devinfo, &info))
+			continue;
+
 		pid = win_parse_pid(hwid);
 		if (!qdl_is_edl_device(QUALCOMM_VID, pid))
 			continue;
