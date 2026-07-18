@@ -100,7 +100,10 @@ patches=( "${BUILD}"/patch*.xml )
 [[ ${#progs[@]} -gt 0 ]] || { echo "no prog_firehose_*.elf in ${BUILD}" >&2; exit ${SKIP}; }
 [[ ${#raws[@]} -gt 0 ]]  || { echo "no rawprogram*.xml in ${BUILD}" >&2; exit ${SKIP}; }
 
-COMMON=( -s "${STORAGE}" )
+QDLDBG=()
+[[ -n "${QDL_HIL_DEBUG}" ]] && QDLDBG=( -d )
+
+COMMON=( "${QDLDBG[@]}" -s "${STORAGE}" )
 [[ -n "${SERIAL}" ]] && COMMON+=( -S "${SERIAL}" )
 
 # Fresh workspace on the build disk; the pristine build artifacts are
@@ -142,7 +145,7 @@ echo "=== signing programmer $(basename "${PROG}")"
 sign_one "${PROG}" DEVICE-PROGRAMMER
 
 echo "=== generating VIP digest tables"
-"${QEXE}" --allow-fusing --create-digests "${TABLES}" \
+"${QEXE}" "${QDLDBG[@]}" --allow-fusing --create-digests "${TABLES}" \
           "${PROG}" "${raws[@]}" "${patches[@]}"
 [[ -f "${TABLES}/DigestsToSign.bin" ]] || {
     echo "digest generation produced no DigestsToSign.bin" >&2
