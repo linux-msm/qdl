@@ -40,6 +40,9 @@
 #                       unset the board must already be in EDL mode.
 #   QDL_HIL_SETTLE      Seconds the list step waits for the device to
 #                       enumerate after the enter-EDL command (default 30).
+#   QDL_HIL_DEBUG       When set, run every qdl invocation with --debug so
+#                       failures leave a full protocol log in the meson
+#                       testlog (and the uploaded CI artifacts).
 #   QDL_HIL_CONTENTS    contents.xml (optionally with ::specifier) for the
 #                       create-zip step; when unset that step is skipped.
 #   QDL_HIL_SPARSE      flashmap/contents/zip that flashes sparse images, for
@@ -157,8 +160,12 @@ fi
 # otherwise the readback captured by the read step.
 IMAGE="${IMAGE:-${SAVED_IMAGE}}"
 
+# Optional debug logging on every qdl invocation, for post-mortems.
+QDLDBG=()
+[[ -n "${QDL_HIL_DEBUG}" ]] && QDLDBG=( -d )
+
 # Common qdl prefix. -R suppresses the reset everywhere but the final step.
-COMMON=( -s "${STORAGE}" )
+COMMON=( "${QDLDBG[@]}" -s "${STORAGE}" )
 [[ -n "${SERIAL}" ]] && COMMON+=( -S "${SERIAL}" )
 
 qdl_noreset() { "${QEXE}" "${COMMON[@]}" -R "$@"; }
@@ -289,7 +296,7 @@ t_list() {
     trap 'rm -f "${out}"' RETURN
 
     while :; do
-        "${QEXE}" list >"${out}" 2>&1 || { echo "qdl list failed" >&2; cat "${out}" >&2; return 1; }
+        "${QEXE}" "${QDLDBG[@]}" list >"${out}" 2>&1 || { echo "qdl list failed" >&2; cat "${out}" >&2; return 1; }
         if ! grep -qi "No devices found" "${out}" &&
            grep -qiE '^[0-9a-f]{4}:[0-9a-f]{4}' "${out}" &&
            { [[ -z "${SERIAL}" ]] || grep -qi "${SERIAL}" "${out}"; }; then
@@ -397,7 +404,7 @@ t_chipinfo() {
     # scanning at the first argument without a leading dash, so the
     # value of a preceding "-S <serial>" derails it into the flash
     # parser. The chipinfo subcommand parses -S itself.
-    if ! "${QEXE}" chipinfo "${args[@]}" >"${out}" 2>&1; then
+    if ! "${QEXE}" "${QDLDBG[@]}" chipinfo "${args[@]}" >"${out}" 2>&1; then
         if grep -qi "already in Firehose mode" "${out}"; then
             echo "programmer already running; chipinfo needs a fresh Sahara device" >&2
             exit ${SKIP}
