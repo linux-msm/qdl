@@ -385,7 +385,7 @@ t_verify_write() {
     dev_digest="$(grep -oiE '[0-9a-f]{64}' "${out}" | head -1)"
     [[ -n "${dev_digest}" ]] || { echo "no device digest:" >&2; cat "${out}" >&2; return 1; }
     local_digest="$(sha256_file "${SAVED_IMAGE}")"
-    [[ "${dev_digest}" == "${local_digest}" ]] || {
+    [[ "${dev_digest,,}" == "${local_digest,,}" ]] || {
         echo "partition digest mismatch: device=${dev_digest} local=${local_digest}" >&2
         return 1
     }
