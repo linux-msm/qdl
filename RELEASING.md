@@ -8,12 +8,11 @@ candidates append an `-rcN` suffix (`v2.8-rc1`, `v2.8-rc2`, ...).
 
 The process is, in short:
 
-- [Releasing QDL](#releasing-qdl)
-  - [1. Populate the changelog](#1-populate-the-changelog)
-  - [2. Open the changelog PR and tag a release candidate](#2-open-the-changelog-pr-and-tag-a-release-candidate)
-  - [3. Iterate on release candidates](#3-iterate-on-release-candidates)
-  - [4. Merge the changelog PR and apply the release tag](#4-merge-the-changelog-pr-and-apply-the-release-tag)
-  - [5. Create the GitHub release](#5-create-the-github-release)
+- [1. Populate the changelog](#1-populate-the-changelog)
+- [2. Open the changelog PR and tag a release candidate](#2-open-the-changelog-pr-and-tag-a-release-candidate)
+- [3. Iterate on release candidates](#3-iterate-on-release-candidates)
+- [4. Merge the changelog PR and apply the release tag](#4-merge-the-changelog-pr-and-apply-the-release-tag)
+- [5. Create the GitHub release](#5-create-the-github-release)
 
 Throughout, export the version once so the commands below can be copied
 verbatim:
