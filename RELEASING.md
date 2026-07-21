@@ -8,12 +8,12 @@ candidates append an `-rcN` suffix (`v2.8-rc1`, `v2.8-rc2`, ...).
 
 The process is, in short:
 
-- [Releasing QDL](#releasing-qdl)
-  - [1. Populate the changelog](#1-populate-the-changelog)
-  - [2. Open the changelog PR and tag a release candidate](#2-open-the-changelog-pr-and-tag-a-release-candidate)
-  - [3. Iterate on release candidates](#3-iterate-on-release-candidates)
-  - [4. Merge the changelog PR and apply the release tag](#4-merge-the-changelog-pr-and-apply-the-release-tag)
-  - [5. Create the GitHub release](#5-create-the-github-release)
+- [1. Populate the changelog](#1-populate-the-changelog)
+- [2. Open the changelog PR and tag a release candidate](#2-open-the-changelog-pr-and-tag-a-release-candidate)
+- [3. Iterate on release candidates](#3-iterate-on-release-candidates)
+- [4. Merge the changelog PR and apply the release tag](#4-merge-the-changelog-pr-and-apply-the-release-tag)
+- [5. Create the GitHub release](#5-create-the-github-release)
+- [Stable branches](#stable-branches)
 
 Throughout, export the version once so the commands below can be copied
 verbatim:
@@ -175,3 +175,48 @@ echo "GitHub release created: $(gh release view "${VERSION}" --json url -q .url)
 The release name matches the existing convention (the tag itself, for example
 `v2.8`). After publishing, sanity-check the release page: confirm the notes
 rendered correctly and that every platform archive is attached.
+
+## Stable branches
+
+After a release, critical fixes reach users through kernel-style stable
+branches named `qdl-X.Y.y` (for `v2.8`: `qdl-2.8.y`). A point release
+(`v2.8.1`, `v2.8.2`, ...) is then cut from the stable branch, so urgent
+fixes never have to wait for - or ship - whatever is in flight on
+`master`.
+
+### Cut the branch immediately after the release
+
+Right after the normal release flow tags the release on `master`
+(step 4), create the stable branch from the tag:
+
+```bash
+git fetch upstream
+git branch "qdl-${VERSION#v}.y" "${VERSION}"
+git push upstream "qdl-${VERSION#v}.y"
+```
+
+### Maintain the branch (backports)
+
+When a bug affecting the release gets fixed, the fix lands on `master`
+first, through the normal PR flow. Then backport it, with `-x` so the
+commit message records which `master` commit it was cherry-picked from:
+
+```bash
+git checkout "qdl-${VERSION#v}.y"
+git cherry-pick -x <sha>
+```
+
+Open a pull request targeting the stable branch. CI runs on it
+unchanged, since the workflows trigger on any pull request regardless
+of its base branch.
+
+### Cut a point release when warranted
+
+When the branch has accumulated fixes worth shipping - or a security
+fix forces one:
+
+- Update `CHANGELOG.md` on the stable branch with a section for the
+  point release (for example `v2.8.1`).
+- Tag and publish from the stable branch, following the same flow as a
+  normal release (steps 2-5) with `VERSION=v2.8.1` and the stable
+  branch taking the place of `master`.

@@ -87,11 +87,12 @@ Every commit message must follow the repository convention:
 ## Sign-off
 
 Every commit must carry a `Signed-off-by` trailer using the identity from the
-local git configuration.
+local git configuration, as appended by `git commit -s`:
 
 ```bash
-Signed-off-by: $(git config user.name) <$(git config user.email)>
+git commit -s
 ```
+
 When committing programmatically,
 **AI agents MUST NOT add Signed-off-by tags**, only a human can certify the
 Developer Certificate of Origin (DCO).

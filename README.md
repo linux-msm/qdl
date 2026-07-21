@@ -73,7 +73,7 @@ low-level access for firmware flashing and recovery. It bypasses the standard bo
 process, allowing operations such as flashing firmware even on unresponsive devices
 or those with locked bootloaders.
 
-Please consult your device’s documentation for instructions on how to enter EDL mode.
+Please consult your device's documentation for instructions on how to enter EDL mode.
 
 ### Flashing from WSL2 (usbipd-win)
 
@@ -87,7 +87,7 @@ See:
 - <https://github.com/dorssel/usbipd-win/issues/1067>
 
 On Windows, QDL can run inside a WSL2 distribution, but WSL2 does not see USB
-devices by default — they must be forwarded from the Windows host with
+devices by default - they must be forwarded from the Windows host with
 [usbipd-win](https://github.com/dorssel/usbipd-win). Install it on the Windows
 side (`winget install usbipd`), then forward the EDL device into WSL.
 
@@ -120,8 +120,8 @@ and QDL can flash it as usual.
 #### Re-attaching after EDL re-enumeration
 
 The EDL device is a USB gadget that only exists while the board is in EDL mode.
-Whenever the board re-enters EDL — including after QDL finishes and the target
-reboots — the USB device is torn down and re-created. The `bind` persists, but
+Whenever the board re-enters EDL - including after QDL finishes and the target
+reboots - the USB device is torn down and re-created. The `bind` persists, but
 the **attach is dropped**, and the host may assign a **different BUSID** than
 before. A QDL run that reports no device found is almost always this: the device
 simply needs to be re-attached.
