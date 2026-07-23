@@ -4,6 +4,76 @@ All notable changes to QDL, mirroring the [GitHub releases](https://github.com/l
 
 This project uses `vMAJOR.MINOR` tags. Releases prior to v2.4 were tagged but not published as GitHub releases; see the [git tags](https://github.com/linux-msm/qdl/tags) for their history.
 
+## [v2.8](https://github.com/linux-msm/qdl/releases/tag/v2.8) - 2026-08-03
+
+### Highlights
+
+- One `qdl` binary: the separate `qdl-ks` and `qdl-ramdump` tools are folded in as subcommands ([#250](https://github.com/linux-msm/qdl/pull/250))
+- New `chipinfo` and `reset` verbs for reading chip identity and resetting the device without flashing ([#280](https://github.com/linux-msm/qdl/pull/280),
+  [#281](https://github.com/linux-msm/qdl/pull/281))
+- nbdkit plugin exposing a device LUN as a block device ([#283](https://github.com/linux-msm/qdl/pull/283))
+- Faster, leaner skipblock flashing: short/offset files can be skipped, digest memory is bounded, progress is reported
+  ([#256](https://github.com/linux-msm/qdl/pull/256), [#264](https://github.com/linux-msm/qdl/pull/264), [#265](https://github.com/linux-msm/qdl/pull/265))
+- Hardening sweep across firehose, sahara, GPT and program parsing of device-controlled data ([#284](https://github.com/linux-msm/qdl/pull/284),
+  [#270](https://github.com/linux-msm/qdl/pull/270))
+- Improved crash-mode/ramdump device detection ([#274](https://github.com/linux-msm/qdl/pull/274), [#286](https://github.com/linux-msm/qdl/pull/286))
+- EDL devices are identified by their vendor-specific interface signature instead of a product-id allowlist, so the libusb and Windows QUD backends
+  now share one notion of an EDL device ([#287](https://github.com/linux-msm/qdl/pull/287), [#289](https://github.com/linux-msm/qdl/pull/289))
+
+### Breaking changes
+
+- `qdl-ks` and `qdl-ramdump` no longer exist as standalone binaries; scripts
+  and packaging must switch to `qdl ks ...` / the ramdump verb
+  ([#250](https://github.com/linux-msm/qdl/pull/250))
+- Mixing input XML files with command verbs on one invocation is now
+  rejected instead of silently accepted
+  ([#282](https://github.com/linux-msm/qdl/pull/282))
+
+### What's Changed
+
+- firehose: zero-pad local digest so short/offset files can be skipped by @igoropaniuk in [#256](https://github.com/linux-msm/qdl/pull/256)
+- meson: don't require git when overriding the version by @obbardc in [#257](https://github.com/linux-msm/qdl/pull/257)
+- firehose: report progress through the skipblock fast-path by @igoropaniuk in [#264](https://github.com/linux-msm/qdl/pull/264)
+- [RFC] github: request reviews from qdl-maintainers via CODEOWNERS by @igoropaniuk in [#266](https://github.com/linux-msm/qdl/pull/266)
+- tree: move sources under src/ and consolidate on a single qdl binary by @igoropaniuk in [#250](https://github.com/linux-msm/qdl/pull/250)
+- README: describe how to use QDL from WSL2 on Windows by @brgl in [#267](https://github.com/linux-msm/qdl/pull/267)
+- README: mark WSL2 support as unreliable by @brgl in [#273](https://github.com/linux-msm/qdl/pull/273)
+- src/firehose: fix type error in flash log by @shoudil in [#275](https://github.com/linux-msm/qdl/pull/275)
+- tests: fix test_contents_selectors link failure at -O0 by @igoropaniuk in [#272](https://github.com/linux-msm/qdl/pull/272)
+- tests: add a hardware-in-the-loop (HIL) test suite by @igoropaniuk in [#271](https://github.com/linux-msm/qdl/pull/271)
+- ramdump: create the output directory if it does not exist by @igoropaniuk in [#269](https://github.com/linux-msm/qdl/pull/269)
+- README: use consistent dash bullets for unordered lists by @igoropaniuk in [#276](https://github.com/linux-msm/qdl/pull/276)
+- firehose: tolerate zero-length packets while reading sector data by @igoropaniuk in [#270](https://github.com/linux-msm/qdl/pull/270)
+- For linux msm/flashmap multi layout by @quic-bjorande in [#263](https://github.com/linux-msm/qdl/pull/263)
+- firehose: chunk skipblock digest into bounded sub-regions by @igoropaniuk in [#265](https://github.com/linux-msm/qdl/pull/265)
+- github: package self-contained binaries on Linux and macOS by @igoropaniuk in [#277](https://github.com/linux-msm/qdl/pull/277)
+- doc: restructure and enrich the README by @igoropaniuk in [#268](https://github.com/linux-msm/qdl/pull/268)
+- doc: add RELEASING.md describing the release process by @igoropaniuk in [#278](https://github.com/linux-msm/qdl/pull/278)
+- [RFC] doc: add AGENTS.md guide for automation agents by @igoropaniuk in [#279](https://github.com/linux-msm/qdl/pull/279)
+- usb: recognize 0x90db as an EDL ramdump product ID by @yangh in [#274](https://github.com/linux-msm/qdl/pull/274)
+- qdl: Add reset verb for device reset by @edsj-sony in [#281](https://github.com/linux-msm/qdl/pull/281)
+- sahara: add chipinfo command to read chip identity by @igoropaniuk in [#280](https://github.com/linux-msm/qdl/pull/280)
+- [RFC] usb: decouple open/list paths and share EDL device identity across backends by @igoropaniuk in [#287](https://github.com/linux-msm/qdl/pull/287)
+- tests: extend HIL test suite by @igoropaniuk in [#285](https://github.com/linux-msm/qdl/pull/285)
+- Fix critical correctness issues (silent failures, crashes, OOB accesses) by @igoropaniuk in [#284](https://github.com/linux-msm/qdl/pull/284)
+- [RFC] qdl: reject mixing input XML files with command verbs by @igoropaniuk in [#282](https://github.com/linux-msm/qdl/pull/282)
+- Enhance crash mode device detection by @ykaire-qti in [#286](https://github.com/linux-msm/qdl/pull/286)
+- nbdkit: expose a device LUN as a block device by @igoropaniuk in [#283](https://github.com/linux-msm/qdl/pull/283)
+- vip: open signed tables in binary mode on Windows by @igoropaniuk in [#288](https://github.com/linux-msm/qdl/pull/288)
+- Lint all markdown files and extend the release documentation by @igoropaniuk in [#292](https://github.com/linux-msm/qdl/pull/292)
+- Address oscompat warnings on Windows by @igoropaniuk in [#291](https://github.com/linux-msm/qdl/pull/291)
+- qdl: drop the EDL product id allowlist and match the EDL interface signature when enumerating by @igoropaniuk in [#289](https://github.com/linux-msm/qdl/pull/289)
+- firehose: do not probe sector size when storage init is skipped by @igoropaniuk in [#297](https://github.com/linux-msm/qdl/pull/297)
+
+### New Contributors
+
+- @brgl made their first contribution in [#267](https://github.com/linux-msm/qdl/pull/267)
+- @shoudil made their first contribution in [#275](https://github.com/linux-msm/qdl/pull/275)
+- @yangh made their first contribution in [#274](https://github.com/linux-msm/qdl/pull/274)
+- @edsj-sony made their first contribution in [#281](https://github.com/linux-msm/qdl/pull/281)
+
+**Full Changelog**: [v2.7...v2.8](https://github.com/linux-msm/qdl/compare/v2.7...v2.8)
+
 ## [v2.7](https://github.com/linux-msm/qdl/releases/tag/v2.7) - 2026-06-08
 
 ### What's Changed
