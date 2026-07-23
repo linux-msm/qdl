@@ -1,0 +1,128 @@
+name: HIL
+
+# Hardware-in-the-loop runs: self-hosted runners with a device in EDL
+# reach attached (for example an Arduino Uno-Q). Board specifics stay out
+# of the repository: each runner provides QDL_HIL_BUILD, QDL_HIL_STORAGE,
+# QDL_HIL_ENTER_EDL_CMD and friends through the actions-runner .env file,
+# and tests/test_hil.sh skips cleanly when they are absent.
+#
+# SECURITY: these runners execute the checked-out tree against real
+# hardware, so this workflow must never trigger on pull requests from
+# forks. Keep the triggers to on-demand dispatch and the nightly schedule.
+on:
+  workflow_dispatch:
+    inputs:
+      boards:
+        description: 'Linux: JSON list of board config names (~/hil/<name>.env on the runner), or ["default"] for the runner .env'
+        required: false
+        default: ''
+      windows_boards:
+        description: 'Windows: JSON list of board config names ($HOME/hil/<name>.env under MSYS2), or ["default"] for the runner .env'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 3 * * *'
+
+# The runners drive physical boards; run one HIL sweep at a time.
+concurrency:
+  group: hil
+  cancel-in-progress: false
+
+jobs:
+  hil-unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos disabled until a runner exists; restore with: [linux, macos]
+        os: [linux]
+        # One entry per board attached to the runner. "default" uses the
+        # runner's .env unchanged; any other name sources ~/hil/<name>.env
+        # on the runner host before the suite runs. Board list comes from
+        # the dispatch input, else the HIL_LINUX_BOARDS repo variable.
+        board: ${{ fromJSON(inputs.boards || vars.HIL_LINUX_BOARDS || '["default"]') }}
+    runs-on: [self-hosted, hil, "${{ matrix.os }}"]
+    timeout-minutes: 600
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: meson setup build
+
+      - name: Build
+        run: meson compile -C build
+
+      - name: Run HIL suite
+        run: |
+          if [ "${{ matrix.board }}" != "default" ]; then
+            set -a; . "$HOME/hil/${{ matrix.board }}.env"; set +a
+          fi
+          meson test -C build --suite "${QDL_HIL_SUITE:-hil}" --print-errorlogs
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hil-logs-${{ matrix.os }}-${{ matrix.board }}
+          path: build/meson-logs/
+
+  hil-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        # One entry per board attached to the runner; same contract as
+        # hil-unix. Note MSYS2's $HOME is C:\msys64\home\<user> by
+        # default, so board files live there, not in the Windows profile.
+        board: ${{ fromJSON(inputs.windows_boards || vars.HIL_WINDOWS_BOARDS || '["default"]') }}
+    runs-on: [self-hosted, hil, windows]
+    timeout-minutes: 600
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # release: false reuses the MSYS2 installation already present on
+      # the runner instead of downloading one per job. The package list
+      # mirrors build.yml.
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          release: false
+          install: >
+            base-devel
+            git
+            help2man
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-cmocka
+            mingw-w64-x86_64-libxml2
+            mingw-w64-x86_64-libusb
+            mingw-w64-x86_64-libzip
+            mingw-w64-x86_64-xz
+            zip
+
+      - name: Configure
+        run: meson setup build
+
+      - name: Build
+        run: meson compile -C build
+
+      - name: Run HIL suite
+        run: |
+          if [ "${{ matrix.board }}" != "default" ]; then
+            set -a; . "$HOME/hil/${{ matrix.board }}.env"; set +a
+          fi
+          meson test -C build --suite "${QDL_HIL_SUITE:-hil}" --print-errorlogs
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hil-logs-windows-${{ matrix.board }}
+          path: build/meson-logs/

@@ -34,6 +34,15 @@
 #                       data the read step reads back, so erase/write
 #                       round-trip the partition's own content.
 #   QDL_HIL_SERIAL      -S serial, to select one of several attached devices.
+#   QDL_HIL_ENTER_EDL_CMD  Command run before the suite's first step to put
+#                       the board into EDL mode (e.g. "adb reboot edl" or a
+#                       USB relay toggle), for unattended/CI runs. When
+#                       unset the board must already be in EDL mode.
+#   QDL_HIL_SETTLE      Seconds the list step waits for the device to
+#                       enumerate after the enter-EDL command (default 30).
+#   QDL_HIL_DEBUG       When set, run every qdl invocation with --debug so
+#                       failures leave a full protocol log in the meson
+#                       testlog (and the uploaded CI artifacts).
 #   QDL_HIL_CONTENTS    contents.xml (optionally with ::specifier) for the
 #                       create-zip step; when unset that step is skipped.
 #   QDL_HIL_SPARSE      flashmap/contents/zip that flashes sparse images, for
@@ -91,7 +100,13 @@ on_exit() {
 }
 trap on_exit EXIT
 
-if [[ "${step}" == "flash_full" ]]; then
+# The suite's first step (highest meson priority). Suite-level setup -
+# resetting the fail-fast sentinel, entering EDL mode - must anchor to it:
+# doing either in a later step breaks the steps running before it. Keep
+# this in sync with the priorities in tests/meson.build.
+FIRST_STEP="list"
+
+if [[ "${step}" == "${FIRST_STEP}" ]]; then
     rm -f "${ABORT_FILE}"
     rm -rf "${HIL_TMPDIR:?}"/*
 fi
@@ -109,10 +124,23 @@ if [[ -z "${BUILD}" || -z "${STORAGE}" ]]; then
     exit ${SKIP}
 fi
 
-# Fail-fast: if an earlier step already failed, stop the whole suite.
-if [[ "${step}" != "flash_full" && -e "${ABORT_FILE}" ]]; then
+# Fail-fast: if an earlier step already failed, stop the whole suite. No
+# step is exempt - the first step cleared the sentinel above before this
+# check, so a set sentinel always means a failure in this run.
+if [[ -e "${ABORT_FILE}" ]]; then
     echo "an earlier HIL step failed; stopping the suite" >&2
     exit ${SKIP}
+fi
+
+# For unattended runs an environment-provided command puts the board into
+# EDL mode ahead of the suite's first step. The list step polls for the
+# device afterwards (see QDL_HIL_SETTLE), so the command only needs to
+# trigger the mode switch, not wait for enumeration.
+if [[ "${step}" == "${FIRST_STEP}" && -n "${QDL_HIL_ENTER_EDL_CMD}" ]]; then
+    bash -c "${QDL_HIL_ENTER_EDL_CMD}" || {
+        echo "QDL_HIL_ENTER_EDL_CMD failed" >&2
+        exit 1
+    }
 fi
 
 IS_DIR=false
@@ -132,8 +160,12 @@ fi
 # otherwise the readback captured by the read step.
 IMAGE="${IMAGE:-${SAVED_IMAGE}}"
 
+# Optional debug logging on every qdl invocation, for post-mortems.
+QDLDBG=()
+[[ -n "${QDL_HIL_DEBUG}" ]] && QDLDBG=( -d )
+
 # Common qdl prefix. -R suppresses the reset everywhere but the final step.
-COMMON=( -s "${STORAGE}" )
+COMMON=( "${QDLDBG[@]}" -s "${STORAGE}" )
 [[ -n "${SERIAL}" ]] && COMMON+=( -S "${SERIAL}" )
 
 qdl_noreset() { "${QEXE}" "${COMMON[@]}" -R "$@"; }
@@ -253,17 +285,30 @@ t_reset() {
     rm -f "${SAVED_IMAGE}"	# done; drop the readback backup
 }
 
-# h) Enumerate EDL devices; the attached device must appear.
+# h) Enumerate EDL devices; the attached device must appear. The enter-EDL
+# hook may have just power-cycled or rebooted the board, and enumeration
+# after that takes several seconds - the flash steps wait on their own,
+# but qdl list is a one-shot, so poll until the device shows up or
+# QDL_HIL_SETTLE expires.
 t_list() {
-    local out; out="$(mktemp -p "${HIL_TMPDIR}")"
+    local out deadline=$(( SECONDS + ${QDL_HIL_SETTLE:-30} ))
+    out="$(mktemp -p "${HIL_TMPDIR}")"
     trap 'rm -f "${out}"' RETURN
-    "${QEXE}" list >"${out}" 2>&1 || { echo "qdl list failed" >&2; cat "${out}" >&2; return 1; }
-    if grep -qi "No devices found" "${out}" ||
-       ! grep -qiE '^[0-9a-f]{4}:[0-9a-f]{4}' "${out}"; then
-        echo "qdl list did not report an attached device:" >&2
-        cat "${out}" >&2
-        return 1
-    fi
+
+    while :; do
+        "${QEXE}" "${QDLDBG[@]}" list >"${out}" 2>&1 || { echo "qdl list failed" >&2; cat "${out}" >&2; return 1; }
+        if ! grep -qi "No devices found" "${out}" &&
+           grep -qiE '^[0-9a-f]{4}:[0-9a-f]{4}' "${out}" &&
+           { [[ -z "${SERIAL}" ]] || grep -qi "${SERIAL}" "${out}"; }; then
+            return 0
+        fi
+        if (( SECONDS >= deadline )); then
+            echo "no EDL device${SERIAL:+ with serial ${SERIAL}} appeared within ${QDL_HIL_SETTLE:-30}s:" >&2
+            cat "${out}" >&2
+            return 1
+        fi
+        sleep 1
+    done
 }
 
 # i) Package a contents.xml into a zip with create-zip, then flash the zip
@@ -340,7 +385,7 @@ t_verify_write() {
     dev_digest="$(grep -oiE '[0-9a-f]{64}' "${out}" | head -1)"
     [[ -n "${dev_digest}" ]] || { echo "no device digest:" >&2; cat "${out}" >&2; return 1; }
     local_digest="$(sha256_file "${SAVED_IMAGE}")"
-    [[ "${dev_digest}" == "${local_digest}" ]] || {
+    [[ "${dev_digest,,}" == "${local_digest,,}" ]] || {
         echo "partition digest mismatch: device=${dev_digest} local=${local_digest}" >&2
         return 1
     }
@@ -355,7 +400,11 @@ t_chipinfo() {
     trap 'rm -f "${out}"' RETURN
     local args=()
     [[ -n "${SERIAL}" ]] && args+=( -S "${SERIAL}" )
-    if ! "${QEXE}" "${args[@]}" chipinfo >"${out}" 2>&1; then
+    # The serial must follow the verb: qdl's verb dispatcher stops
+    # scanning at the first argument without a leading dash, so the
+    # value of a preceding "-S <serial>" derails it into the flash
+    # parser. The chipinfo subcommand parses -S itself.
+    if ! "${QEXE}" "${QDLDBG[@]}" chipinfo "${args[@]}" >"${out}" 2>&1; then
         if grep -qi "already in Firehose mode" "${out}"; then
             echo "programmer already running; chipinfo needs a fresh Sahara device" >&2
             exit ${SKIP}

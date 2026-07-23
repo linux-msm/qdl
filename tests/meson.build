@@ -61,6 +61,32 @@ foreach s : hil_steps
   )
 endforeach
 
+# VIP-mode suite for secured boards: list and chipinfo are reused from
+# test_hil.sh; the sign-and-flash step lives in test_hil_vip.sh and
+# additionally requires QDL_HIL_SECTOOLS/SECPROFILE/SECKEYS. Run with:
+#   meson test -C build --suite hil-vip
+# The suites share the fail-fast sentinel, so run one suite at a time.
+hil_vip_steps = [
+  ['list devices',    'list',       'test_hil.sh',     110],
+  ['chipinfo',        'chipinfo',   'test_hil.sh',     105],
+  ['sign and flash',  'sign_flash', 'test_hil_vip.sh', 100],
+]
+
+foreach s : hil_vip_steps
+  test(
+    'HIL-VIP ' + s[0],
+    find_program('bash'),
+    args: [meson.current_source_dir() / s[2],
+           '--builddir', meson.project_build_root(),
+           '--step', s[1]],
+    depends: [qdl_exe],
+    suite: 'hil-vip',
+    is_parallel: false,
+    priority: s[3],
+    timeout: 1800,
+  )
+endforeach
+
 # --- unit tests (cmocka) ---
 if cmocka_dep.found()
   test_flashmap = executable('test_flashmap',
