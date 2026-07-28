@@ -895,6 +895,8 @@ static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
 		break;
 	default:
 		ux_err("flash input must be contents.xml, flashmap.json, or a zip containing flashmap.json\n");
+		if (!qdl_zip_supported())
+			ux_err("note: this qdl was built without zip-container support\n");
 		ret = -1;
 		break;
 	}
@@ -931,6 +933,11 @@ static int qdl_create_zip(int argc, char **argv)
 	}
 
 	ux_init();
+
+	if (!qdl_zip_supported()) {
+		ux_err("create-zip requires zip-container support, which this qdl was built without\n");
+		return 1;
+	}
 
 	filename = qdl_split_specifier(argv[2], &specifier);
 	if (!filename) {

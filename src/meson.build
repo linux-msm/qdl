@@ -13,8 +13,17 @@ lib_sources = files(
   'io.c', 'patch.c',
   'program.c', 'read.c', 'sahara_config.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
   'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c', 'contents.c', 'pathbuf.c',
-  'zipper.c',
 )
+
+# Zip container support: reading flash bundles (file_zip.c) and the
+# create-zip subcommand (zipper.c) both need libzip. Without it,
+# file_nozip.c implements the same entry points as inert stubs.
+if libzip_dep.found()
+  common_sources += files('file_zip.c')
+  lib_sources += files('zipper.c')
+else
+  common_sources += files('file_nozip.c')
+endif
 
 # qdl: the full flashing tool (shared sources plus the CLI front-end).
 qdl_sources = lib_sources + files('qdl.c')

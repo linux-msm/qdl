@@ -21,7 +21,7 @@ endif
 # Dependencies
 libusb_dep = dependency('libusb-1.0')
 libxml_dep = dependency('libxml-2.0')
-libzip_dep = dependency('libzip')
+libzip_dep = dependency('libzip', required: get_option('zip-container'))
 help2man = find_program('help2man', required: false)
 cmocka_dep = dependency('cmocka', required: get_option('tests'))
 
@@ -43,14 +43,22 @@ if host_machine.system() == 'windows'
   ]
 endif
 
-common_dep = [libusb_dep, libxml_dep, libzip_dep, ws2_dep, setupapi_dep]
+common_dep = [libusb_dep, libxml_dep, ws2_dep, setupapi_dep]
+compile_view_deps = [libusb_dep, libxml_dep]
+
+# Zip container support is optional; the src subdirectory swaps the
+# libzip-backed sources for no-zip stubs when it is disabled.
+if libzip_dep.found()
+  common_dep += libzip_dep
+  compile_view_deps += libzip_dep
+endif
 
 # Compile-only view of common_dep (includes + cflags, no link args).
 # Used on executables so their own sources see the headers, while link
 # args propagate exactly once through the static library below, avoiding
 # duplicate "-l..." entries on the link line.
 common_compile_dep = []
-foreach d : [libusb_dep, libxml_dep, libzip_dep]
+foreach d : compile_view_deps
   common_compile_dep += d.partial_dependency(compile_args: true, includes: true)
 endforeach
 
