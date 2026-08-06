@@ -4,6 +4,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <string.h>
@@ -12,6 +13,8 @@
 
 #include <err.h>
 #include <sys/stat.h>
+#include <termios.h>
+#include <unistd.h>
 
 #define O_BINARY 0
 
@@ -48,6 +51,59 @@ static inline bool path_is_absolute(const char *path)
 		return false;
 	return (isalpha((unsigned char)path[0]) && path[1] == ':') ||
 	       (path[0] == '\\' && path[1] == '\\');
+#endif
+}
+
+/**
+ * qdl_open_device_node() - open a device node for binary protocol traffic
+ * @path: device node to open, e.g. "/dev/mhi0_QAIC_SAHARA" or "/dev/ttyUSB0"
+ *
+ * Opens @path read-write in binary mode, so that the Windows CRT does not
+ * rewrite 0x0a on the way out or end a read at the first 0x1a.
+ *
+ * Serial ports arrive in canonical mode, where the line discipline echoes
+ * input and rewrites the stream; a protocol carrying binary payloads cannot
+ * survive that, so a node that turns out to be a terminal is switched to raw
+ * mode. Nodes that are not terminals - character devices such as the MHI
+ * Sahara endpoints - pass data through untouched and need no such setup.
+ *
+ * Returns: an open file descriptor, or -1 with errno set on failure.
+ */
+static inline int qdl_open_device_node(const char *path)
+{
+	int fd;
+#ifndef _WIN32
+	struct termios tio;
+	int saved_errno;
+
+	fd = open(path, O_RDWR | O_BINARY);
+	if (fd < 0)
+		return -1;
+
+	if (!isatty(fd))
+		return fd;
+
+	if (tcgetattr(fd, &tio) < 0)
+		goto err_close;
+
+	cfmakeraw(&tio);
+
+	if (tcsetattr(fd, TCSANOW, &tio) < 0)
+		goto err_close;
+
+	return fd;
+
+err_close:
+	saved_errno = errno;
+	close(fd);
+	errno = saved_errno;
+	return -1;
+#else
+	fd = open(path, O_RDWR | O_BINARY);
+	if (fd < 0)
+		return -1;
+
+	return fd;
 #endif
 }
 

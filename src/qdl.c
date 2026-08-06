@@ -702,9 +702,9 @@ static int qdl_ks(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	qdl.fd = open(dev_node, O_RDWR);
+	qdl.fd = qdl_open_device_node(dev_node);
 	if (qdl.fd < 0) {
-		ux_err("unable to open %s\n", dev_node);
+		ux_err("unable to open %s: %s\n", dev_node, strerror(errno));
 		ret = 1;
 		goto out;
 	}
