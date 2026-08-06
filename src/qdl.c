@@ -360,7 +360,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s chipinfo\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
-	fprintf(out, "       %s ks -p <sahara-dev-node> -s <id:file-path>...\n", __progname);
+	fprintf(out, "       %s ks [-p <sahara-dev-node> | --serial=T] -s <id:file-path>...\n", __progname);
 	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", __progname);
 	fprintf(out, "       %s create-zip <zipfile> <contents>[::<specifier>]\n", __progname);
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
@@ -388,7 +388,8 @@ static void print_usage(FILE *out)
 	fprintf(out, "          \t\tnumber S, the number of sectors to follow L, or partition by \"name\"\n");
 	fprintf(out, " <ramdump-path>\t\tpath where ramdump should stored\n");
 	fprintf(out, " <segment-filter>\toptional glob-pattern to select which segments to ramdump\n");
-	fprintf(out, " <sahara-dev-node>\tSahara device node, e.g. /dev/mhi0_QAIC_SAHARA (ks)\n");
+	fprintf(out, " <sahara-dev-node>\tSahara device node, e.g. /dev/mhi0_QAIC_SAHARA (ks);\n");
+	fprintf(out, "                 \tomit to use the selected device backend (ks)\n");
 	fprintf(out, " <id:file-path>\t\tmap a Sahara image id to a host file, repeatable (ks)\n");
 	fprintf(out, " <flashmap>\tflashmap JSON file, or ZIP archive with flashmap.json\n");
 	fprintf(out, " <contents>\tcontents XML file\n");
@@ -434,6 +435,7 @@ static int qdl_list(FILE *out)
 enum {
 	OPT_BACKEND = 0x100,
 	OPT_SKIPBLOCK,
+	OPT_SERIAL,
 };
 
 static int qdl_ramdump(int argc, char **argv)
@@ -610,10 +612,15 @@ out_cleanup:
 /*
  * Sahara kickstart ("ks") subcommand.
  *
- * Kickstart talks to a kernel-provided Sahara device node (such as
- * /dev/mhi0_QAIC_SAHARA) with plain read()/write() rather than going through
- * USB/QUD, so it plugs raw-fd hooks into the device read/write vtable instead
- * of allocating a backend via qdl_init().
+ * Kickstart serves Sahara images to devices that fetch their firmware from the
+ * host rather than from local storage, and stops once Sahara is done: no
+ * Firehose programmer is involved and nothing is written to storage.
+ *
+ * Two transports are available. A kernel-provided Sahara device node (such as
+ * /dev/mhi0_QAIC_SAHARA) is selected with -p and driven with plain
+ * read()/write() through the raw-fd hooks below. When -p is omitted the same
+ * backends the other subcommands use are allocated instead, so an EDL device
+ * on the USB bus can be kickstarted directly.
  */
 static int ks_read(struct qdl_device *qdl, void *buf, size_t len,
 		   unsigned int timeout __unused)
@@ -627,19 +634,49 @@ static int ks_write(struct qdl_device *qdl, const void *buf, size_t len,
 	return write(qdl->fd, buf, len);
 }
 
+/**
+ * ks_add_mapping() - record a "<id>:<path>" image mapping
+ * @arg: option argument to parse
+ * @mappings: image array to populate, indexed by Sahara image id
+ *
+ * Returns: 0 on success, -1 on failure.
+ */
+static int ks_add_mapping(const char *arg, struct sahara_image *mappings)
+{
+	const char *filename;
+	const char *colon;
+	long file_id;
+
+	file_id = strtol(arg, NULL, 10);
+	colon = strchr(arg, ':');
+	if (file_id < 0 || file_id >= MAPPING_SZ || !colon) {
+		ux_err("invalid sahara mapping \"%s\", expected <id:path> with id in 0..%d\n",
+		       arg, MAPPING_SZ - 1);
+		return -1;
+	}
+
+	filename = colon + 1;
+	if (load_sahara_image(NULL, filename, &mappings[file_id]) < 0)
+		return -1;
+
+	ux_debug("mapped sahara image id %ld to %s\n", file_id, filename);
+
+	return 0;
+}
+
 static int qdl_ks(int argc, char **argv)
 {
 	struct sahara_image mappings[MAPPING_SZ] = {};
-	struct qdl_device qdl = {
+	struct qdl_device node_dev = {
 		.fd = -1,
 		.read = ks_read,
 		.write = ks_write,
 	};
+	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_AUTO;
+	struct qdl_device *qdl = NULL;
 	bool found_mapping = false;
 	const char *dev_node = NULL;
-	const char *filename;
-	long file_id;
-	char *colon;
+	char *serial = NULL;
 	int ret = 0;
 	int opt;
 
@@ -648,6 +685,8 @@ static int qdl_ks(int argc, char **argv)
 		{"version", no_argument, 0, 'v'},
 		{"port", required_argument, 0, 'p'},
 		{"sahara", required_argument, 0, 's'},
+		{"serial", required_argument, 0, OPT_SERIAL},
+		{"backend", required_argument, 0, OPT_BACKEND},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
@@ -663,22 +702,19 @@ static int qdl_ks(int argc, char **argv)
 		case 'p':
 			dev_node = optarg;
 			break;
+		case OPT_SERIAL:
+			serial = optarg;
+			break;
+		case OPT_BACKEND:
+			if (decode_backend(optarg, &qdl_dev_type) < 0)
+				errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
+			break;
 		case 's':
-			file_id = strtol(optarg, NULL, 10);
-			colon = strchr(optarg, ':');
-			if (file_id < 0 || file_id >= MAPPING_SZ || !colon) {
-				ux_err("invalid sahara mapping \"%s\", expected <id:path> with id in 0..%d\n",
-				       optarg, MAPPING_SZ - 1);
-				ret = 1;
-				goto out;
-			}
-			filename = colon + 1;
-			if (load_sahara_image(NULL, filename, &mappings[file_id]) < 0) {
+			if (ks_add_mapping(optarg, mappings) < 0) {
 				ret = 1;
 				goto out;
 			}
 			found_mapping = true;
-			ux_debug("mapped sahara image id %ld to %s\n", file_id, filename);
 			break;
 		case 'h':
 			print_usage(stdout);
@@ -690,9 +726,19 @@ static int qdl_ks(int argc, char **argv)
 		}
 	}
 
-	/* A device node (-p) and at least one image mapping (-s) are required */
-	if (!dev_node || !found_mapping) {
+	/* At least one image mapping (-s) is required */
+	if (!found_mapping) {
 		print_usage(stderr);
+		ret = 1;
+		goto out;
+	}
+
+	/*
+	 * -p names the transport explicitly, so device selection options that
+	 * only apply to the enumerated backends would be silently ignored.
+	 */
+	if (dev_node && (serial || qdl_dev_type != QDL_DEVICE_AUTO)) {
+		ux_err("--port cannot be combined with --serial or --backend\n");
 		ret = 1;
 		goto out;
 	}
@@ -702,17 +748,38 @@ static int qdl_ks(int argc, char **argv)
 	if (qdl_debug)
 		print_version();
 
-	qdl.fd = qdl_open_device_node(dev_node);
-	if (qdl.fd < 0) {
-		ux_err("unable to open %s: %s\n", dev_node, strerror(errno));
-		ret = 1;
-		goto out;
+	if (dev_node) {
+		node_dev.fd = qdl_open_device_node(dev_node);
+		if (node_dev.fd < 0) {
+			ux_err("unable to open %s: %s\n", dev_node, strerror(errno));
+			ret = 1;
+			goto out;
+		}
+		qdl = &node_dev;
+	} else {
+		qdl = qdl_init(qdl_dev_type);
+		if (!qdl) {
+			ux_err("backend not available\n");
+			ret = 1;
+			goto out;
+		}
+
+		if (qdl_open(qdl, serial)) {
+			ret = 1;
+			goto out_cleanup;
+		}
 	}
 
-	if (sahara_run(&qdl, mappings, NULL, NULL) < 0)
+	if (sahara_run(qdl, mappings, NULL, NULL) < 0)
 		ret = 1;
 
-	close(qdl.fd);
+out_cleanup:
+	if (dev_node)
+		close(node_dev.fd);
+	else if (qdl) {
+		qdl_close(qdl);
+		qdl_deinit(qdl);
+	}
 out:
 	sahara_images_free(mappings, MAPPING_SZ);
 	return ret;
