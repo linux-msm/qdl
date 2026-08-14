@@ -497,15 +497,27 @@ err_free_doc:
 	return -1;
 }
 
-static int contents_find_programmers(struct contents *contents, struct sahara_image *images)
+static int contents_find_programmers(struct contents *contents,
+				     struct contents_filter *filter,
+				     struct sahara_image *images)
 {
-	struct contents_filter filter = { .contents = contents };
+	struct contents_filter default_filter = { .contents = contents };
 	struct contents_entry *entry;
 	struct sahara_image blob;
 	int ret;
 
+	if (!filter)
+		filter = &default_filter;
+
 	list_for_each_entry(entry, &contents->entries, node) {
 		if (entry->file_type != CONTENTS_FILE_PROGRAMMER_XML)
+			continue;
+		if (filter->storage_type != QDL_STORAGE_UNKNOWN &&
+		    entry->storage_type != QDL_STORAGE_UNKNOWN &&
+		    entry->storage_type != filter->storage_type)
+			continue;
+		if (entry->flavor && filter->flavor &&
+		    strcmp(entry->flavor, filter->flavor))
 			continue;
 
 		ret = load_sahara_image(NULL, qdl_pathbuf_str(&entry->path), &blob);
@@ -514,7 +526,7 @@ static int contents_find_programmers(struct contents *contents, struct sahara_im
 			continue;
 		}
 
-		ret = decode_sahara_config(&blob, images, &filter);
+		ret = decode_sahara_config(&blob, images, filter);
 		if (ret == 0) {
 			ux_err("%s is not a programmer xml\n", qdl_pathbuf_str(&entry->path));
 			sahara_images_free(&blob, 1);
@@ -529,6 +541,13 @@ static int contents_find_programmers(struct contents *contents, struct sahara_im
 
 	list_for_each_entry(entry, &contents->entries, node) {
 		if (entry->file_type != CONTENTS_FILE_DEVICE_PROGRAMMER)
+			continue;
+		if (filter->storage_type != QDL_STORAGE_UNKNOWN &&
+		    entry->storage_type != QDL_STORAGE_UNKNOWN &&
+		    entry->storage_type != filter->storage_type)
+			continue;
+		if (entry->flavor && filter->flavor &&
+		    strcmp(entry->flavor, filter->flavor))
 			continue;
 
 		if (entry->firehose_type == FIREHOSE_TYPE_LITE)
@@ -888,7 +907,8 @@ int contents_load(struct list_head *ops, const char *filename, char *specifier,
 		goto out_free_contents;
 	}
 
-	ret = contents_find_programmers(&contents, images);
+	filter.contents = &contents;
+	ret = contents_find_programmers(&contents, &filter, images);
 	if (ret < 0)
 		goto out_free_contents;
 
@@ -935,6 +955,51 @@ int contents_load(struct list_head *ops, const char *filename, char *specifier,
 			}
 		}
 	}
+
+out_free_contents:
+	for (flavor_idx = 0; flavor_idx < contents.num_flavors; flavor_idx++)
+		free(contents.flavors[flavor_idx]);
+	free(contents.flavors);
+
+	list_for_each_entry_safe(entry, next, &contents.entries, node) {
+		free(entry->filename);
+		free(entry->flavor);
+		free(entry);
+	}
+	free(selectors);
+
+	return ret;
+}
+
+int contents_load_programmers(const char *filename, char *specifier,
+			      struct sahara_image *images)
+{
+	struct contents_filter filter = {};
+	struct contents_selector *selectors = NULL;
+	struct contents_entry *entry;
+	struct contents_entry *next;
+	struct contents contents = {};
+	size_t flavor_idx;
+	int ret;
+
+	list_init(&contents.entries);
+	ret = contents_load_xml(&contents, filename);
+	if (ret < 0)
+		goto out_free_contents;
+
+	ret = contents_decode_selectors(&contents, specifier, &selectors);
+	if (ret < 0)
+		goto out_free_contents;
+	if (ret != 1) {
+		ux_err("select exactly one storage/flavor combination for Sahara archive creation\n");
+		ret = -1;
+		goto out_free_contents;
+	}
+
+	filter.contents = &contents;
+	filter.storage_type = selectors[0].storage_type;
+	filter.flavor = selectors[0].flavor;
+	ret = contents_find_programmers(&contents, &filter, images);
 
 out_free_contents:
 	for (flavor_idx = 0; flavor_idx < contents.num_flavors; flavor_idx++)

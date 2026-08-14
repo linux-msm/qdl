@@ -461,7 +461,7 @@ static void test_find_programmers_prefers_programmer_xml(void **state)
 
 	init_contents(&contents);
 	assert_int_equal(contents_load_xml(&contents, fixture->contents_xml), 0);
-	assert_int_equal(contents_find_programmers(&contents, images), 0);
+	assert_int_equal(contents_find_programmers(&contents, NULL, images), 0);
 	assert_int_equal(mock_decode_call_count, 1);
 	assert_int_equal(mock_load_call_count, 1);
 	assert_non_null(strstr(mock_last_load_filename, "programmer.xml"));
@@ -480,7 +480,7 @@ static void test_find_programmers_falls_back_to_non_lite_device_programmer(void 
 
 	init_contents(&contents);
 	assert_int_equal(contents_load_xml(&contents, fixture->contents_xml), 0);
-	assert_int_equal(contents_find_programmers(&contents, images), 0);
+	assert_int_equal(contents_find_programmers(&contents, NULL, images), 0);
 	assert_int_equal(mock_decode_call_count, 0);
 	assert_int_equal(mock_load_call_count, 1);
 	assert_non_null(strstr(mock_last_load_filename, "prog_firehose_ddr.elf"));
@@ -499,7 +499,7 @@ static void test_find_programmers_rejects_lite_only_device_programmer(void **sta
 
 	init_contents(&contents);
 	assert_int_equal(contents_load_xml(&contents, fixture->contents_xml), 0);
-	assert_int_equal(contents_find_programmers(&contents, images), -1);
+	assert_int_equal(contents_find_programmers(&contents, NULL, images), -1);
 	assert_int_equal(mock_decode_call_count, 0);
 	assert_int_equal(mock_load_call_count, 0);
 
