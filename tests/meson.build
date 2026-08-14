@@ -14,6 +14,14 @@ test(
   suite: 'integration',
 )
 
+test(
+  'Sahara archive generation',
+  find_program('python3'),
+  args: [meson.current_source_dir() / 'test_sahara_archive.py', '--builddir', meson.project_build_root()],
+  depends: [qdl_exe],
+  suite: 'integration',
+)
+
 # --- hardware-in-the-loop tests ---
 # Each step is a separate test in the "hil" suite. Run explicitly against an
 # attached EDL device with:
