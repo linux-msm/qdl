@@ -438,6 +438,88 @@ enum {
 	OPT_SERIAL,
 };
 
+/* Results of qdl_common_opt() for options every subcommand shares. */
+enum {
+	QDL_OPT_HANDLED,
+	QDL_OPT_EXIT_OK,
+	QDL_OPT_EXIT_FAIL,
+};
+
+/* Long options for subcommands that take no extra options. */
+static const struct option qdl_common_options[] = {
+	{"debug", no_argument, 0, 'd'},
+	{"version", no_argument, 0, 'v'},
+	{"serial", required_argument, 0, 'S'},
+	{"backend", required_argument, 0, OPT_BACKEND},
+	{"help", no_argument, 0, 'h'},
+	{0, 0, 0, 0}
+};
+
+/*
+ * Handle the option cases shared by every subcommand: --debug,
+ * --version, --serial, --backend and --help, plus the unknown-option
+ * fallback. Returns QDL_OPT_HANDLED when parsing should continue, or
+ * QDL_OPT_EXIT_OK / QDL_OPT_EXIT_FAIL when the caller should return
+ * with success / failure.
+ */
+static int qdl_common_opt(int opt, char **serial, enum QDL_DEVICE_TYPE *dev_type)
+{
+	switch (opt) {
+	case 'd':
+		qdl_debug = true;
+		return QDL_OPT_HANDLED;
+	case 'v':
+		print_version();
+		return QDL_OPT_EXIT_OK;
+	case 'S':
+	case OPT_SERIAL:
+		*serial = optarg;
+		return QDL_OPT_HANDLED;
+	case OPT_BACKEND:
+		if (decode_backend(optarg, dev_type) < 0)
+			errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
+		return QDL_OPT_HANDLED;
+	case 'h':
+		print_usage(stdout);
+		return QDL_OPT_EXIT_OK;
+	default:
+		print_usage(stderr);
+		return QDL_OPT_EXIT_FAIL;
+	}
+}
+
+/*
+ * Common device session setup for the subcommands: initialize the
+ * requested backend and open the (optionally serial-selected) device.
+ * Returns NULL with the error already reported on failure.
+ */
+static struct qdl_device *qdl_session_open(enum QDL_DEVICE_TYPE dev_type, const char *serial)
+{
+	struct qdl_device *qdl;
+
+	qdl = qdl_init(dev_type);
+	if (!qdl) {
+		ux_err("backend not available\n");
+		return NULL;
+	}
+
+	if (qdl_debug)
+		print_version();
+
+	if (qdl_open(qdl, serial)) {
+		qdl_deinit(qdl);
+		return NULL;
+	}
+
+	return qdl;
+}
+
+static void qdl_session_close(struct qdl_device *qdl)
+{
+	qdl_close(qdl);
+	qdl_deinit(qdl);
+}
+
 static int qdl_ramdump(int argc, char **argv)
 {
 	struct qdl_device *qdl;
@@ -459,30 +541,16 @@ static int qdl_ramdump(int argc, char **argv)
 	};
 
 	while ((opt = getopt_long(argc, argv, "dvo:S:h", options, NULL)) != -1) {
-		switch (opt) {
-		case 'd':
-			qdl_debug = true;
-			break;
-		case 'v':
-			print_version();
-			return 0;
-		case 'o':
+		if (opt == 'o') {
 			ramdump_path = optarg;
-			break;
-		case 'S':
-			serial = optarg;
-			break;
-		case OPT_BACKEND:
-			if (decode_backend(optarg, &qdl_dev_type) < 0)
-				errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
-			break;
-		case 'h':
-			print_usage(stdout);
-			return 0;
-		default:
-			print_usage(stderr);
-			return 1;
+			continue;
 		}
+
+		ret = qdl_common_opt(opt, &serial, &qdl_dev_type);
+		if (ret == QDL_OPT_EXIT_OK)
+			return 0;
+		if (ret == QDL_OPT_EXIT_FAIL)
+			return 1;
 	}
 
 	if (optind < argc)
@@ -501,79 +569,37 @@ static int qdl_ramdump(int argc, char **argv)
 		return 1;
 	}
 
-	qdl = qdl_init(qdl_dev_type);
-	if (!qdl) {
-		ux_err("backend not available\n");
+	qdl = qdl_session_open(qdl_dev_type, serial);
+	if (!qdl)
 		return 1;
-	}
 
-	if (qdl_debug)
-		print_version();
+	ret = sahara_run(qdl, NULL, ramdump_path, filter) < 0 ? 1 : 0;
 
-	ret = qdl_open(qdl, serial);
-	if (ret) {
-		ret = 1;
-		goto out_cleanup;
-	}
-
-	ret = sahara_run(qdl, NULL, ramdump_path, filter);
-	if (ret < 0) {
-		ret = 1;
-		goto out_cleanup;
-	}
-
-out_cleanup:
-	qdl_close(qdl);
-	qdl_deinit(qdl);
+	qdl_session_close(qdl);
 
 	return ret;
 }
 
 /*
- * Chip identity ("chipinfo") subcommand.
- *
- * Enters Sahara command mode to read and print the device's serial number,
- * hardware ID (MSM/OEM/model) and OEM PK hash, then resets the device.
+ * Shared entry point for Sahara-only subcommands that take no options
+ * beyond the common set and no positional arguments: parse the options,
+ * open the device session and hand it to @run. Returns the subcommand
+ * exit code; @run reports failure with a negative return value.
  */
-static int qdl_chipinfo(int argc, char **argv)
+static int qdl_sahara_cmd(int argc, char **argv, int (*run)(struct qdl_device *qdl))
 {
 	struct qdl_device *qdl;
 	char *serial = NULL;
 	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_AUTO;
-	int ret = 0;
+	int ret;
 	int opt;
 
-	static struct option options[] = {
-		{"debug", no_argument, 0, 'd'},
-		{"version", no_argument, 0, 'v'},
-		{"serial", required_argument, 0, 'S'},
-		{"backend", required_argument, 0, OPT_BACKEND},
-		{"help", no_argument, 0, 'h'},
-		{0, 0, 0, 0}
-	};
-
-	while ((opt = getopt_long(argc, argv, "dvS:h", options, NULL)) != -1) {
-		switch (opt) {
-		case 'd':
-			qdl_debug = true;
-			break;
-		case 'v':
-			print_version();
+	while ((opt = getopt_long(argc, argv, "dvS:h", qdl_common_options, NULL)) != -1) {
+		ret = qdl_common_opt(opt, &serial, &qdl_dev_type);
+		if (ret == QDL_OPT_EXIT_OK)
 			return 0;
-		case 'S':
-			serial = optarg;
-			break;
-		case OPT_BACKEND:
-			if (decode_backend(optarg, &qdl_dev_type) < 0)
-				errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
-			break;
-		case 'h':
-			print_usage(stdout);
-			return 0;
-		default:
-			print_usage(stderr);
+		if (ret == QDL_OPT_EXIT_FAIL)
 			return 1;
-		}
 	}
 
 	if (optind != argc) {
@@ -583,28 +609,13 @@ static int qdl_chipinfo(int argc, char **argv)
 
 	ux_init();
 
-	qdl = qdl_init(qdl_dev_type);
-	if (!qdl) {
-		ux_err("backend not available\n");
+	qdl = qdl_session_open(qdl_dev_type, serial);
+	if (!qdl)
 		return 1;
-	}
 
-	if (qdl_debug)
-		print_version();
+	ret = run(qdl) < 0 ? 1 : 0;
 
-	ret = qdl_open(qdl, serial);
-	if (ret) {
-		ret = 1;
-		goto out_cleanup;
-	}
-
-	ret = sahara_chipinfo(qdl);
-	if (ret < 0)
-		ret = 1;
-
-out_cleanup:
-	qdl_close(qdl);
-	qdl_deinit(qdl);
+	qdl_session_close(qdl);
 
 	return ret;
 }
@@ -693,21 +704,8 @@ static int qdl_ks(int argc, char **argv)
 
 	while ((opt = getopt_long(argc, argv, "dvp:s:h", options, NULL)) != -1) {
 		switch (opt) {
-		case 'd':
-			qdl_debug = true;
-			break;
-		case 'v':
-			print_version();
-			goto out;
 		case 'p':
 			dev_node = optarg;
-			break;
-		case OPT_SERIAL:
-			serial = optarg;
-			break;
-		case OPT_BACKEND:
-			if (decode_backend(optarg, &qdl_dev_type) < 0)
-				errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
 			break;
 		case 's':
 			if (ks_add_mapping(optarg, mappings) < 0) {
@@ -716,13 +714,17 @@ static int qdl_ks(int argc, char **argv)
 			}
 			found_mapping = true;
 			break;
-		case 'h':
-			print_usage(stdout);
-			goto out;
 		default:
-			print_usage(stderr);
-			ret = 1;
-			goto out;
+			ret = qdl_common_opt(opt, &serial, &qdl_dev_type);
+			if (ret == QDL_OPT_EXIT_OK) {
+				ret = 0;
+				goto out;
+			}
+			if (ret == QDL_OPT_EXIT_FAIL) {
+				ret = 1;
+				goto out;
+			}
+			ret = 0;
 		}
 	}
 
@@ -745,10 +747,10 @@ static int qdl_ks(int argc, char **argv)
 
 	ux_init();
 
-	if (qdl_debug)
-		print_version();
-
 	if (dev_node) {
+		if (qdl_debug)
+			print_version();
+
 		node_dev.fd = qdl_open_device_node(dev_node);
 		if (node_dev.fd < 0) {
 			ux_err("unable to open %s: %s\n", dev_node, strerror(errno));
@@ -757,29 +759,20 @@ static int qdl_ks(int argc, char **argv)
 		}
 		qdl = &node_dev;
 	} else {
-		qdl = qdl_init(qdl_dev_type);
+		qdl = qdl_session_open(qdl_dev_type, serial);
 		if (!qdl) {
-			ux_err("backend not available\n");
 			ret = 1;
 			goto out;
-		}
-
-		if (qdl_open(qdl, serial)) {
-			ret = 1;
-			goto out_cleanup;
 		}
 	}
 
 	if (sahara_run(qdl, mappings, NULL, NULL) < 0)
 		ret = 1;
 
-out_cleanup:
 	if (dev_node)
 		close(node_dev.fd);
-	else if (qdl) {
-		qdl_close(qdl);
-		qdl_deinit(qdl);
-	}
+	else
+		qdl_session_close(qdl);
 out:
 	sahara_images_free(mappings, MAPPING_SZ);
 	return ret;
@@ -1364,7 +1357,7 @@ int main(int argc, char **argv)
 		if (!strcmp(argv[i], "ramdump"))
 			return qdl_ramdump(argc - i, argv + i);
 		if (!strcmp(argv[i], "chipinfo"))
-			return qdl_chipinfo(argc - i, argv + i);
+			return qdl_sahara_cmd(argc - i, argv + i, sahara_chipinfo);
 		if (!strcmp(argv[i], "ks"))
 			return qdl_ks(argc - i, argv + i);
 		if (!strcmp(argv[i], "create-zip"))
