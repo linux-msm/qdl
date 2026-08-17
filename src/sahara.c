@@ -109,6 +109,8 @@ typedef struct {
 #define DEBUG_BLOCK_SIZE (512u * 1024u)
 
 #define SAHARA_CMD_TIMEOUT_MS	1000
+#define SAHARA_RESET_RETRIES	5
+#define SAHARA_RESET_VERIFY_TIMEOUT_MS	3000
 
 struct sahara_pkt {
 	uint32_t cmd;
@@ -1129,6 +1131,154 @@ int sahara_chipinfo(struct qdl_device *qdl)
 	sahara_send_switch_mode(qdl, SAHARA_MODE_IMAGE_TX_PENDING);
 
 	return ret;
+}
+
+/*
+ * Reset the device over the Sahara protocol, from whichever Sahara state
+ * it booted into: fresh EDL (image transfer pending) or crash mode
+ * (memory debug). The HELLO is acknowledged with the mode the device
+ * asked for, so no state transition is forced before the reset command.
+ *
+ * Return: 0 when the reset was issued over Sahara, 1 when a Firehose
+ * programmer is already running (the caller should reset via Firehose
+ * instead), -1 on failure.
+ */
+int sahara_device_reset(struct qdl_device *qdl)
+{
+	struct sahara_pkt *pkt;
+	char buf[4096];
+	int n;
+	int i;
+
+	if (qdl->dev_type == QDL_DEVICE_SIM)
+		return 0;
+
+	n = qdl_read(qdl, buf, sizeof(buf), SAHARA_CMD_TIMEOUT_MS);
+
+	/* A Firehose programmer is already running; there is no Sahara here */
+	if (n >= 5 && !memcmp(buf, "<?xml", 5))
+		goto firehose;
+
+	if (n < 0) {
+		if (n != -ETIMEDOUT) {
+			ux_err("failed to read Sahara HELLO from device\n");
+			return -1;
+		}
+
+		/*
+		 * No HELLO: the QUD driver eats it on many targets, and a
+		 * previous session may have consumed it. Prod the device with
+		 * an unsolicited HELLO response: Sahara accepts it, while a
+		 * running Firehose programmer answers the non-XML input with
+		 * an error response, identifying itself for the fallback.
+		 */
+		sahara_send_hello_resp(qdl, SAHARA_VERSION,
+				       SAHARA_MODE_IMAGE_TX_PENDING);
+
+		n = qdl_read(qdl, buf, sizeof(buf), SAHARA_CMD_TIMEOUT_MS);
+		if (n >= 5 && !memcmp(buf, "<?xml", 5))
+			goto firehose;
+	} else {
+		pkt = (struct sahara_pkt *)buf;
+		if ((uint32_t)n == pkt->length && pkt->cmd == SAHARA_HELLO_CMD) {
+			ux_debug("Sahara HELLO version %u mode %u\n",
+				 pkt->hello_req.version, pkt->hello_req.mode);
+
+			/*
+			 * The target services a reset only in states where it
+			 * is valid: in image-transfer-pending state the PBL
+			 * rejects it with an end-of-image error, while command
+			 * mode accepts it. Crash-mode devices announce memory
+			 * debug and take the reset directly, as the ramdump
+			 * teardown has always relied on.
+			 */
+			if (pkt->hello_req.mode == SAHARA_MODE_MEMORY_DEBUG) {
+				sahara_send_hello_resp(qdl, pkt->hello_req.version,
+						       SAHARA_MODE_MEMORY_DEBUG);
+			} else {
+				sahara_send_hello_resp(qdl, pkt->hello_req.version,
+						       SAHARA_MODE_COMMAND);
+
+				n = qdl_read(qdl, buf, sizeof(buf),
+					     SAHARA_CMD_TIMEOUT_MS);
+				if (n < 0 || pkt->cmd != SAHARA_CMD_READY_CMD)
+					ux_debug("no CMD_READY after command mode request\n");
+			}
+		}
+		/* On any other packet, proceed straight to the reset */
+	}
+
+	/*
+	 * The reset response is the target's acknowledgment that it accepted
+	 * the request, sent just before it resets; the protocol directs the
+	 * host to resend the reset until the response arrives. The resend
+	 * matters in practice: after the HELLO exchange the target
+	 * immediately issues its first READ_DATA, which races the reset
+	 * request, so the first answer read back is often not the response.
+	 */
+	for (i = 0; i < SAHARA_RESET_RETRIES; i++) {
+		sahara_send_reset(qdl);
+
+		n = qdl_read(qdl, buf, sizeof(buf), SAHARA_CMD_TIMEOUT_MS);
+		if (n < 0) {
+			/*
+			 * A transport error other than a timeout means the
+			 * device already dropped off the bus resetting.
+			 */
+			if (n != -ETIMEDOUT)
+				break;
+			continue;
+		}
+
+		if ((size_t)n < sizeof(uint32_t) * 2)
+			continue;
+
+		pkt = (struct sahara_pkt *)buf;
+		if (pkt->cmd == SAHARA_RESET_RESP_CMD) {
+			ux_debug("Sahara reset acknowledged\n");
+			break;
+		}
+
+		/*
+		 * An invalid reset request is rejected with an end-of-image
+		 * transfer packet carrying the error status.
+		 */
+		if (pkt->cmd == SAHARA_END_OF_IMAGE_CMD) {
+			ux_err("device rejected the reset request (end-of-image status %u)\n",
+			       pkt->eoi.status);
+			return -1;
+		}
+
+		/* Some other packet crossed the reset request; resend */
+	}
+
+	if (i == SAHARA_RESET_RETRIES) {
+		ux_err("no reset response from device\n");
+		return -1;
+	}
+
+	/*
+	 * The response only acknowledges the request; verify that the device
+	 * actually went down. A PBL can tear down its Sahara session on the
+	 * reset request without resetting the SoC (observed on QRB2210),
+	 * which leaves the transport alive but the session dead. Only the
+	 * transport dropping - the handle dying with the re-enumeration -
+	 * proves the reset happened.
+	 */
+	n = qdl_read(qdl, buf, sizeof(buf), SAHARA_RESET_VERIFY_TIMEOUT_MS);
+	if (n >= 0 || n == -ETIMEDOUT) {
+		ux_err("device acknowledged the reset but did not go down; power cycle it or reset through a Firehose programmer: qdl <programmer> reset\n");
+		return -1;
+	}
+
+	ux_info("device reset via Sahara\n");
+
+	return 0;
+
+firehose:
+	ux_info("Firehose programmer is running\n");
+
+	return 1;
 }
 
 int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,

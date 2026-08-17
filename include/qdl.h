@@ -200,6 +200,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	       const char *ramdump_path,
 	       const char *ramdump_filter);
 int sahara_chipinfo(struct qdl_device *qdl);
+int sahara_device_reset(struct qdl_device *qdl);
 int load_sahara_image(struct qdl_zip *zip, const char *filename, struct sahara_image *image);
 void sahara_images_free(struct sahara_image *images, size_t count);
 void print_hex_dump(const char *prefix, const void *buf, size_t len);
