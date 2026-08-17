@@ -359,6 +359,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "       %s [options] <prog.mbn> (reset)\n", __progname);
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s chipinfo\n", __progname);
+	fprintf(out, "       %s reset\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
 	fprintf(out, "       %s ks [-p <sahara-dev-node> | --serial=T] -s <id:file-path>...\n", __progname);
 	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", __progname);
@@ -616,6 +617,27 @@ static int qdl_sahara_cmd(int argc, char **argv, int (*run)(struct qdl_device *q
 	ret = run(qdl) < 0 ? 1 : 0;
 
 	qdl_session_close(qdl);
+
+	return ret;
+}
+
+/*
+ * Device reset ("reset") subcommand body.
+ *
+ * Resets the device from whichever state it is in: over the Sahara
+ * protocol when the device sits in EDL or crash mode, falling back to a
+ * Firehose power reset when a programmer is already running. Unlike the
+ * "reset" flashing verb, no programmer needs to be uploaded.
+ */
+static int qdl_reset_run(struct qdl_device *qdl)
+{
+	int ret;
+
+	ret = sahara_device_reset(qdl);
+	if (ret == 1) {
+		ux_info("falling back to Firehose reset\n");
+		ret = firehose_reset(qdl);
+	}
 
 	return ret;
 }
@@ -1358,6 +1380,8 @@ int main(int argc, char **argv)
 			return qdl_ramdump(argc - i, argv + i);
 		if (!strcmp(argv[i], "chipinfo"))
 			return qdl_sahara_cmd(argc - i, argv + i, sahara_chipinfo);
+		if (!strcmp(argv[i], "reset"))
+			return qdl_sahara_cmd(argc - i, argv + i, qdl_reset_run);
 		if (!strcmp(argv[i], "ks"))
 			return qdl_ks(argc - i, argv + i);
 		if (!strcmp(argv[i], "create-zip"))
