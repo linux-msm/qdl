@@ -362,20 +362,37 @@ Directly providing a list of ids and filenames is cumbersome and error-prone,
 so QDL accepts a "*programmer archive*". This allows the user to use the
 tool in the same fashion as was done for single-programmer targets.
 
-The *programmer archive* is a CPIO archive containing the Sahara images to be
-loaded, identified by the filename **id[:filename]** (*filename* is optional,
-but useful for debugging). Each included file will be used to serve requests
-for the given Sahara *id*.
+The *programmer archive* contains the Sahara images to be loaded, identified by
+the Sahara *id* needed by the target.
 
-Such an archive can be created by putting the target's programmer images in an
-empty directory, then executing the following command from that directory:
+QDL can create such an archive from the same programmer descriptions accepted
+for flashing. To create an archive from a command-line Sahara image list:
 
 ```bash
-ls | cpio -o -H newc > ../programmer.cpio
+qdl create-sahara-archive programmer.bin 13:prog_firehose_ddr.elf,42:the-answer
 ```
 
-*programmer.cpio* can now be passed to QDL and the included images will be
-served in order to reach Firehose mode.
+To create an archive from a Sahara configuration XML file:
+
+```bash
+qdl create-sahara-archive programmer.bin sahara_programmer.xml
+```
+
+To create an archive from a contents XML file:
+
+```bash
+qdl create-sahara-archive programmer.bin contents.xml
+```
+
+When the contents XML describes multiple storage or flavor combinations, select
+exactly one with the same `::specifier` syntax used by `flash`:
+
+```bash
+qdl create-sahara-archive programmer.bin contents.xml::ufs
+```
+
+*programmer.bin* can now be passed to QDL and the included images will be served
+in order to reach Firehose mode.
 
 ## Collect crash dump
 

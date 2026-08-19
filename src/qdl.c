@@ -10,6 +10,7 @@
 #include <getopt.h>
 #include <libgen.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -348,6 +349,120 @@ static int decode_programmer(char *s, struct sahara_image *images)
 	return 0;
 }
 
+static char *qdl_basename_dup(const char *path)
+{
+	char *tmp;
+	char *base;
+
+	tmp = strdup(path);
+	if (!tmp)
+		return NULL;
+
+	base = basename(tmp);
+	base = base ? strdup(base) : NULL;
+	free(tmp);
+
+	return base;
+}
+
+static int sahara_archive_pad(FILE *out, size_t len)
+{
+	static const char zeros[4];
+	size_t pad = ROUND_UP(len, 4) - len;
+
+	if (!pad)
+		return 0;
+
+	return fwrite(zeros, 1, pad, out) == pad ? 0 : -1;
+}
+
+static int sahara_archive_write_entry(FILE *out, unsigned int ino, const char *name,
+				      const void *data, size_t len)
+{
+	char header[sizeof(struct cpio_newc_header) + 1];
+	size_t namesize = strlen(name) + 1;
+
+	if (len > UINT32_MAX || namesize > UINT32_MAX) {
+		ux_err("sahara archive entry \"%s\" is too large\n", name);
+		return -1;
+	}
+
+	snprintf(header, sizeof(header),
+		 "%s%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x",
+		 CPIO_MAGIC, ino, 0100644, 0, 0, 1, 0, (unsigned int)len,
+		 0, 0, 0, 0, (unsigned int)namesize, 0);
+
+	if (fwrite(header, 1, sizeof(struct cpio_newc_header), out) !=
+	    sizeof(struct cpio_newc_header))
+		return -1;
+	if (fwrite(name, 1, namesize, out) != namesize)
+		return -1;
+	if (sahara_archive_pad(out, sizeof(struct cpio_newc_header) + namesize) < 0)
+		return -1;
+	if (len && fwrite(data, 1, len, out) != len)
+		return -1;
+	if (sahara_archive_pad(out, len) < 0)
+		return -1;
+
+	return 0;
+}
+
+static int sahara_archive_write(const char *filename, const struct sahara_image *images)
+{
+	char *basename = NULL;
+	char name[128];
+	unsigned int ino = 1;
+	unsigned int count = 0;
+	FILE *out;
+	int ret = -1;
+	int i;
+
+	for (i = 1; i < MAPPING_SZ; i++) {
+		if (images[i].ptr)
+			count++;
+	}
+
+	if (!count) {
+		ux_err("no Sahara images found for archive\n");
+		return -1;
+	}
+
+	out = fopen(filename, "wb");
+	if (!out) {
+		ux_err("failed to create \"%s\": %s\n", filename, strerror(errno));
+		return -1;
+	}
+
+	for (i = 1; i < MAPPING_SZ; i++) {
+		if (!images[i].ptr)
+			continue;
+
+		free(basename);
+		basename = images[i].name ? qdl_basename_dup(images[i].name) : NULL;
+		if (basename)
+			snprintf(name, sizeof(name), "%d:%s", i, basename);
+		else
+			snprintf(name, sizeof(name), "%d", i);
+
+		if (sahara_archive_write_entry(out, ino++, name, images[i].ptr,
+					       images[i].len) < 0)
+			goto out_close;
+	}
+
+	ret = sahara_archive_write_entry(out, ino++, "TRAILER!!!", NULL, 0);
+
+out_close:
+	free(basename);
+	if (fclose(out) && ret == 0)
+		ret = -1;
+	if (ret < 0) {
+		ux_err("failed to write Sahara archive \"%s\"\n", filename);
+		remove(filename);
+	}
+
+	return ret;
+}
+
 static void print_usage(FILE *out)
 {
 	extern const char *__progname;
@@ -363,6 +478,9 @@ static void print_usage(FILE *out)
 	fprintf(out, "       %s ks [-p <sahara-dev-node> | --serial=T] -s <id:file-path>...\n", __progname);
 	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", __progname);
 	fprintf(out, "       %s create-zip <zipfile> <contents>[::<specifier>]\n", __progname);
+	fprintf(out, "       %s create-sahara-archive <archive.bin> "
+		"(<id:file>[,<id:file>...] | <sahara.xml> | <contents.xml>[::<specifier>])\n",
+		__progname);
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
 	fprintf(out, " -v, --version\t\t\tPrint the current version and exit\n");
 	fprintf(out, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
@@ -393,6 +511,7 @@ static void print_usage(FILE *out)
 	fprintf(out, " <id:file-path>\t\tmap a Sahara image id to a host file, repeatable (ks)\n");
 	fprintf(out, " <flashmap>\tflashmap JSON file, or ZIP archive with flashmap.json\n");
 	fprintf(out, " <contents>\tcontents XML file\n");
+	fprintf(out, " <archive.bin>\tSahara programmer archive to create\n");
 	fprintf(out, " <specifier>\tcomma-separated list of specifiers, such as storage type, layout, and flavors\n");
 	fprintf(out, "\n");
 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
@@ -960,6 +1079,70 @@ out_free_filename:
 	return ret ? 1 : 0;
 }
 
+static bool qdl_is_contents_xml(const char *filename)
+{
+	xmlNode *root;
+	xmlDoc *doc;
+	bool ret;
+
+	doc = xmlReadFile(filename, NULL, XML_PARSE_NONET | XML_PARSE_NOERROR | XML_PARSE_NOWARNING);
+	if (!doc)
+		return false;
+
+	root = xmlDocGetRootElement(doc);
+	ret = root && !xmlStrcmp(root->name, (xmlChar *)"contents");
+
+	xmlFreeDoc(doc);
+
+	return ret;
+}
+
+static int qdl_sahara_archive(int argc, char **argv)
+{
+	struct sahara_image images[MAPPING_SZ] = {};
+	const char *archive;
+	char *specifier;
+	char *filename;
+	int ret = 0;
+
+	if (argc != 3) {
+		print_usage(stderr);
+		return 1;
+	}
+
+	ux_init();
+
+	archive = argv[1];
+	filename = qdl_split_specifier(argv[2], &specifier);
+	if (!filename) {
+		ux_err("failed to parse Sahara archive input \"%s\"\n", argv[2]);
+		ret = -1;
+		goto out_free_images;
+	}
+
+	if (qdl_is_contents_xml(filename)) {
+		ret = contents_load_programmers(filename, specifier, images);
+	} else {
+		if (specifier) {
+			ux_err("selectors can only be used with contents.xml inputs\n");
+			ret = -1;
+		} else {
+			ret = decode_programmer(filename, images);
+		}
+	}
+	free(filename);
+	if (ret < 0)
+		goto out_free_images;
+	ret = 0;
+
+	ret = sahara_archive_write(archive, images);
+
+out_free_images:
+	sahara_images_free(images, MAPPING_SZ);
+
+	return ret ? 1 : 0;
+}
+
 static int qdl_determine_bootable(struct list_head *ops)
 {
 	struct firehose_op *op;
@@ -1369,6 +1552,8 @@ int main(int argc, char **argv)
 			return qdl_ks(argc - i, argv + i);
 		if (!strcmp(argv[i], "create-zip"))
 			return qdl_create_zip(argc - i, argv + i);
+		if (!strcmp(argv[i], "create-sahara-archive"))
+			return qdl_sahara_archive(argc - i, argv + i);
 		if (argv[i][0] != '-')
 			break;
 	}
