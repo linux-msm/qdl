@@ -20,6 +20,9 @@
 
 bool qdl_debug;
 
+/* UFS supports up to eight logical units (LUNs) per device. */
+#define QDL_UFS_LUN_COUNT 8
+
 static const char *config_programmer;
 static enum qdl_storage_type config_storage = QDL_STORAGE_UFS;
 static int config_lun;
@@ -51,7 +54,12 @@ static int qdl_plugin_config(const char *key, const char *value)
 			return -1;
 		}
 	} else if (!strcmp(key, "lun")) {
-		config_lun = atoi(value);
+		if (nbdkit_parse_int("lun", value, &config_lun) == -1)
+			return -1;
+		if (config_lun < 0 || config_lun >= QDL_UFS_LUN_COUNT) {
+			nbdkit_error("lun must be between 0 and %d", QDL_UFS_LUN_COUNT - 1);
+			return -1;
+		}
 	} else if (!strcmp(key, "debug")) {
 		qdl_debug = !strcmp(value, "true") || !strcmp(value, "1");
 	} else {
