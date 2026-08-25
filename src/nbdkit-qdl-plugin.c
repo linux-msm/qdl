@@ -217,6 +217,9 @@ static int qdl_device_setup(void)
 		goto err_close;
 	}
 
+	nbdkit_debug("serving LUN %d; sector size %zu bytes, %zu sectors",
+		     config_lun, sector_size, num_sectors);
+
 	dev = d;
 	return 0;
 
