@@ -150,6 +150,25 @@ if cmocka_dep.found()
     )
   endif
 
+  test_ufs = executable('test_ufs',
+    sources : [
+      'test_ufs.c',
+      'common.c',
+      ufs_src,
+      util_src,
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'ufs provisioning loader',
+    test_ufs,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
   test_program_load_xml = executable('test_program_load_xml',
     sources : [
       'test_program_load_xml.c',

@@ -1226,6 +1226,7 @@ static int qdl_flash(int argc, char **argv)
 	enum qdl_storage_type storage_type = QDL_STORAGE_UFS;
 	struct sahara_image sahara_images[MAPPING_SZ] = {};
 	struct list_head firehose_ops = LIST_INIT(firehose_ops);
+	struct ufs_provisioning ufs;
 	char *incdir = NULL;
 	char *serial = NULL;
 	const char *vip_generate_dir = NULL;
@@ -1265,6 +1266,8 @@ static int qdl_flash(int argc, char **argv)
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
+
+	ufs_provisioning_init(&ufs);
 
 	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:Rh", options, NULL)) != -1) {
 		switch (opt) {
@@ -1435,7 +1438,7 @@ static int qdl_flash(int argc, char **argv)
 			if (storage_type != QDL_STORAGE_UFS)
 				errx(1, "attempting to load provisioning config when storage isn't \"ufs\"");
 
-			ret = ufs_load(argv[optind], qdl_finalize_provisioning);
+			ret = ufs_load(&ufs, argv[optind], qdl_finalize_provisioning);
 			if (ret < 0)
 				errx(1, "ufs_load %s failed", argv[optind]);
 			break;
@@ -1521,8 +1524,8 @@ static int qdl_flash(int argc, char **argv)
 	if (ret < 0)
 		goto out_cleanup;
 
-	if (ufs_need_provisioning())
-		ret = firehose_provision(qdl, skip_reset);
+	if (ufs_need_provisioning(&ufs))
+		ret = firehose_provision(qdl, &ufs, skip_reset);
 	else
 		ret = firehose_run(qdl, &firehose_ops);
 	if (ret < 0)
@@ -1541,6 +1544,8 @@ out_cleanup:
 	sahara_images_free(sahara_images, MAPPING_SZ);
 
 	firehose_free_ops(&firehose_ops);
+
+	ufs_provisioning_cleanup(&ufs);
 
 	if (qdl) {
 		if (qdl->vip_data.state != VIP_DISABLED)
