@@ -29,6 +29,8 @@ auto-detection.
 - `programmer` - firehose programmer to upload (required)
 - `lun` - physical partition (LUN) to expose, defaults to `0`
 - `storage` - `ufs` or `emmc`, selects the firehose configuration
+- `timeout` - seconds to wait for an EDL device when setting the device up,
+  defaults to `60`. Use `0` to wait indefinitely, as `qdl` itself does
 - `debug` - set to `1` for verbose qdl logging
 
 ## Serving a LUN as a block device
@@ -54,6 +56,10 @@ that the plugin can talk to the board:
 ```bash
 nbdinfo nbd://localhost
 ```
+
+If a connection to the EDL device cannot be established within `timeout`
+seconds, the NBD client connection fails. A later NBD client connection retries
+the EDL setup, so the server can remain running while the device is connected.
 
 **3. Attach a kernel block device.** Load the `nbd` module and bind the export
 to a `/dev/nbdN` node with `nbd-client`. `-N default` selects the plugin's

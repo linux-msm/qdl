@@ -33,9 +33,16 @@ bool qdl_debug;
 /* UFS supports up to eight logical units (LUNs) per device. */
 #define QDL_UFS_LUN_COUNT 8
 
+/* Interval between EDL device probes, matching the wait loop in usb.c */
+#define QDL_OPEN_RETRY_MS 250
+
+/* Bounded so that the millisecond deadline below cannot overflow */
+#define QDL_TIMEOUT_MAX 86400
+
 static const char *config_programmer;
 static enum qdl_storage_type config_storage = QDL_STORAGE_UFS;
 static int config_lun;
+static unsigned int config_timeout = 60;
 
 /*
  * An EDL device is programmed once per session: uploading the firehose
@@ -43,9 +50,12 @@ static int config_lun;
  * firehose. nbdkit, on the other hand, calls .open/.close several times per
  * client (NBD_OPT_INFO to query metadata, then NBD_OPT_GO for the transfer).
  *
- * So the device is set up once, on the first open, kept configured across
- * connections, and only torn down - with a reset - when the plugin unloads.
- * THREAD_MODEL_SERIALIZE_ALL_REQUESTS makes the shared state safe.
+ * So the device is set up once, kept configured across connections, and only
+ * torn down - with a reset - when the plugin unloads. A setup that fails
+ * leaves @dev NULL and is retried by the next open, so a client connecting
+ * before the board is attached costs that client an error rather than the
+ * whole export. THREAD_MODEL_SERIALIZE_ALL_REQUESTS makes the shared state
+ * safe.
  */
 static struct qdl_device *dev;
 static size_t sector_size;
@@ -72,6 +82,14 @@ static int qdl_plugin_config(const char *key, const char *value)
 			nbdkit_error("lun must be between 0 and %d", QDL_UFS_LUN_COUNT - 1);
 			return -1;
 		}
+	} else if (!strcmp(key, "timeout")) {
+		if (nbdkit_parse_unsigned("timeout", value, &config_timeout) == -1)
+			return -1;
+		if (config_timeout > QDL_TIMEOUT_MAX) {
+			nbdkit_error("timeout must be %d seconds or less",
+				     QDL_TIMEOUT_MAX);
+			return -1;
+		}
 	} else if (!strcmp(key, "debug")) {
 		ret = nbdkit_parse_bool(value);
 		if (ret == -1)
@@ -95,7 +113,72 @@ static int qdl_plugin_config_complete(void)
 	return 0;
 }
 
-/* Upload the programmer and configure firehose. Runs once, on the first open. */
+/*
+ * Wait for an EDL device to appear for at most config_timeout seconds or
+ * indefinitely if config_timeout is 0.
+ *
+ * qdl_open() is not suitable here because of the usb_open() loop behind it:
+ *
+ *  - waits forever until a device appears with no timeout.
+ *  - sleeps with usleep(), which nbdkit cannot interrupt during shutdown.
+ *  - reports progress through ux_info() which is not visible through nbdkit.
+ *
+ * usb_open_once() makes a single attempt to open an EDL device and returns
+ * either a device handle or a failure. This lets the plugin control retries,
+ * timeout handling, interruptible sleeps and error reporting.
+ */
+static int qdl_device_open_wait(struct qdl_device *d)
+{
+	unsigned int elapsed = 0;
+	int visible = 0;
+	int ret;
+
+	if (config_timeout)
+		nbdkit_debug("waiting for an EDL device (timeout: %us)",
+			     config_timeout);
+	else
+		nbdkit_debug("waiting for an EDL device (no timeout)");
+
+	for (;;) {
+		ret = usb_open_once(d, NULL, &visible);
+		if (ret == 0)
+			return 0;
+
+		if (ret == -EIO) {
+			nbdkit_error("libusb failure while probing for an EDL device");
+			return -1;
+		}
+
+		/* A config_timeout of 0 disables the timeout entirely */
+		if (config_timeout && elapsed >= config_timeout * 1000)
+			break;
+
+		if (nbdkit_nanosleep(0, QDL_OPEN_RETRY_MS * 1000000) == -1) {
+			nbdkit_error("interrupted while waiting for an EDL device");
+			return -1;
+		}
+
+		elapsed += QDL_OPEN_RETRY_MS;
+	}
+
+	/*
+	 * A device that is visible but cannot be opened is different from one
+	 * that is absent. This usually indicates insufficient permissions or
+	 * that the device is already in use by another process.
+	 */
+	if (visible)
+		nbdkit_error("%d EDL device(s) visible after %us, none could be opened (permissions? in use?)",
+			     visible, config_timeout);
+	else
+		nbdkit_error("no EDL device found after %us", config_timeout);
+
+	return -1;
+}
+
+/*
+ * Upload the programmer and configure firehose. Runs on the first open and on
+ * each subsequent open until it succeeds.
+ */
 static int qdl_device_setup(void)
 {
 	struct sahara_image images[MAPPING_SZ] = {};
@@ -108,10 +191,8 @@ static int qdl_device_setup(void)
 		return -1;
 	}
 
-	if (qdl_open(d, NULL)) {
-		nbdkit_error("failed to open EDL device");
+	if (qdl_device_open_wait(d) < 0)
 		goto err_deinit;
-	}
 
 	if (load_sahara_image(NULL, config_programmer,
 			      &images[SAHARA_ID_EHOSTDL_IMG]) < 0) {
