@@ -755,7 +755,7 @@ static int qdl_reset_run(struct qdl_device *qdl)
 	ret = sahara_device_reset(qdl);
 	if (ret == 1) {
 		ux_info("falling back to Firehose reset\n");
-		ret = firehose_reset(qdl);
+		ret = firehose_reset(qdl, QDL_RESET_NORMAL);
 	}
 
 	return ret;
