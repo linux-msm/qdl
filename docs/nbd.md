@@ -27,7 +27,7 @@ auto-detection.
 ## Plugin parameters
 
 - `programmer` - firehose programmer to upload (required)
-- `lun` - physical partition (LUN) to expose, defaults to `1`
+- `lun` - physical partition (LUN) to expose, defaults to `0`
 - `storage` - `ufs` or `emmc`, selects the firehose configuration
 - `debug` - set to `1` for verbose qdl logging
 
