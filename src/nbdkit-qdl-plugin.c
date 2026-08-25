@@ -13,6 +13,11 @@
 
 #define THREAD_MODEL NBDKIT_THREAD_MODEL_SERIALIZE_ALL_REQUESTS
 
+/* The .block_size callback was introduced in nbdkit 1.30 */
+#if NBDKIT_VERSION_MAJOR > 1 || NBDKIT_VERSION_MINOR >= 30
+#define QDL_HAVE_BLOCK_SIZE 1
+#endif
+
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -224,7 +229,8 @@ static int qdl_device_setup(void)
 	 * Firehose sector size detection only ever probes 512 and 4096, so
 	 * anything else means the geometry was never established. Refuse the
 	 * device here rather than serving an export whose reads and writes
-	 * would all fail their alignment check.
+	 * would all fail their alignment check, or advertising a block size
+	 * nbdkit would reject, since it requires a power of two.
 	 */
 	if (sector_size != 512 && sector_size != 4096) {
 		nbdkit_error("device reported unusable sector size %zu",
@@ -312,6 +318,20 @@ static int64_t qdl_plugin_get_size(void *handle)
 	return (int64_t)sector_size * num_sectors;
 }
 
+#ifdef QDL_HAVE_BLOCK_SIZE
+static int qdl_plugin_block_size(void *handle, uint32_t *minimum,
+				 uint32_t *preferred, uint32_t *maximum)
+{
+	(void)handle;
+
+	/* Setup rejected any sector size that is not 512 or 4096 */
+	*minimum = sector_size;
+	*preferred = sector_size;
+	*maximum = UINT32_MAX;
+	return 0;
+}
+#endif
+
 static int qdl_plugin_pread(void *handle, void *buf, uint32_t count,
 			    uint64_t offset, uint32_t flags)
 {
@@ -365,6 +385,9 @@ static struct nbdkit_plugin plugin = {
 	.open = qdl_plugin_open,
 	.close = qdl_plugin_close,
 	.get_size = qdl_plugin_get_size,
+#ifdef QDL_HAVE_BLOCK_SIZE
+	.block_size = qdl_plugin_block_size,
+#endif
 	.pread = qdl_plugin_pread,
 	.pwrite = qdl_plugin_pwrite,
 };
