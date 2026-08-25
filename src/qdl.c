@@ -475,6 +475,7 @@ static void print_usage(FILE *out)
 	fprintf(out, "       %s list\n", __progname);
 	fprintf(out, "       %s chipinfo\n", __progname);
 	fprintf(out, "       %s reset\n", __progname);
+	fprintf(out, "       %s firehose-reset [<prog.mbn>] <reset-mode>\n", __progname);
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
 	fprintf(out, "       %s ks [-p <sahara-dev-node> | --serial=T] -s <id:file-path>...\n", __progname);
 	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", __progname);
@@ -507,6 +508,8 @@ static void print_usage(FILE *out)
 	fprintf(out, "          \t\tnumber S, the number of sectors to follow L, or partition by \"name\"\n");
 	fprintf(out, " <ramdump-path>\t\tpath where ramdump should stored\n");
 	fprintf(out, " <segment-filter>\toptional glob-pattern to select which segments to ramdump\n");
+	fprintf(out, " <reset-mode>\t\tstate to leave the device in: <edl|off|system> (firehose-reset);\n");
+	fprintf(out, "             \t\t<prog.mbn> may be omitted when a programmer is already running\n");
 	fprintf(out, " <sahara-dev-node>\tSahara device node, e.g. /dev/mhi0_QAIC_SAHARA (ks);\n");
 	fprintf(out, "                 \tomit to use the selected device backend (ks)\n");
 	fprintf(out, " <id:file-path>\t\tmap a Sahara image id to a host file, repeatable (ks)\n");
@@ -757,6 +760,92 @@ static int qdl_reset_run(struct qdl_device *qdl)
 		ux_info("falling back to Firehose reset\n");
 		ret = firehose_reset(qdl, QDL_RESET_NORMAL);
 	}
+
+	return ret;
+}
+
+static int decode_reset_mode(const char *name, enum qdl_reset_mode *out)
+{
+	if (!strcmp(name, "system")) {
+		*out = QDL_RESET_NORMAL;
+		return 0;
+	}
+
+	if (!strcmp(name, "edl")) {
+		*out = QDL_RESET_TO_EDL;
+		return 0;
+	}
+
+	if (!strcmp(name, "off")) {
+		*out = QDL_RESET_POWER_OFF;
+		return 0;
+	}
+
+	return -1;
+}
+
+/*
+ * Firehose reset ("firehose-reset") subcommand.
+ *
+ * Sends a single Firehose <power> command, which the "reset" subcommand
+ * cannot express: that one resets the device from EDL over Sahara and only
+ * falls back to Firehose to perform a plain reset. Rebooting straight back
+ * into EDL, or powering the device off, is only available through Firehose.
+ *
+ * The command therefore needs a programmer running on the target. A device
+ * sitting in EDL has none, so the programmer is taken as an optional leading
+ * argument and uploaded exactly like a flashing run does; sahara_run() skips
+ * the upload by itself when the target answers in Firehose, so passing it is
+ * harmless when a previous --skip-reset run left one behind, and it can be
+ * omitted entirely when the programmer is known to be up.
+ */
+static int qdl_firehose_reset(int argc, char **argv)
+{
+	struct sahara_image sahara_images[MAPPING_SZ] = {};
+	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_AUTO;
+	enum qdl_reset_mode mode;
+	struct qdl_device *qdl;
+	char *programmer = NULL;
+	char *serial = NULL;
+	int ret;
+	int opt;
+
+	while ((opt = getopt_long(argc, argv, "dvS:h", qdl_common_options, NULL)) != -1) {
+		ret = qdl_common_opt(opt, &serial, &qdl_dev_type);
+		if (ret == QDL_OPT_EXIT_OK)
+			return 0;
+		if (ret == QDL_OPT_EXIT_FAIL)
+			return 1;
+	}
+
+	if (argc - optind == 2)
+		programmer = argv[optind++];
+
+	if (optind + 1 != argc) {
+		print_usage(stderr);
+		return 1;
+	}
+
+	if (decode_reset_mode(argv[optind], &mode) < 0)
+		errx(1, "unknown reset mode \"%s\" (expected edl|off|system)", argv[optind]);
+
+	ux_init();
+
+	if (programmer && decode_programmer(programmer, sahara_images) < 0)
+		return 1;
+
+	qdl = qdl_session_open(qdl_dev_type, serial);
+	if (!qdl) {
+		sahara_images_free(sahara_images, MAPPING_SZ);
+		return 1;
+	}
+
+	ret = sahara_run(qdl, sahara_images, NULL, NULL) < 0 ? 1 : 0;
+	if (!ret)
+		ret = firehose_reset(qdl, mode) < 0 ? 1 : 0;
+
+	qdl_session_close(qdl);
+	sahara_images_free(sahara_images, MAPPING_SZ);
 
 	return ret;
 }
@@ -1570,6 +1659,8 @@ int main(int argc, char **argv)
 			return qdl_sahara_cmd(argc - i, argv + i, sahara_chipinfo);
 		if (!strcmp(argv[i], "reset"))
 			return qdl_sahara_cmd(argc - i, argv + i, qdl_reset_run);
+		if (!strcmp(argv[i], "firehose-reset"))
+			return qdl_firehose_reset(argc - i, argv + i);
 		if (!strcmp(argv[i], "ks"))
 			return qdl_ks(argc - i, argv + i);
 		if (!strcmp(argv[i], "create-zip"))
