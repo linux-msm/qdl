@@ -11,7 +11,7 @@ lib_sources = files(
   'auto.c', 'qud.c',
   'firehose.c',
   'io.c', 'patch.c',
-  'program.c', 'read.c', 'sahara_config.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
+  'program.c', 'programmer.c', 'read.c', 'sahara_config.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
   'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c', 'contents.c', 'pathbuf.c',
 )
 
