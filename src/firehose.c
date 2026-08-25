@@ -1551,6 +1551,21 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	return 0;
 }
 
+/*
+ * Consume whatever the programmer has queued up, for callers that send a
+ * command as the first thing after the programmer starts. A programmer that
+ * is still printing its startup banner does not read its input endpoint, so
+ * the first write times out and is only retried a second later, once
+ * firehose_write() has drained the backlog itself.
+ *
+ * firehose_detect_and_configure() gets this for free from the configure
+ * exchange; callers that send nothing else need to drain explicitly.
+ */
+void firehose_drain(struct qdl_device *qdl, unsigned int timeout_ms)
+{
+	firehose_read(qdl, timeout_ms, firehose_generic_parser, NULL);
+}
+
 static const char *firehose_reset_mode_str(enum qdl_reset_mode mode)
 {
 	switch (mode) {

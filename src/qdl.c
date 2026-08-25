@@ -841,8 +841,16 @@ static int qdl_firehose_reset(int argc, char **argv)
 	}
 
 	ret = sahara_run(qdl, sahara_images, NULL, NULL) < 0 ? 1 : 0;
-	if (!ret)
+	if (!ret) {
+		/*
+		 * <power> is the only command sent here, so nothing else
+		 * consumes the banner of a programmer that just started.
+		 */
+		if (programmer)
+			firehose_drain(qdl, 1000);
+
 		ret = firehose_reset(qdl, mode) < 0 ? 1 : 0;
+	}
 
 	qdl_session_close(qdl);
 	sahara_images_free(sahara_images, MAPPING_SZ);

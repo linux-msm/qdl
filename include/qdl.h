@@ -199,6 +199,7 @@ int firehose_read_buf(struct qdl_device *qdl, struct firehose_op *read_op, void 
 /* Block-level entry points used by the nbdkit plugin */
 int firehose_open(struct qdl_device *qdl, enum qdl_storage_type storage);
 int firehose_reset(struct qdl_device *qdl, enum qdl_reset_mode mode);
+void firehose_drain(struct qdl_device *qdl, unsigned int timeout_ms);
 int firehose_getsize(struct qdl_device *qdl, int lun, size_t *sector_size,
 		     size_t *num_sectors);
 ssize_t firehose_pread(struct qdl_device *qdl, int lun, size_t sector_offset,
