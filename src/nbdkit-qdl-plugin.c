@@ -217,6 +217,18 @@ static int qdl_device_setup(void)
 		goto err_close;
 	}
 
+	/*
+	 * Firehose sector size detection only ever probes 512 and 4096, so
+	 * anything else means the geometry was never established. Refuse the
+	 * device here rather than serving an export whose reads and writes
+	 * would all fail their alignment check.
+	 */
+	if (sector_size != 512 && sector_size != 4096) {
+		nbdkit_error("device reported unusable sector size %zu",
+			     sector_size);
+		goto err_close;
+	}
+
 	nbdkit_debug("serving LUN %d; sector size %zu bytes, %zu sectors",
 		     config_lun, sector_size, num_sectors);
 
