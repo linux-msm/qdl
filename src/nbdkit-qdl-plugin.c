@@ -22,7 +22,7 @@ bool qdl_debug;
 
 static const char *config_programmer;
 static enum qdl_storage_type config_storage = QDL_STORAGE_UFS;
-static int config_lun = 1;
+static int config_lun;
 
 /*
  * An EDL device is programmed once per session: uploading the firehose
