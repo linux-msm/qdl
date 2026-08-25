@@ -27,12 +27,12 @@ jobs:
         run: |
           sudo apt-get update
 
-          sudo apt-get install -y libcmocka-dev libxml2-dev libusb-1.0-0-dev libzip-dev help2man pipx zip
+          sudo apt-get install -y libcmocka-dev libxml2-dev libusb-1.0-0-dev libzip-dev help2man pipx zip nbdkit-plugin-dev
           pipx ensurepath
           pipx install meson==1.4.0
 
       - name: Configure
-        run: meson setup build
+        run: meson setup build -Dnbdkit=enabled
 
       - name: Build
         run: meson compile -C build
