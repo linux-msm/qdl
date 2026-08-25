@@ -161,6 +161,23 @@ if cmocka_dep.found()
     include_directories : inc,
   )
 
+  test_programmer = executable('test_programmer',
+    sources : [
+      'test_programmer.c',
+      programmer_src,
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'programmer archive decoder',
+    test_programmer,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
   test(
     'ufs provisioning loader',
     test_ufs,
