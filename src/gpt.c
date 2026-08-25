@@ -5,7 +5,6 @@
 #include "firehose.h"
 #include <stdlib.h>
 #include <string.h>
-#define _FILE_OFFSET_BITS 64
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>

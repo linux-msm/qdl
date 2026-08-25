@@ -3,7 +3,6 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #define _GNU_SOURCE
-#define _FILE_OFFSET_BITS 64
 #include <limits.h>
 #include <libgen.h>
 #include <errno.h>

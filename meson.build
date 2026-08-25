@@ -4,6 +4,12 @@ project('qdl', 'c',
   meson_version: '>=1.1.0'
 )
 
+# Use 64-bit file offsets everywhere. This must be consistent across every
+# translation unit: off_t appears in shared types (e.g. struct firehose_op)
+# and in the qdl_file_seek() ABI, so a per-file definition would give
+# mismatched struct layouts on 32-bit builds.
+add_project_arguments('-D_FILE_OFFSET_BITS=64', language : 'c')
+
 # Determine version
 env_v = get_option('VERSION')
 if env_v != ''

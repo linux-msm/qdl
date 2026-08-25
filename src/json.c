@@ -33,7 +33,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <ctype.h>
-#include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -433,9 +433,14 @@ static int json_parse_number(struct json_value *value)
 	memcpy(token, input_buf + start, len);
 	token[len] = '\0';
 
-	errno = 0;
 	parsed = strtod(token, &endptr);
-	if (endptr != token + len || errno == ERANGE || !isfinite(parsed)) {
+	/*
+	 * Reject a token that was not fully consumed, and overflow (strtod
+	 * returns +/-inf, caught by !isfinite). Underflow to a subnormal or
+	 * zero also sets ERANGE but yields a finite, valid JSON number, so it
+	 * must not be rejected.
+	 */
+	if (endptr != token + len || !isfinite(parsed)) {
 		json_set_error("invalid or out-of-range number at offset %d", start);
 		free(token);
 		return -1;
@@ -553,7 +558,7 @@ static int json_parse_array(struct json_value *array)
 		ret = json_parse_value(value);
 		if (ret <= 0) {
 			json_set_error("invalid array element at offset %d", input_pos);
-			free(value);
+			json_free(value);
 			json_leave_nesting();
 			return -1;
 		}
@@ -613,7 +618,7 @@ static int json_parse_object(struct json_value *object)
 		ret = json_parse_property(value);
 		if (ret <= 0) {
 			json_set_error("invalid object property at offset %d", input_pos);
-			free(value);
+			json_free(value);
 			json_leave_nesting();
 			return -1;
 		}
@@ -675,12 +680,18 @@ static struct json_value *json_parse_internal(const char *json, size_t len)
 	struct json_value *root;
 	int ret;
 
+	json_error[0] = '\0';
+
+	if (len > INT_MAX) {
+		json_set_error("json input too large");
+		return NULL;
+	}
+
 	input_buf = json;
 	input_pos = 0;
 	input_len = len;
 	input_can_unput = false;
 	nesting_depth = 0;
-	json_error[0] = '\0';
 
 	root = calloc(1, sizeof(*root));
 	if (!root) {

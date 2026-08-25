@@ -126,6 +126,10 @@ void vip_gen_chunk_store(struct qdl_device *qdl)
 	if (!vip_gen)
 		return;
 
+	/* A previous store already hit a write error and closed the file. */
+	if (!vip_gen->digest_table_fd)
+		return;
+
 	SHA256Final(vip_gen->hash, &vip_gen->ctx);
 
 	print_digest(vip_gen->hash);
@@ -350,7 +354,8 @@ void vip_gen_finalize(struct qdl_device *qdl)
 	if (!vip_gen)
 		return;
 
-	fclose(vip_gen->digest_table_fd);
+	if (vip_gen->digest_table_fd)
+		fclose(vip_gen->digest_table_fd);
 
 	ux_debug("VIP TABLE DIGESTS: %lu\n", vip_gen->digest_num_written);
 
@@ -368,7 +373,7 @@ int vip_transfer_init(struct qdl_device *qdl, const char *vip_table_path)
 	snprintf(fullpath, sizeof(fullpath), "%s/%s",
 		 vip_table_path, DIGEST_TABLE_TO_SIGN_FILE_MBN);
 	qdl->vip_data.signed_table_fd = open(fullpath, O_RDONLY | O_BINARY);
-	if (!qdl->vip_data.signed_table_fd) {
+	if (qdl->vip_data.signed_table_fd < 0) {
 		ux_err("Can't open signed table %s\n", fullpath);
 		return -1;
 	}
