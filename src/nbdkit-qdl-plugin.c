@@ -43,6 +43,8 @@ static size_t num_sectors;
 
 static int qdl_plugin_config(const char *key, const char *value)
 {
+	int ret;
+
 	if (!strcmp(key, "programmer")) {
 		config_programmer = nbdkit_absolute_path(value);
 		if (!config_programmer)
@@ -61,7 +63,10 @@ static int qdl_plugin_config(const char *key, const char *value)
 			return -1;
 		}
 	} else if (!strcmp(key, "debug")) {
-		qdl_debug = !strcmp(value, "true") || !strcmp(value, "1");
+		ret = nbdkit_parse_bool(value);
+		if (ret == -1)
+			return -1;
+		qdl_debug = ret;
 	} else {
 		nbdkit_error("unknown parameter '%s'", key);
 		return -1;
