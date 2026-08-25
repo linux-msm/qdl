@@ -15,9 +15,19 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "qdl.h"
 
+/*
+ * qdl uses ux_info(), ux_log() and ux_debug() helpers to write debug to stdout.
+ * nbdkit redirects stdout to /dev/null before the first connection, so these
+ * messages are normally discarded when qdl is used by the plugin.
+ *
+ * When the debug parameter is enabled, qdl_plugin_after_fork() redirects
+ * stdout to stderr so qdl's debug output becomes visible alongside the nbdkit
+ * log.
+ */
 bool qdl_debug;
 
 /* UFS supports up to eight logical units (LUNs) per device. */
@@ -136,6 +146,31 @@ err_deinit:
 	return -1;
 }
 
+/*
+ * nbdkit redirects stdin and stdout to /dev/null after configuration, even in
+ * foreground mode. This happens after .get_ready but before .after_fork,
+ * making .after_fork the first callback where restoring stdout will persist.
+ *
+ * Redirect stdout to the same stderr stream used by nbdkit logging so qdl's
+ * ux_*() output appears alongside nbdkit_debug() messages. This only makes
+ * the output visible in foreground mode; when nbdkit daemonises, stderr is
+ * also redirected to /dev/null.
+ */
+static int qdl_plugin_after_fork(void)
+{
+	if (!qdl_debug)
+		return 0;
+
+	if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) {
+		nbdkit_error("failed to redirect stdout for debug output: %m");
+		return -1;
+	}
+
+	nbdkit_debug("qdl debug output enabled; run nbdkit with -f to see it");
+
+	return 0;
+}
+
 static void qdl_plugin_unload(void)
 {
 	if (!dev)
@@ -216,6 +251,7 @@ static int qdl_plugin_pwrite(void *handle, const void *buf, uint32_t count,
 static struct nbdkit_plugin plugin = {
 	.name = "qdl",
 	.description = "nbdkit Qualcomm Download plugin",
+	.after_fork = qdl_plugin_after_fork,
 	.unload = qdl_plugin_unload,
 	.config = qdl_plugin_config,
 	.config_complete = qdl_plugin_config_complete,
