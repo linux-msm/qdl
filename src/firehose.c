@@ -1059,6 +1059,16 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	if (program->is_nand) {
 		xml_setpropf(node, "PAGES_PER_BLOCK", "%d", program->pages_per_block);
 		xml_setpropf(node, "last_sector", "%d", program->last_sector);
+		/*
+		 * Some NAND programmers resolve the destination partition by
+		 * name to apply that partition's bad-block adjusted offset, so
+		 * start_sector alone does not describe where the data lands.
+		 * Given no label such a programmer matches no partition and
+		 * programming fails. Programmers that do not need the name
+		 * ignore the attribute.
+		 */
+		if (program->label)
+			xml_setpropf(node, "label", "%s", program->label);
 	}
 
 	ret = firehose_write(qdl, doc);
