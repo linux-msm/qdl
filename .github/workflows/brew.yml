@@ -1,0 +1,43 @@
+name: Update Homebrew formula
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*'
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Compute SHA256
+        id: vars
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
+          SHA256=$(curl -fsSL "${TARBALL_URL}" | sha256sum | cut -d ' ' -f1)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "url=${TARBALL_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update formula
+        run: |
+          sed -i 's|  url ".*"|  url "${{ steps.vars.outputs.url }}"|' Formula/qdl.rb
+          sed -i 's|  sha256 ".*"|  sha256 "${{ steps.vars.outputs.sha256 }}"|' Formula/qdl.rb
+
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add Formula/qdl.rb
+          git commit -m "brew: update formula to ${{ steps.vars.outputs.version }}"
+          git push origin HEAD:master
