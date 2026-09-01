@@ -215,6 +215,28 @@ qdl flash contents.xml::ufs,safe_rtos
 will flash the UFS storage with the only applicable flavor, and will flash
 *safe_rtos* onto the spinor.
 
+### Creating installer packages
+
+QDL can also create installer packages from builds described by *contents.xml*
+files. The generated zip contains a `flashmap.json`, the selected programmer
+images, and the referenced rawprogram, patch, and image files:
+
+```bash
+qdl create-zip installer.zip contents.xml
+```
+
+When the contents XML describes multiple storage or flavor combinations, select
+the desired content with the same `::specifier1,specifier2...` suffix used for
+flashing contents XML files:
+
+```bash
+qdl create-zip installer-ufs.zip contents.xml::ufs
+```
+
+The resulting archive can be flashed later with `qdl flash installer.zip`.
+Creating and flashing zip archives requires QDL to be built with libzip support,
+which is enabled by default.
+
 ### Flash simulation (dry run)
 
 Use the `--dry-run` option to run QDL without connecting to or flashing any
