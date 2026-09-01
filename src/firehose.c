@@ -1561,8 +1561,38 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	return 0;
 }
 
-int firehose_reset(struct qdl_device *qdl)
+/*
+ * Consume whatever the programmer has queued up, for callers that send a
+ * command as the first thing after the programmer starts. A programmer that
+ * is still printing its startup banner does not read its input endpoint, so
+ * the first write times out and is only retried a second later, once
+ * firehose_write() has drained the backlog itself.
+ *
+ * firehose_detect_and_configure() gets this for free from the configure
+ * exchange; callers that send nothing else need to drain explicitly.
+ */
+void firehose_drain(struct qdl_device *qdl, unsigned int timeout_ms)
 {
+	firehose_read(qdl, timeout_ms, firehose_generic_parser, NULL);
+}
+
+static const char *firehose_reset_mode_str(enum qdl_reset_mode mode)
+{
+	switch (mode) {
+	case QDL_RESET_NORMAL:
+		return "reset";
+	case QDL_RESET_TO_EDL:
+		return "reset_to_edl";
+	case QDL_RESET_POWER_OFF:
+		return "off";
+	}
+
+	return "reset";
+}
+
+int firehose_reset(struct qdl_device *qdl, enum qdl_reset_mode mode)
+{
+	const char *mode_name = firehose_reset_mode_str(mode);
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
@@ -1573,7 +1603,7 @@ int firehose_reset(struct qdl_device *qdl)
 	xmlDocSetRootElement(doc, root);
 
 	node = xmlNewChild(root, NULL, (xmlChar *)"power", NULL);
-	xml_setpropf(node, "value", "reset");
+	xml_setpropf(node, "value", mode_name);
 	xml_setpropf(node, "DelayInSeconds", "10"); // Add a delay to prevent reboot fail
 
 	ret = firehose_write(qdl, doc);
@@ -1583,7 +1613,7 @@ int firehose_reset(struct qdl_device *qdl)
 
 	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 	if (ret < 0)
-		ux_err("failed to request device reset\n");
+		ux_err("failed to request device reset (mode=%s)\n", mode_name);
 	/* drain any remaining log messages for reset */
 	else
 		firehose_read(qdl, 1000, firehose_generic_parser, NULL);
@@ -1689,7 +1719,7 @@ int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, boo
 		ux_info("UFS provisioning failed\n");
 
 	if (!skip_reset)
-		firehose_reset(qdl);
+		firehose_reset(qdl, QDL_RESET_NORMAL);
 
 	return ret;
 
@@ -1795,7 +1825,7 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 			firehose_set_bootable(qdl, op->partition);
 			break;
 		case FIREHOSE_OP_RESET:
-			ret = firehose_reset(qdl);
+			ret = firehose_reset(qdl, QDL_RESET_NORMAL);
 			if (ret < 0)
 				return ret;
 			break;
