@@ -38,6 +38,18 @@ enum {
 };
 
 /*
+ * Timeouts (in milliseconds) for the UFS provisioning tags. The common and
+ * body tags only stage descriptors in the programmer, so a short wait is
+ * enough. The epilogue with commit=1 makes the programmer write the UFS
+ * configuration descriptor to the device, which can take considerably
+ * longer than the previous 5s window - matching the write-back timeout used
+ * by the program/erase paths avoids spuriously reporting a failure while the
+ * device is still provisioning.
+ */
+#define FIREHOSE_UFS_TAG_TIMEOUT_MS	5000
+#define FIREHOSE_UFS_COMMIT_TIMEOUT_MS	120000
+
+/*
  * Substring emitted by the Firehose programmer's startup logs when VIP is
  * active on-device (e.g. "INFO: VIP is enabled, receiving the signed table
  * of size 8192"). Matching a stable prefix avoids coupling to the trailing
@@ -1421,7 +1433,8 @@ out:
 	return ret == FIREHOSE_ACK ? 0 : -1;
 }
 
-static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node)
+static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node,
+				    int timeout_ms)
 {
 	xmlNode *root;
 	xmlDoc *doc;
@@ -1436,7 +1449,7 @@ static int firehose_send_single_tag(struct qdl_device *qdl, xmlNode *node)
 	if (ret < 0)
 		goto out;
 
-	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
+	ret = firehose_read(qdl, timeout_ms, firehose_generic_parser, NULL);
 	if (ret) {
 		ux_err("ufs request failed\n");
 		ret = -EINVAL;
@@ -1474,7 +1487,7 @@ int firehose_apply_ufs_common(struct qdl_device *qdl, struct ufs_common *ufs)
 		xml_setpropf(node_to_send, "shared_wb_buffer_size_in_kb", "%d", ufs->shared_wb_buffer_size_in_kb);
 	}
 
-	ret = firehose_send_single_tag(qdl, node_to_send);
+	ret = firehose_send_single_tag(qdl, node_to_send, FIREHOSE_UFS_TAG_TIMEOUT_MS);
 	if (ret)
 		ux_err("failed to send ufs common tag\n");
 
@@ -1504,7 +1517,7 @@ int firehose_apply_ufs_body(struct qdl_device *qdl, struct ufs_body *ufs)
 	if (ufs->desc)
 		xml_setpropf(node_to_send, "desc", "%s", ufs->desc);
 
-	ret = firehose_send_single_tag(qdl, node_to_send);
+	ret = firehose_send_single_tag(qdl, node_to_send, FIREHOSE_UFS_TAG_TIMEOUT_MS);
 	if (ret)
 		ux_err("failed to apply ufs body tag\n");
 
@@ -1525,7 +1538,13 @@ int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs
 		xml_setpropf(node_to_send, "slot", "%u", qdl->slot);
 	}
 
-	ret = firehose_send_single_tag(qdl, node_to_send);
+	/*
+	 * A commit epilogue writes the UFS configuration descriptor and can
+	 * take a while; the validation pass (commit=0) is cheap.
+	 */
+	ret = firehose_send_single_tag(qdl, node_to_send,
+				       commit ? FIREHOSE_UFS_COMMIT_TIMEOUT_MS :
+						FIREHOSE_UFS_TAG_TIMEOUT_MS);
 	if (ret)
 		ux_err("failed to apply ufs epilogue\n");
 
