@@ -10,8 +10,8 @@ common_sources = files(
 lib_sources = files(
   'auto.c', 'qud.c',
   'firehose.c',
-  'io.c', 'patch.c',
-  'program.c', 'read.c', 'sahara_config.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
+  'input_type.c', 'io.c', 'patch.c',
+  'program.c', 'programmer.c', 'read.c', 'sahara_config.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
   'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c', 'contents.c', 'pathbuf.c',
 )
 
@@ -33,8 +33,10 @@ nbdkit_plugin_src = files('nbdkit-qdl-plugin.c')
 
 # Individual sources reused by the cmocka unit tests.
 flashmap_src = files('flashmap.c')
+input_type_src = files('input_type.c')
 json_src     = files('json.c')
 pathbuf_src = files('pathbuf.c')
+programmer_src = files('programmer.c')
 program_src = files('program.c')
 ufs_src     = files('ufs.c')
 util_src    = files('util.c')

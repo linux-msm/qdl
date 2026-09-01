@@ -161,9 +161,61 @@ if cmocka_dep.found()
     include_directories : inc,
   )
 
+  test_programmer = executable('test_programmer',
+    sources : [
+      'test_programmer.c',
+      programmer_src,
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'programmer archive decoder',
+    test_programmer,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
   test(
     'ufs provisioning loader',
     test_ufs,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
+  test_util = executable('test_util',
+    sources : [
+      'test_util.c',
+      util_src,
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'util helpers',
+    test_util,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
+
+  test_input_type = executable('test_input_type',
+    sources : [
+      'test_input_type.c',
+      'common.c',
+      input_type_src,
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'input type detection',
+    test_input_type,
     suite: 'unit',
     protocol: 'tap',
     env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
