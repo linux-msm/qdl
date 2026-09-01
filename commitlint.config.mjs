@@ -39,7 +39,7 @@ export default {
     parserOpts: {
       noteKeywords: [
         'BREAKING CHANGE', 'BREAKING-CHANGE',
-        'Fixes', 'Signed-off-by', 'Co-authored-by',
+        'Fixes', 'Closes', 'Signed-off-by', 'Co-authored-by',
         'Reviewed-by', 'Tested-by', 'Acked-by',
         'Reported-by', 'Suggested-by',
       ],
