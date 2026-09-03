@@ -91,7 +91,8 @@ static int detect_type(const char *verb)
 		for (node = root->children; node ; node = node->next) {
 			if (node->type != XML_ELEMENT_NODE)
 				continue;
-			if (!xmlStrcmp(node->name, (xmlChar *)"program")) {
+			if (!xmlStrcmp(node->name, (xmlChar *)"program") ||
+			    !xmlStrcmp(node->name, (xmlChar *)"erase")) {
 				type = QDL_FILE_PROGRAM;
 				break;
 			}

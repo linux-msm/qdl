@@ -37,11 +37,19 @@ static int load_erase_tag(struct list_head *ops, xmlNode *node, bool is_nand)
 
 	program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
 	program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
-	program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
 	program->start_sector = attr_as_string(node, "start_sector", &errors);
 	if (is_nand) {
 		program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
 	}
+
+	/*
+	 * NAND-generated rawprogram files omit physical_partition_number,
+	 * as NAND exposes a single physical partition. Treat the attribute
+	 * as optional and default to partition 0, matching the reference
+	 * fh_loader behavior.
+	 */
+	if (xmlHasProp(node, (xmlChar *)"physical_partition_number"))
+		program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
 
 	if (errors) {
 		ux_err("errors while parsing erase tag\n");
