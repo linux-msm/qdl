@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -216,6 +217,65 @@ void ux_err(const char *fmt, ...)
 	va_start(ap, fmt);
 	ux_vprint(stderr, &ux_stderr_bol, fmt, ap);
 	va_end(ap);
+}
+
+/* Keep the err(3)/warn(3) text and errno semantics in the shared logger. */
+static void ux_vreport(int error, bool with_errno, const char *fmt, va_list ap)
+{
+	extern const char *__progname;
+
+	ux_err("%s: ", __progname);
+	if (fmt) {
+		ux_vprint(stderr, &ux_stderr_bol, fmt, ap);
+		if (with_errno)
+			ux_err(": ");
+	}
+	if (with_errno)
+		ux_err("%s", strerror(error));
+	ux_err("\n");
+	errno = error;
+}
+
+void ux_warn(const char *fmt, ...)
+{
+	int error = errno;
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vreport(error, true, fmt, ap);
+	va_end(ap);
+}
+
+void ux_warnx(const char *fmt, ...)
+{
+	int error = errno;
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vreport(error, false, fmt, ap);
+	va_end(ap);
+}
+
+void ux_die(int status, const char *fmt, ...)
+{
+	int error = errno;
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vreport(error, true, fmt, ap);
+	va_end(ap);
+	exit(status);
+}
+
+void ux_diex(int status, const char *fmt, ...)
+{
+	int error = errno;
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vreport(error, false, fmt, ap);
+	va_end(ap);
+	exit(status);
 }
 
 void ux_info(const char *fmt, ...)
