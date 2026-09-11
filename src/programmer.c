@@ -40,7 +40,7 @@ static uint32_t parse_ascii_hex32(const char *s)
 
 	for (int i = 0; i < 8; i++) {
 		if (!isxdigit(s[i]))
-			err(1, "non-hex-digit found in archive header");
+			ux_die(1, "non-hex-digit found in archive header");
 
 		if (s[i] <= '9')
 			x = (x << 4) | (s[i] - '0');

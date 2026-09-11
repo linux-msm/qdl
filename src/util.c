@@ -67,7 +67,7 @@ void print_hex_dump(const char *prefix, const void *buf, size_t len)
 
 		line[li] = '\0';
 
-		printf("%s %04x: %s\n", prefix, i, line);
+		ux_info("%s %04x: %s\n", prefix, i, line);
 	}
 }
 

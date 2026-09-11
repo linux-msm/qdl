@@ -212,6 +212,10 @@ bool attr_as_bool(xmlNode *node, const char *attr, int *errors);
 
 void ux_init(void);
 void ux_err(const char *fmt, ...);
+void ux_warn(const char *fmt, ...);
+void ux_warnx(const char *fmt, ...);
+void ux_die(int status, const char *fmt, ...) __attribute__((noreturn));
+void ux_diex(int status, const char *fmt, ...) __attribute__((noreturn));
 void ux_info(const char *fmt, ...);
 void ux_log(const char *fmt, ...);
 void ux_debug(const char *fmt, ...);

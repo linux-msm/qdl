@@ -42,14 +42,12 @@ int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images,
 	return 0;
 }
 
-#ifdef _WIN32
-/* err() lives in oscompat.c, which the test does not link. */
-void err(int eval, const char *fmt, ...)
+/* Fatal logging lives in ux.c, which the test does not link. */
+void ux_die(int eval, const char *fmt, ...)
 {
 	(void)fmt;
 	exit(eval);
 }
-#endif
 
 void sahara_images_free(struct sahara_image *images, size_t count)
 {

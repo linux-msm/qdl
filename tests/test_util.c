@@ -28,6 +28,7 @@ const char *__progname = "test_util";
 
 /* --- stubs for symbols referenced by unrelated util.c code --- */
 void ux_err(const char *fmt, ...) { (void)fmt; }
+void ux_info(const char *fmt, ...) { (void)fmt; }
 int qdl_file_open(struct qdl_zip *z, const char *f, struct qdl_file *file)
 { (void)z; (void)f; (void)file; return -1; }
 void *qdl_file_load(struct qdl_file *file, size_t *len) { (void)file; (void)len; return NULL; }
