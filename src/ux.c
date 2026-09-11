@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -32,6 +36,10 @@ static const char * const progress_dashes = DASHES;
 static unsigned int ux_width;
 static unsigned int ux_cur_line_length;
 
+/* Whether the next character written to each stream starts a new line */
+static bool ux_stdout_bol = true;
+static bool ux_stderr_bol = true;
+
 /*
  * Levels of output:
  *
@@ -39,7 +47,89 @@ static unsigned int ux_cur_line_length;
  * info: used to inform the user about progress
  * logs: log prints from the device
  * debug: protocol logs
+ *
+ * Without --debug, messages are written verbatim. With --debug every level
+ * is written in a uniform format, where each message starts with a
+ * timestamp:
+ *
+ *   14:03:21.123 flashed "boot" successfully
+ *
+ * Continuation lines of a multi-line message are indented to the column
+ * where the first line's text starts, so the message body stays aligned.
+ * A message that does not end in a newline is continued by the next call
+ * on the same stream without a new prefix.
  */
+
+/* Write the "<time> " prefix, return its width */
+static int ux_print_prefix(FILE *fp)
+{
+	const char *stamp = "00:00:00";
+	struct timeval tv;
+	struct tm *tm;
+	char buf[32];
+
+	gettimeofday(&tv, NULL);
+	tm = localtime(&tv.tv_sec);
+	if (tm && strftime(buf, sizeof(buf), "%H:%M:%S", tm))
+		stamp = buf;
+
+	return fprintf(fp, "%s.%03ld ", stamp, (long)(tv.tv_usec / 1000));
+}
+
+/*
+ * Format a message and write it to @fp. In debug mode each line of the
+ * message is prefixed, the first with the timestamp header and the rest
+ * with padding of the same width, unless the line continues a previous
+ * message that did not end with a newline. Blank lines are left bare.
+ */
+static void ux_vprint(FILE *fp, bool *bol, const char *fmt, va_list ap)
+{
+	char stack_buf[512];
+	char *buf = stack_buf;
+	const char *line;
+	const char *end;
+	int width = 0;
+	va_list aq;
+	int len;
+
+	if (!qdl_debug) {
+		vfprintf(fp, fmt, ap);
+		fflush(fp);
+		return;
+	}
+
+	va_copy(aq, ap);
+	len = vsnprintf(stack_buf, sizeof(stack_buf), fmt, aq);
+	va_end(aq);
+	if (len < 0)
+		return;
+
+	if ((size_t)len >= sizeof(stack_buf)) {
+		buf = malloc(len + 1);
+		if (!buf)
+			return;
+		vsnprintf(buf, len + 1, fmt, ap);
+	}
+
+	for (line = buf; *line; line = end) {
+		end = strchr(line, '\n');
+		end = end ? end + 1 : line + strlen(line);
+
+		if (*bol && *line != '\n') {
+			if (!width)
+				width = ux_print_prefix(fp);
+			else
+				fprintf(fp, "%*s", width, "");
+		}
+
+		fwrite(line, 1, end - line, fp);
+		*bol = end[-1] == '\n';
+	}
+
+	if (buf != stack_buf)
+		free(buf);
+	fflush(fp);
+}
 
 /* Clear ux_cur_line_length characters of the progress bar from the screen */
 static void ux_clear_line(void)
@@ -124,9 +214,8 @@ void ux_err(const char *fmt, ...)
 	ux_clear_line();
 
 	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
+	ux_vprint(stderr, &ux_stderr_bol, fmt, ap);
 	va_end(ap);
-	fflush(stderr);
 }
 
 void ux_info(const char *fmt, ...)
@@ -136,9 +225,8 @@ void ux_info(const char *fmt, ...)
 	ux_clear_line();
 
 	va_start(ap, fmt);
-	vprintf(fmt, ap);
+	ux_vprint(stdout, &ux_stdout_bol, fmt, ap);
 	va_end(ap);
-	fflush(stdout);
 }
 
 void ux_log(const char *fmt, ...)
@@ -151,9 +239,8 @@ void ux_log(const char *fmt, ...)
 	ux_clear_line();
 
 	va_start(ap, fmt);
-	vprintf(fmt, ap);
+	ux_vprint(stdout, &ux_stdout_bol, fmt, ap);
 	va_end(ap);
-	fflush(stdout);
 }
 
 void ux_debug(const char *fmt, ...)
@@ -166,9 +253,8 @@ void ux_debug(const char *fmt, ...)
 	ux_clear_line();
 
 	va_start(ap, fmt);
-	vprintf(fmt, ap);
+	ux_vprint(stdout, &ux_stdout_bol, fmt, ap);
 	va_end(ap);
-	fflush(stdout);
 }
 
 void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
