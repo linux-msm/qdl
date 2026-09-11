@@ -386,7 +386,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 
 	fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 	if (fd < 0) {
-		warn("failed to open \"%s\"", region.filename);
+		ux_warn("failed to open \"%s\"", region.filename);
 		free(buf);
 		return -1;
 	}
@@ -401,7 +401,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 		read_req.debug64_req.length = remain;
 		n = qdl_write(qdl, &read_req, read_req.length, SAHARA_CMD_TIMEOUT_MS);
 		if (n < 0) {
-			warn("failed to send ramdump read request");
+			ux_warn("failed to send ramdump read request");
 			goto out;
 		}
 
@@ -410,14 +410,14 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 			buf_offset = 0;
 			n = qdl_read(qdl, buf, DEBUG_BLOCK_SIZE, 30000);
 			if (n < 0) {
-				warn("failed to read ramdump chunk");
+				ux_warn("failed to read ramdump chunk");
 				goto out;
 			}
 
 			while (buf_offset < (size_t)n) {
 				written = write(fd, buf + buf_offset, n - buf_offset);
 				if (written <= 0) {
-					warn("failed to write ramdump chunk to \"%s\"", region.filename);
+					ux_warn("failed to write ramdump chunk to \"%s\"", region.filename);
 					goto out;
 				}
 				buf_offset += written;

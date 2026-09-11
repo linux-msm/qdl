@@ -175,7 +175,7 @@ static int qdl_common_opt(int opt, char **serial, enum QDL_DEVICE_TYPE *dev_type
 		return QDL_OPT_HANDLED;
 	case OPT_BACKEND:
 		if (decode_backend(optarg, dev_type) < 0)
-			errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
+			ux_diex(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
 		return QDL_OPT_HANDLED;
 	case 'h':
 		print_usage(stdout);
@@ -828,7 +828,7 @@ static int qdl_flash(int argc, char **argv)
 		case 's':
 			storage_type = decode_storage_type(optarg);
 			if (storage_type == QDL_STORAGE_UNKNOWN)
-				errx(1, "unknown storage type \"%s\"", optarg);
+				ux_diex(1, "unknown storage type \"%s\"", optarg);
 			break;
 		case 'S':
 			serial = optarg;
@@ -849,7 +849,7 @@ static int qdl_flash(int argc, char **argv)
 			 */
 			if (qdl_dev_type != QDL_DEVICE_SIM &&
 			    decode_backend(optarg, &qdl_dev_type) < 0)
-				errx(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
+				ux_diex(1, "unknown backend \"%s\" (expected auto|usb|qud)", optarg);
 			break;
 		case OPT_SKIPBLOCK:
 			if (!strcmp(optarg, "none"))
@@ -857,8 +857,8 @@ static int qdl_flash(int argc, char **argv)
 			else if (!strcmp(optarg, "sha256"))
 				skipblock_mode = QDL_SKIPBLOCK_SHA256;
 			else
-				errx(1, "unknown --skipblock mode \"%s\", valid options are none and sha256",
-				     optarg);
+				ux_diex(1, "unknown --skipblock mode \"%s\", valid options are none and sha256",
+					optarg);
 			break;
 		case 'h':
 			print_usage(stdout);
@@ -886,10 +886,10 @@ static int qdl_flash(int argc, char **argv)
 
 	if (vip_table_path) {
 		if (vip_generate_dir)
-			errx(1, "VIP mode and VIP table generation can't be enabled together\n");
+			ux_diex(1, "VIP mode and VIP table generation can't be enabled together\n");
 		ret = vip_transfer_init(qdl, vip_table_path);
 		if (ret)
-			errx(1, "VIP initialization failed\n");
+			ux_diex(1, "VIP initialization failed\n");
 	}
 
 	if (out_chunk_size)
@@ -919,7 +919,7 @@ static int qdl_flash(int argc, char **argv)
 	do {
 		type = detect_type(argv[optind]);
 		if (type < 0 || type == QDL_FILE_UNKNOWN)
-			errx(1, "failed to detect file type of %s\n", argv[optind]);
+			ux_diex(1, "failed to detect file type of %s\n", argv[optind]);
 
 		/*
 		 * The usage synopsis lists input XML files and command verbs
@@ -934,74 +934,74 @@ static int qdl_flash(int argc, char **argv)
 			saw_file = true;
 
 		if (saw_file && saw_verb)
-			errx(1, "input XML files cannot be combined with command "
-			     "verbs (read/write/erase/sha256/flash/reset)");
+			ux_diex(1, "input XML files cannot be combined with command "
+				"verbs (read/write/erase/sha256/flash/reset)");
 
 		switch (type) {
 		case QDL_FILE_PATCH:
 			ret = patch_load(&firehose_ops, argv[optind]);
 			if (ret < 0)
-				errx(1, "patch_load %s failed", argv[optind]);
+				ux_diex(1, "patch_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_PROGRAM:
 			ret = program_load(&firehose_ops, argv[optind],
 					   storage_type == QDL_STORAGE_NAND,
 					   allow_missing, NULL, incdir);
 			if (ret < 0)
-				errx(1, "program_load %s failed", argv[optind]);
+				ux_diex(1, "program_load %s failed", argv[optind]);
 
 			if (!allow_fusing && program_is_sec_partition_flashed(&firehose_ops))
-				errx(1, "secdata partition to be programmed, which can lead to irreversible"
+				ux_diex(1, "secdata partition to be programmed, which can lead to irreversible"
 					" changes. Allow explicitly with --allow-fusing parameter");
 			break;
 		case QDL_FILE_READ:
 			ret = read_op_load(&firehose_ops, argv[optind], incdir);
 			if (ret < 0)
-				errx(1, "read_op_load %s failed", argv[optind]);
+				ux_diex(1, "read_op_load %s failed", argv[optind]);
 			break;
 		case QDL_FILE_UFS:
 			if (storage_type != QDL_STORAGE_UFS)
-				errx(1, "attempting to load provisioning config when storage isn't \"ufs\"");
+				ux_diex(1, "attempting to load provisioning config when storage isn't \"ufs\"");
 
 			ret = ufs_load(&ufs, argv[optind], qdl_finalize_provisioning);
 			if (ret < 0)
-				errx(1, "ufs_load %s failed", argv[optind]);
+				ux_diex(1, "ufs_load %s failed", argv[optind]);
 			break;
 		case QDL_CMD_READ:
 			if (optind + 2 >= argc)
-				errx(1, "read command missing arguments");
+				ux_diex(1, "read command missing arguments");
 			ret = read_cmd_add(&firehose_ops, argv[optind + 1], argv[optind + 2]);
 			if (ret < 0)
-				errx(1, "failed to add read command");
+				ux_diex(1, "failed to add read command");
 			optind += 2;
 			break;
 		case QDL_CMD_WRITE:
 			if (optind + 2 >= argc)
-				errx(1, "write command missing arguments");
+				ux_diex(1, "write command missing arguments");
 			ret = program_cmd_add(&firehose_ops, argv[optind + 1], argv[optind + 2]);
 			if (ret < 0)
-				errx(1, "failed to add write command");
+				ux_diex(1, "failed to add write command");
 			optind += 2;
 			break;
 		case QDL_CMD_ERASE:
 			if (optind + 1 >= argc)
-				errx(1, "erase command missing address");
+				ux_diex(1, "erase command missing address");
 			ret = erase_cmd_add(&firehose_ops, argv[optind + 1]);
 			if (ret < 0)
-				errx(1, "failed to add erase command");
+				ux_diex(1, "failed to add erase command");
 			optind += 1;
 			break;
 		case QDL_CMD_SHA256:
 			if (optind + 1 >= argc)
-				errx(1, "sha256 command missing address");
+				ux_diex(1, "sha256 command missing address");
 			ret = sha256_cmd_add(&firehose_ops, argv[optind + 1]);
 			if (ret < 0)
-				errx(1, "failed to add sha256 command");
+				ux_diex(1, "failed to add sha256 command");
 			optind += 1;
 			break;
 		case QDL_CMD_FLASH:
 			if (optind + 1 >= argc)
-				errx(1, "flash command missing operands");
+				ux_diex(1, "flash command missing operands");
 			ret = qdl_cmd_flash(&firehose_ops, argv[optind + 1], incdir, sahara_images);
 			if (ret < 0)
 				goto out_cleanup;
@@ -1017,7 +1017,7 @@ static int qdl_flash(int argc, char **argv)
 				goto out_cleanup;
 			break;
 		default:
-			errx(1, "%s type not yet supported", argv[optind]);
+			ux_diex(1, "%s type not yet supported", argv[optind]);
 			break;
 		}
 	} while (++optind < argc);
