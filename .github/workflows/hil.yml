@@ -33,13 +33,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos disabled until a runner exists; restore with: [linux, macos]
         os: [linux]
         # One entry per board attached to the runner. "default" uses the
         # runner's .env unchanged; any other name sources ~/hil/<name>.env
         # on the runner host before the suite runs. Board list comes from
         # the dispatch input, else the HIL_LINUX_BOARDS repo variable.
         board: ${{ fromJSON(inputs.boards || vars.HIL_LINUX_BOARDS || '["default"]') }}
+        # macOS is added via include rather than the os list: crossing os
+        # with the Linux board list would dispatch Linux board configs to
+        # the Mac. The Mac rig has a single board via the runner's .env.
+        include:
+          - os: macos
+            board: default
     runs-on: [self-hosted, hil, "${{ matrix.os }}"]
     timeout-minutes: 600
 
