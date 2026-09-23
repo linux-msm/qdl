@@ -128,7 +128,7 @@ static void qdl_plugin_unload(void)
 	if (!dev)
 		return;
 
-	firehose_reset(dev);
+	firehose_reset(dev, QDL_RESET_NORMAL);
 	qdl_close(dev);
 	qdl_deinit(dev);
 	dev = NULL;
