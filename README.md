@@ -22,7 +22,31 @@ meson compile -C build
 
 ### MacOS
 
-For Homebrew users:
+For Homebrew users, a formula is maintained in [`Formula/qdl.rb`](Formula/qdl.rb).
+Tap this repository and install the latest release or the development
+`HEAD`:
+
+```bash
+brew tap linux-msm/qdl https://github.com/linux-msm/qdl
+brew install linux-msm/qdl/qdl        # latest tagged release
+brew install --HEAD linux-msm/qdl/qdl # build from the tip of master
+```
+
+To build and install from a local checkout instead of the tap - for
+example, to test a change to `Formula/qdl.rb` before it is merged - tap
+the working tree directly and install from it:
+
+```bash
+brew tap linux-msm/qdl /path/to/qdl.git
+brew install --build-from-source linux-msm/qdl/qdl
+```
+
+Re-run `brew install --build-from-source linux-msm/qdl/qdl` after editing
+the formula to rebuild with the changes; `brew untap linux-msm/qdl` removes
+the local tap when done.
+
+To build without Homebrew packaging, install the dependencies and drive
+Meson directly:
 
 ```bash
 brew install libxml2 libusb libzip meson ninja help2man
