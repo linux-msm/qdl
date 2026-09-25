@@ -548,9 +548,15 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 	 * are not included in the pre-built VIP digest table (the dry-run that
 	 * builds it exits before reaching this code via the SIM early-return
 	 * above), so sending them would cause a VIP hash mismatch on the device.
+	 *
+	 * Skip it for SPINOR as well: the SPINOR programmer does not recover
+	 * from a failed read on partition 0 and leaves its storage stack in
+	 * a broken state, causing all subsequent flash operations to fail with
+	 * "Failed to open the SPI NOR Device". SPINOR always uses a 512-byte
+	 * sector size, so the probe adds no value.
 	 */
-	if (storage != QDL_STORAGE_NAND && qdl->vip_data.state == VIP_DISABLED &&
-	    !qdl->sector_size) {
+	if (storage != QDL_STORAGE_NAND && storage != QDL_STORAGE_SPINOR &&
+	    qdl->vip_data.state == VIP_DISABLED && !qdl->sector_size) {
 		max_sector_size = sector_sizes[ARRAY_SIZE(sector_sizes) - 1];
 		buf = alloca(max_sector_size);
 
