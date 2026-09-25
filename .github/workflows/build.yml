@@ -10,6 +10,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - { arch: x64, os: 26, runner: ubuntu-26.04 }
+          - { arch: arm64, os: 26, runner: ubuntu-26.04-arm }
           - { arch: x64, os: 24, runner: ubuntu-24.04 }
           - { arch: arm64, os: 24, runner: ubuntu-24.04-arm }
           - { arch: x64, os: 22, runner: ubuntu-22.04 }
