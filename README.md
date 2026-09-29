@@ -6,16 +6,19 @@
 [![Debian package](https://img.shields.io/debian/v/qdl/unstable?logo=debian&label=Debian)](https://tracker.debian.org/pkg/qdl)
 [![Packaging status](https://repology.org/badge/tiny-repos/qdl.svg)](https://repology.org/project/qdl/versions)
 
-This tool communicates with Qualcomm EDL USB devices (Vendor ID `05c6`, Product
-IDs `9008`, `900e`, `901d`, `90db`) to upload a flash loader and use it to
-flash images.
+This tool communicates with Qualcomm EDL USB devices (Vendor ID `05c6`) to
+upload a flash loader and use it to flash images. Any Qualcomm device that
+exposes a vendor-specific EDL interface is accepted; the Product ID (commonly
+`9008` for Firehose and `900e` for crash dumps) is not used for matching, as
+new devices keep appearing with new IDs.
 
 ## Build
 
 ### Linux
 
 ```bash
-sudo apt install libxml2-dev libusb-1.0-0-dev libzip-dev meson ninja-build help2man
+sudo apt install libxml2-dev libusb-1.0-0-dev libzip-dev libcmocka-dev \
+    meson ninja-build help2man
 meson setup build
 meson compile -C build
 ```
@@ -25,7 +28,7 @@ meson compile -C build
 For Homebrew users:
 
 ```bash
-brew install libxml2 libusb libzip meson ninja help2man
+brew install libxml2 libusb libzip cmocka meson ninja help2man
 meson setup build
 meson compile -C build
 ```
@@ -33,7 +36,7 @@ meson compile -C build
 For MacPorts users:
 
 ```bash
-sudo port install libxml2 libusb libzip meson ninja help2man
+sudo port install libxml2 libusb libzip cmocka meson ninja help2man
 meson setup build
 meson compile -C build
 ```
@@ -54,6 +57,7 @@ pacman -S mingw-w64-x86_64-ninja
 pacman -S mingw-w64-x86_64-libusb
 pacman -S mingw-w64-x86_64-libxml2
 pacman -S mingw-w64-x86_64-libzip
+pacman -S mingw-w64-x86_64-cmocka
 ```
 
 Then use the `meson` tool to build QDL:
@@ -65,14 +69,24 @@ meson compile -C build
 
 ### Build options
 
-libzip is only needed for zip container support - flashing directly from
-zip archives and the `create-zip` subcommand. The feature is enabled by
-default, so configuring fails if libzip is missing. To build a leaner
-QDL without it, explicitly disable the `zip-container` feature:
+Optional parts of QDL are controlled by meson feature options
+(`enabled`, `disabled` or `auto`):
 
-```bash
-meson setup build -Dzip-container=disabled
-```
+- `zip-container` (default `enabled`) - flashing directly from zip archives
+  and the `create-zip` subcommand. Requires libzip; configuring fails if it
+  is missing. To build a leaner QDL without it, explicitly disable the
+  feature:
+
+  ```bash
+  meson setup build -Dzip-container=disabled
+  ```
+
+- `tests` (default `auto`) - the cmocka-based unit test suite. When cmocka
+  is not installed the unit tests are silently skipped; pass
+  `-Dtests=enabled` to make a missing cmocka a configure error.
+
+- `nbdkit` (default `auto`) - the nbdkit plugin described in
+  [docs/nbd.md](docs/nbd.md). Requires the nbdkit development files.
 
 ## Use QDL
 
@@ -85,6 +99,26 @@ process, allowing operations such as flashing firmware even on unresponsive devi
 or those with locked bootloaders.
 
 Please consult your device's documentation for instructions on how to enter EDL mode.
+
+### Device backends
+
+QDL can reach the EDL device through two backends, selected with
+`--backend`:
+
+- `usb` - talks to the device directly through libusb. On Windows this
+  requires the device to be bound to the WinUSB driver (for example with
+  Zadig) instead of the Qualcomm driver.
+- `qud` - Windows only. Talks to the COM port exposed by the official
+  Qualcomm QDLoader 9008 driver, so no driver replacement is needed.
+- `auto` (default) - polls both backends and uses whichever reaches an EDL
+  device first.
+
+To see the EDL devices visible through either backend, together with their
+serial numbers, run:
+
+```bash
+qdl list
+```
 
 ### Flashing from WSL2 (usbipd-win)
 
@@ -102,9 +136,9 @@ devices by default - they must be forwarded from the Windows host with
 [usbipd-win](https://github.com/dorssel/usbipd-win). Install it on the Windows
 side (`winget install usbipd`), then forward the EDL device into WSL.
 
-EDL devices enumerate under Vendor ID `05c6` with Product ID `9008` (Firehose),
-`900e` (crash dump), `90db` (diag dump), or `901d`. From a Windows terminal,
-list the connected devices and note the **BUSID** of the EDL device:
+EDL devices enumerate under Vendor ID `05c6`, most commonly with Product ID
+`9008` (Firehose) or `900e` (crash dump). From a Windows terminal, list the
+connected devices and note the **BUSID** of the EDL device:
 
 ```powershell
 usbipd list
@@ -125,8 +159,8 @@ from inside WSL by calling the Windows binary:
 usbipd.exe attach --wsl --busid <BUSID>
 ```
 
-Once attached, the device appears in WSL (check with `lsusb` for `05c6:9008`)
-and QDL can flash it as usual.
+Once attached, the device appears in WSL (check with `lsusb` for a `05c6:`
+device) and QDL can flash it as usual.
 
 #### Re-attaching after EDL re-enumeration
 
@@ -141,7 +175,7 @@ After each entry into EDL, re-detect the BUSID and attach again. This can be
 scripted from WSL so the BUSID does not have to be looked up by hand:
 
 ```bash
-BUSID=$(usbipd.exe list | grep -iE '9008|900e|901d|90db' |
+BUSID=$(usbipd.exe list | grep -i '05c6:' |
         awk '{print $1}' | tr -d '\r')
 usbipd.exe attach --wsl --busid "$BUSID"
 ```
@@ -164,6 +198,26 @@ the board to flash through the `--serial` option:
 ```bash
 qdl --serial=0AA94EFD prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
+
+Other options that commonly matter when flashing:
+
+- `--storage=<emmc|nand|nvme|spinor|ufs>` selects the target storage type
+  passed to the programmer, and `--slot=N` the storage slot on targets with
+  several devices of the same type.
+- `--include=DIR` adds a folder to search for the images referenced by the
+  XML files, and `--allow-missing` skips images that cannot be found instead
+  of aborting.
+- `--skipblock=sha256` asks the device for a SHA256 digest of each region
+  about to be written and skips regions whose contents already match, which
+  makes reflashing an unchanged build much faster.
+- `--skip-reset` leaves the device in EDL mode after flashing instead of
+  sending the final reset.
+- `--finalize-provisioning` is required, together with a matching UFS
+  provisioning XML, to perform irreversible UFS provisioning.
+
+A few maintenance commands do not need a programmer at all and only speak
+Sahara to the device: `qdl chipinfo` prints the chip identification the
+device reports, and `qdl reset` reboots a device stuck in EDL mode.
 
 ### Flashing installer packages
 
@@ -254,10 +308,13 @@ reading and writing binaries directly.
 
 ```bash
 qdl prog_firehose_ddr.elf [read | write] [address specifier] <binary>...
+qdl prog_firehose_ddr.elf [erase | sha256] [address specifier]...
 ```
 
-Multiple read and write commands can be specified at once. The ***address
-specifier*** can take the forms:
+`erase` wipes the addressed region and `sha256` prints the SHA256 digest the
+device computes over it, which is a quick way to verify a write. Multiple
+read, write, erase and sha256 commands can be specified at once. The
+***address specifier*** can take the forms:
 
 - N - single number, specifies the physical partition number N, starting at
   sector 0. To read data, the number of sectors must be specified explicitly
@@ -494,16 +551,26 @@ instructions and a usage walkthrough.
 
 ## Run tests
 
-To run the integration test suite for QDL, use the `meson` tool with `test`
-param:
+The test suite is run with the `meson` tool:
 
 ```bash
 meson test -C build
 ```
 
-If `cmocka` is installed at configure time, Meson also builds and runs the
-unit test suite (including `program_load_xml` path-resolution tests). You can
-run only unit tests with:
+Tests are grouped into suites, selectable with `--suite`:
+
+- `unit` - cmocka programs covering the XML, JSON, contents and archive
+  parsers. Only built when cmocka was found at configure time (see
+  [Build options](#build-options)).
+- `integration` - scripts that drive the built `qdl` binary without a
+  device, for example VIP table and Sahara archive generation.
+- `hil` and `hil-vip` - hardware-in-the-loop steps that flash and read back
+  an attached EDL device. They are skipped unless `QDL_HIL_BUILD`,
+  `QDL_HIL_STORAGE` and friends are set; see the comments at the top of
+  [tests/test_hil.sh](tests/test_hil.sh) for the full environment.
+
+A plain `meson test` runs the unit and integration suites. To run only one
+suite, for example the unit tests:
 
 ```bash
 meson test -C build --suite unit
