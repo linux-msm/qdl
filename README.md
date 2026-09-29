@@ -12,6 +12,8 @@ exposes a vendor-specific EDL interface is accepted; the Product ID (commonly
 `9008` for Firehose and `900e` for crash dumps) is not used for matching, as
 new devices keep appearing with new IDs.
 
+---
+
 ## Build
 
 ### Linux
@@ -87,6 +89,8 @@ Optional parts of QDL are controlled by meson feature options
 
 - `nbdkit` (default `auto`) - the nbdkit plugin described in
   [docs/nbd.md](docs/nbd.md). Requires the nbdkit development files.
+
+---
 
 ## Use QDL
 
@@ -185,6 +189,8 @@ arguments, or for generating VIP digest tables (see
 qdl --dry-run prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
 
+---
+
 ## Documentation
 
 The less common workflows are described in separate guides under
@@ -211,6 +217,8 @@ The less common workflows are described in separate guides under
   with usbipd-win and re-attaching it after re-enumeration.
 - [nbdkit plugin](docs/nbd.md) - exposing a physical partition as a block
   device on the host.
+
+---
 
 ## Run tests
 
@@ -239,6 +247,8 @@ suite, for example the unit tests:
 meson test -C build --suite unit
 ```
 
+---
+
 ## Generate man pages
 
 Manpages can be generated using `manpages` target:
@@ -247,10 +257,14 @@ Manpages can be generated using `manpages` target:
 meson compile manpages -C build
 ```
 
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the coding style, the checkpatch and
 markdown-lint targets, and how to submit pull requests.
+
+---
 
 ## License
 
