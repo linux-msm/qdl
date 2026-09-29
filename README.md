@@ -4,7 +4,6 @@
 [![Build on push](https://github.com/linux-msm/qdl/actions/workflows/build.yml/badge.svg)](https://github.com/linux-msm/qdl/actions/workflows/build.yml)
 [![Latest release](https://img.shields.io/github/v/release/linux-msm/qdl?sort=semver)](https://github.com/linux-msm/qdl/releases/latest)
 [![Debian package](https://img.shields.io/debian/v/qdl/unstable?logo=debian&label=Debian)](https://tracker.debian.org/pkg/qdl)
-[![Packaging status](https://repology.org/badge/tiny-repos/qdl.svg)](https://repology.org/project/qdl/versions)
 
 This tool communicates with Qualcomm EDL USB devices (Vendor ID `05c6`) to
 upload a flash loader and use it to flash images. Any Qualcomm device that
