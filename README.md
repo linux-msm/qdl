@@ -120,68 +120,6 @@ serial numbers, run:
 qdl list
 ```
 
-### Flashing from WSL2 (usbipd-win)
-
-> [!WARNING]
-> This is unreliable with current usbipd-win.
-
-See:
-
-- <https://github.com/dorssel/usbipd-win/issues/924>
-- <https://github.com/dorssel/usbipd-win/issues/1022>
-- <https://github.com/dorssel/usbipd-win/issues/1067>
-
-On Windows, QDL can run inside a WSL2 distribution, but WSL2 does not see USB
-devices by default - they must be forwarded from the Windows host with
-[usbipd-win](https://github.com/dorssel/usbipd-win). Install it on the Windows
-side (`winget install usbipd`), then forward the EDL device into WSL.
-
-EDL devices enumerate under Vendor ID `05c6`, most commonly with Product ID
-`9008` (Firehose) or `900e` (crash dump). From a Windows terminal, list the
-connected devices and note the **BUSID** of the EDL device:
-
-```powershell
-usbipd list
-```
-
-Each device must be *bound* once before it can be attached. Binding requires an
-**elevated (Administrator)** PowerShell, but it persists across reboots, so this
-is a one-time step per device:
-
-```powershell
-usbipd bind --busid <BUSID>
-```
-
-Attaching the device to WSL does **not** require Administrator and can be run
-from inside WSL by calling the Windows binary:
-
-```bash
-usbipd.exe attach --wsl --busid <BUSID>
-```
-
-Once attached, the device appears in WSL (check with `lsusb` for a `05c6:`
-device) and QDL can flash it as usual.
-
-#### Re-attaching after EDL re-enumeration
-
-The EDL device is a USB gadget that only exists while the board is in EDL mode.
-Whenever the board re-enters EDL - including after QDL finishes and the target
-reboots - the USB device is torn down and re-created. The `bind` persists, but
-the **attach is dropped**, and the host may assign a **different BUSID** than
-before. A QDL run that reports no device found is almost always this: the device
-simply needs to be re-attached.
-
-After each entry into EDL, re-detect the BUSID and attach again. This can be
-scripted from WSL so the BUSID does not have to be looked up by hand:
-
-```bash
-BUSID=$(usbipd.exe list | grep -i '05c6:' |
-        awk '{print $1}' | tr -d '\r')
-usbipd.exe attach --wsl --busid "$BUSID"
-```
-
-If you flash repeatedly, run this re-attach step before every `qdl` invocation.
-
 ### Flash device
 
 Run QDL with the `--help` option to view detailed usage information.
@@ -221,333 +159,58 @@ device reports, and `qdl reset` reboots a device stuck in EDL mode.
 
 ### Flashing installer packages
 
-If you have an installer package instead of individual binaries and XML
-definitions, you can flash this using the *flash* subcommand:
+Builds shipped as an installer package (a zip archive or an unpacked
+`flashmap.json`) or described by a *contents.xml* file are flashed with the
+*flash* subcommand instead of listing the programmer and XML files by hand:
 
 ```bash
 qdl flash <installer.zip>
-```
-
-If the *installer package* is unpacked it can be installed as:
-
-```bash
 qdl flash flashmap.json
-```
-
-These can of course be combined with e.g. *--serial*.
-
-A subset of the installer package can be selected for installation by appending
-a **::storage1[,storage2...]** suffix to the file name.
-
-If a flashmap contains multiple layouts, select the desired layout by appending
-**::layout-name**. The layout selector can be combined with storage filters
-using **::layout-name/storage1[,storage2...]**, for example:
-
-```bash
-qdl flash installer.zip::layout1/ufs
-```
-
-### Flashing contents.xml
-
-QDL also supports flashing builds described by *contents.xml* files:
-
-```bash
 qdl flash contents.xml
 ```
 
-As the contents XML can describe the content for multiple storage types and
-multiple flavors, it might be necessary to select which content to flash. This
-is done by appending the **::specifier1,specifier2...** suffix to the file
-name. The specifier is matched against **storage types** and **flavors**. At
-most one resolved specifier per storage is allowed, and only the selected parts
-are flashed. As an example:
-
-```bash
-qdl flash contents.xml::ufs,safe_rtos
-```
-
-will flash the UFS storage with the only applicable flavor, and will flash
-*safe_rtos* onto the spinor.
-
-### Creating installer packages
-
-QDL can also create installer packages from builds described by *contents.xml*
-files. The generated zip contains a `flashmap.json`, the selected programmer
-images, and the referenced rawprogram, patch, and image files:
-
-```bash
-qdl create-zip installer.zip contents.xml
-```
-
-When the contents XML describes multiple storage or flavor combinations, select
-the desired content with the same `::specifier1,specifier2...` suffix used for
-flashing contents XML files:
-
-```bash
-qdl create-zip installer-ufs.zip contents.xml::ufs
-```
-
-The resulting archive can be flashed later with `qdl flash installer.zip`.
-Creating and flashing zip archives requires QDL to be built with libzip support,
-which is enabled by default.
+When a package or contents file covers several storage types, layouts or
+flavors, a `::specifier` suffix selects what to flash. The selector syntax
+and the `create-zip` subcommand that produces installer packages are
+described in [docs/installer-packages.md](docs/installer-packages.md).
 
 ### Flash simulation (dry run)
 
 Use the `--dry-run` option to run QDL without connecting to or flashing any
 device. This is useful for validating your XML descriptors and programmer
-arguments, or for generating VIP digest tables (see below):
+arguments, or for generating VIP digest tables (see
+[docs/vip.md](docs/vip.md)):
 
 ```bash
 qdl --dry-run prog_firehose_ddr.elf rawprogram*.xml patch*.xml
 ```
 
-### Reading and writing raw binaries
-
-In addition to flashing builds using their XML-based descriptions, QDL supports
-reading and writing binaries directly.
-
-```bash
-qdl prog_firehose_ddr.elf [read | write] [address specifier] <binary>...
-qdl prog_firehose_ddr.elf [erase | sha256] [address specifier]...
-```
-
-`erase` wipes the addressed region and `sha256` prints the SHA256 digest the
-device computes over it, which is a quick way to verify a write. Multiple
-read, write, erase and sha256 commands can be specified at once. The
-***address specifier*** can take the forms:
-
-- N - single number, specifies the physical partition number N, starting at
-  sector 0. To read data, the number of sectors must be specified explicitly
-  using the N/S+L form.
-
-- N/S - two numbers, specifies the physical partition number N and the start
-  sector S. To read data, the number of sectors must be specified explicitly
-  using the N/S+L form.
-
-- N/S+L - three numbers, specifies the physical partition number N, the start
-  sector S and the number of sectors L, that ***binary*** should be written to,
-  or which should be read into ***binary***.
-
-- partition name - a string, will match against partition names across the GPT
-  partition tables on all physical partitions.
-
-- N/partition_name - a number followed by a string, will match against
-  partition names of the GPT partition table in the specified physical
-  partition N.
-
-### Validated Image Programming (VIP)
-
-QDL supports **Validated Image Programming (VIP)** mode, which is activated
-when Secure Boot is enabled on the target. VIP controls which packets are
-allowed to be issued to the target by hashing all received data and comparing
-each resulting digest against the next entry in a pre-loaded digest table.
-If the digest matches, the packet is accepted; otherwise, the packet is
-rejected, and the target halts.
-
-To use VIP programming, a digest table must be generated prior to flashing the device.
-To generate a table of digests, run QDL with the `--create-digests` option,
-providing a path to store the VIP tables. Note that `--create-digests`
-implicitly enables dry-run mode, so no device connection is required:
-
-```bash
-mkdir vip
-qdl --create-digests=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
-```
-
-As a result, three types of files are generated:
-
-- `DIGEST_TABLE.bin` - contains the SHA256 table of digests for all Firehose
-  packets to be sent to the target. It is an intermediary table and is
-  used only for the subsequent generation of `DigestsToSign.bin` and
-  `ChainedTableOfDigests<n>.bin` files, and is not used directly by QDL for
-  VIP programming.
-
-- `DigestsToSign.bin` - first 53 digests + SHA256 hash of `ChainedTableOfDigests0.bin`.
-  This file must be converted to MBN format and then signed with sectools:
-
-  ```bash
-  sectools mbn-tool generate --data DigestsToSign.bin --mbn-version 6 --outfile DigestsToSign.bin.mbn
-  sectools secure-image --sign DigestsToSign.bin.mbn --image-id=VIP
-  ```
-
-  Please check the security profile for your SoC to determine which version of
-  the MBN format should be used.
-
-- `ChainedTableOfDigests<n>.bin` - contains the remaining digests, split across
-  multiple files of up to 255 digests each. Non-final files have the SHA256
-  hash of the next chained table appended. The final file has a trailing zero
-  byte appended to ensure its size is not a multiple of the sector size.
-
-To flash a board using VIP mode, provide the path where the previously generated
-and signed tables are stored using the `--vip-table-path` option:
-
-```bash
-qdl --vip-table-path=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
-```
-
-Note that `--vip-table-path` and `--create-digests` are mutually exclusive.
-
-#### Validating VIP tables without hardware
-
-Before flashing a real device it is possible to verify that the signed digest
-tables match the data that will be sent, using `--dry-run` together with
-`--vip-table-path`:
-
-```bash
-qdl --dry-run --vip-table-path=./vip prog_firehose_ddr.elf rawprogram*.xml patch*.xml
-```
-
-QDL will simulate the full Firehose session, compute SHA256 over every packet
-it would send, and compare each hash against the corresponding entry in the
-loaded digest tables. Any mismatch is reported to stderr. All mismatches are
-printed before the run exits so that every problem is visible at once.
-
-This catches table/data mismatches early -- before committing to a real flash --
-and is useful both as a local sanity check and as a step in CI pipelines.
-
-### Multi-programmer targets
-
-On some targets multiple files need to be loaded in order to reach the
-Firehose programmer; these targets will request multiple images over Sahara.
-Three mechanisms for providing these images are provided:
-
-#### Command line argument
-
-The *programmer* argument allows specifying a comma-separated list of
-colon-separated "id" and "filename" pairs. Each filename should refer to the
-Sahara image of the specified Sahara image id.
-
-```bash
-qdl 13:prog_firehose_ddr.elf,42:the-answer rawprogram.xml
-```
-
-#### Sahara configuration XML file
-
-Flattened METAs include the various images that need to be loaded to
-enter Firehose mode, as well as a sahara_config XML file, which defines the
-Sahara image id for each of these images.
-
-If the specified device programmer is determined to be a Sahara configuration
-XML file, it will be parsed and the referenced files will be loaded and
-serviced to the device upon request.
-
-```bash
-qdl sahara_programmer.xml rawprogram.xml
-```
-
-#### Programmer archive
-
-Directly providing a list of ids and filenames is cumbersome and error-prone,
-so QDL accepts a "*programmer archive*". This allows the user to use the
-tool in the same fashion as was done for single-programmer targets.
-
-The *programmer archive* contains the Sahara images to be loaded, identified by
-the Sahara *id* needed by the target.
-
-QDL can create such an archive from the same programmer descriptions accepted
-for flashing. To create an archive from a command-line Sahara image list:
-
-```bash
-qdl create-sahara-archive programmer.bin 13:prog_firehose_ddr.elf,42:the-answer
-```
-
-To create an archive from a Sahara configuration XML file:
-
-```bash
-qdl create-sahara-archive programmer.bin sahara_programmer.xml
-```
-
-To create an archive from a contents XML file:
-
-```bash
-qdl create-sahara-archive programmer.bin contents.xml
-```
-
-When the contents XML describes multiple storage or flavor combinations, select
-exactly one with the same `::specifier` syntax used by `flash`:
-
-```bash
-qdl create-sahara-archive programmer.bin contents.xml::ufs
-```
-
-*programmer.bin* can now be passed to QDL and the included images will be served
-in order to reach Firehose mode.
-
-## Collect crash dump
-
-When a Qualcomm target crashes or is forced into crash dump mode, the
-bootloader re-enumerates the device over USB with Product ID `900e` and
-offers memory segments for collection via the Sahara protocol.
-
-A kernel crash can be triggered on the target with:
-
-```bash
-echo c > /proc/sysrq-trigger
-```
-
-Use `qdl ramdump` on the host to collect the dump:
-
-```bash
-qdl ramdump -o ./ramdump
-```
-
-Each offered memory segment is written to a separate file under
-`./ramdump`. To collect only specific segments, pass a comma-separated
-filter:
-
-```bash
-qdl ramdump -o ./ramdump OCIMEM,CODERAM
-```
-
-## Sahara kickstart for flashless-boot devices (qdl ks)
-
-The `qdl ks` ("kickstart") subcommand uses the Sahara protocol to load
-images from the host to the device. It targets *flashless boot* devices
-such as the Qualcomm Cloud AI 100, which fetch their runtime firmware
-from the host on every boot rather than storing it on-device.
-
-Unlike normal flashing, kickstart stops once Sahara is done: no Firehose
-programmer is uploaded and nothing is written to storage.
-
-One argument is required: `-s id:path` registers an image mapping. It
-may be specified more than once, one mapping per Sahara image id the
-device may request.
-
-By default the device is found through the same backends the other
-subcommands use, so `--backend` and `--serial` select it just as they do
-when flashing:
-
-```bash
-qdl ks -s 13:prog_firehose_ddr.elf
-```
-
-Devices that a kernel driver exposes as a node instead - such as the MHI
-Sahara endpoints - are addressed with `-p`, which is driven with plain
-open/read/write operations rather than through a backend:
-
-```bash
-qdl ks -p /dev/mhi0_QAIC_SAHARA \
-       -s 1:/opt/qti-aic/firmware/fw1.bin \
-       -s 2:/opt/qti-aic/firmware/fw2.bin
-```
-
-Because `-p` names the transport outright, it cannot be combined with
-`--serial` or `--backend`.
-
-The mapped files do not need to exist at invocation time. If `qdl ks`
-cannot open a requested file, the device decides the next action. This
-makes it possible to wire `qdl ks` into a single udev rule that covers
-multiple device configurations (for example, an optional DDR training
-image that is only present on some setups).
-
-## nbdkit plugin
-
-In addition to the `qdl` programmer, an
-[nbdkit](https://gitlab.com/nbdkit/nbdkit) plugin can be built. It uploads
-the firehose programmer and exposes a physical partition (LUN) as a block
-device on the host, so its partition table can be edited and its partitions
-mounted with ordinary tools. See [docs/nbd.md](docs/nbd.md) for build
-instructions and a usage walkthrough.
+## Documentation
+
+The less common workflows are described in separate guides under
+[docs/](docs/):
+
+- [Installer packages and contents.xml](docs/installer-packages.md) -
+  flashing zip packages, `flashmap.json` and *contents.xml* builds, the
+  storage, layout and flavor selectors, and creating packages with
+  `create-zip`.
+- [Reading and writing raw binaries](docs/raw-io.md) - `read`, `write`,
+  `erase` and `sha256` on physical partitions, sector ranges and named GPT
+  partitions.
+- [Validated Image Programming](docs/vip.md) - generating and signing
+  digest tables for Secure Boot targets and validating them without
+  hardware.
+- [Multi-programmer targets](docs/multi-programmer.md) - targets that
+  request several Sahara images: command-line image lists, Sahara
+  configuration XML files and programmer archives.
+- [Collect crash dump](docs/ramdump.md) - collecting memory segments from
+  a crashed target with `qdl ramdump`.
+- [Sahara kickstart](docs/kickstart.md) - loading firmware into
+  flashless-boot devices such as the Cloud AI 100 with `qdl ks`.
+- [Flashing from WSL2](docs/wsl2.md) - forwarding the EDL device into WSL2
+  with usbipd-win and re-attaching it after re-enumeration.
+- [nbdkit plugin](docs/nbd.md) - exposing a physical partition as a block
+  device on the host.
 
 ## Run tests
 
