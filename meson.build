@@ -1,7 +1,7 @@
 project('qdl', 'c',
   default_options : ['warning_level=2', 'optimization=2'],
   license: 'BSD-3-Clause',
-  meson_version: '>=1.1.0'
+  meson_version: '>=0.56.0'
 )
 
 # Use 64-bit file offsets everywhere. This must be consistent across every
