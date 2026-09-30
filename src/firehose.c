@@ -87,6 +87,34 @@ static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 	va_end(ap);
 }
 
+/*
+ * Trace an XML message on a single debug line. libxml2 dumps documents
+ * with a newline after the declaration and at the end, and some devices
+ * terminate their responses the same way, which would otherwise split
+ * the trace across lines and leave blank ones between messages.
+ */
+static void firehose_debug_xml(const char *what, const char *xml)
+{
+	const char *in;
+	char *copy;
+	char *out;
+
+	if (!qdl_debug)
+		return;
+
+	copy = strdup(xml);
+	if (!copy)
+		return;
+
+	for (in = copy, out = copy; *in; in++)
+		if (*in != '\n' && *in != '\r')
+			*out++ = *in;
+	*out = '\0';
+
+	ux_debug("FIREHOSE %s: %s\n", what, copy);
+	free(copy);
+}
+
 static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 {
 	xmlNode *node;
@@ -300,7 +328,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 		}
 		buf[n] = '\0';
 
-		ux_debug("FIREHOSE READ: %s\n", buf);
+		firehose_debug_xml("READ", buf);
 
 		/*
 		 * On stream-oriented transports (Windows COM port via the
@@ -424,7 +452,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 	vip_gen_chunk_init(qdl);
 
 	for (;;) {
-		ux_debug("FIREHOSE WRITE: %s\n", s);
+		firehose_debug_xml("WRITE", (const char *)s);
 		vip_gen_chunk_update(qdl, s, len);
 		ret = qdl_write(qdl, s, len, 1000);
 
