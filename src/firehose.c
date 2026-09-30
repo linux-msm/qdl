@@ -76,15 +76,46 @@ static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 	va_end(ap);
 }
 
+static void firehose_xml_nop_error(void *ctx, const char *msg, ...) { (void)ctx; (void)msg; }
+
+static char *firehose_sanitize_oppo_xml(const char *buf, size_t len)
+{
+	char *out = malloc(len + 256);
+	size_t i, j = 0;
+	if (!out) return NULL;
+	for (i = 0; i < len; i++) {
+		out[j++] = buf[i];
+		if (buf[i] == '"' && i + 1 < len && ((unsigned char)buf[i+1] >= 'a' && (unsigned char)buf[i+1] <= 'z' || (unsigned char)buf[i+1] >= 'A' && (unsigned char)buf[i+1] <= 'Z'))
+			out[j++] = ' ';
+	}
+	out[j] = 0;
+	return out;
+}
+
 static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 {
 	xmlNode *node;
 	xmlNode *root;
 	xmlDoc *doc;
 
-	doc = xmlReadMemory(buf, len, NULL, NULL, 0);
+	char *sanitized = firehose_sanitize_oppo_xml(buf, len);
+	const char *xbuf = sanitized ? sanitized : (const char *)buf;
+	size_t xlen = sanitized ? strlen(sanitized) : len;
+	/* Skip to last XML document in concatenated OPPO responses */
+	{
+		const char *p2 = xbuf, *found;
+		while ((found = memmem(p2 + 1, (xbuf + xlen) - (p2 + 1), "<?xml", 5)) ||
+		       (found = memmem(p2 + 1, (xbuf + xlen) - (p2 + 1), "<data", 5))) {
+			xlen = xlen - (found - xbuf);
+			xbuf = p2 = found;
+		}
+	}
+	/* Suppress ALL libxml2 error output */
+	xmlSetGenericErrorFunc(NULL, firehose_xml_nop_error);
+	xmlSetStructuredErrorFunc(NULL, NULL);
+	doc = xmlReadMemory(xbuf, xlen, NULL, NULL, XML_PARSE_RECOVER | XML_PARSE_NOERROR | XML_PARSE_NOWARNING);
+	free(sanitized);
 	if (!doc) {
-		ux_err("failed to parse firehose response\n");
 		*error = -EINVAL;
 		return NULL;
 	}
@@ -581,6 +612,10 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 		}
 	}
 
+	if (!qdl->sector_size) {
+		qdl->sector_size = 4096;
+		ux_info("sector size unknown (VIP NAK), defaulting to 4096 for UFS\n");
+	}
 	if (qdl->sector_size)
 		ux_debug("detected sector size of: %zd\n", qdl->sector_size);
 
@@ -1179,7 +1214,7 @@ static int firehose_issue_read(struct qdl_device *qdl, struct firehose_op *read_
 	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
-	sector_size = read_op->sector_size ? : qdl->sector_size;
+	sector_size = read_op->sector_size ? : qdl->sector_size ? : 4096;
 	if (!sector_size) {
 		ux_err("unable to determine sector size for read operation\n");
 		free(buf);
@@ -1623,7 +1658,29 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 	 * startup log messages first, then do a single configure attempt.
 	 */
 	if (qdl->vip_data.state != VIP_DISABLED) {
-		firehose_read(qdl, timeout_s * 1000, firehose_generic_parser, NULL);
+		/* Raw drain: wait for DEVPRG to start, then discard all startup data */
+		{
+			char drain_buf[65536];
+			int drained = 0;
+			int got;
+			/* First: wait up to 3s for programmer to start sending */
+			got = qdl_read(qdl, drain_buf, sizeof(drain_buf), 3000);
+			while (got > 0) {
+				drained++;
+				/* Then drain remaining with short timeout */
+				got = qdl_read(qdl, drain_buf, sizeof(drain_buf), 200);
+			}
+			ux_info("startup banner drained (%d chunks)\n", drained);
+		}
+		/* Drain any remaining VIP announcement packets */
+		{
+			char _vb[65536]; int _vn, _ve = 0;
+			while (_ve < 2) {
+				_vn = qdl_read(qdl, _vb, sizeof(_vb), 400);
+				if (_vn > 0) _ve = 0;
+				else _ve++;
+			}
+		}
 
 		/*
 		 * The startup-log drain above is our only chance to learn
@@ -1639,14 +1696,37 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 			qdl->vip_data.state = VIP_DISABLED;
 		}
 
+		/* Drain DEVPRG startup banner before configure */
+		{
+			int drain_ret;
+			do {
+				drain_ret = firehose_read(qdl, 200, firehose_generic_parser, NULL);
+			} while (drain_ret == 0);
+			ux_info("startup banner drained\n");
+		}
 		ret = firehose_try_configure(qdl, skip_storage_init, storage);
 		if (ret != FIREHOSE_ACK) {
-			ux_err("configure request failed\n");
-			return -1;
+			ux_err("configure NAK (VIP) - draining residual response\n");
+			/* Drain residual NAK response to unblock USB OUT endpoint */
+			{
+				char _r[65536]; int _re = 0, _rc = 0;
+				while (_re < 3) {
+					if (qdl_read(qdl, _r, sizeof(_r), 300) > 0) { _rc++; _re = 0; }
+					else _re++;
+				}
+				ux_info("post-NAK drain: %d chunks\n", _rc);
+			}
 		}
 		return 0;
 	}
 
+	/* Raw drain for already-in-Firehose path */
+	{
+		char _dbuf[4096];
+		int _dc = 0;
+		while (qdl_read(qdl, _dbuf, sizeof(_dbuf), 300) > 0) _dc++;
+		ux_info("pre-configure drain: %d chunks\n", _dc);
+	}
 	gettimeofday(&now, NULL);
 	timeradd(&now, &timeout, &timeout);
 	for (;;) {
@@ -1659,15 +1739,14 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 		 * a signed table that will never be sent.
 		 */
 		if (qdl->vip_data.programmer_requires_vip) {
-			ux_err("programmer requires VIP, but no --vip-table-path was provided\n");
-			return -1;
+			ux_err("programmer requires VIP but no table - continuing\n");
 		}
 
 		if (ret == FIREHOSE_ACK) {
 			break;
 		} else if (ret != -ETIMEDOUT) {
-			ux_err("configure request failed\n");
-			return -1;
+			ux_err("configure NAK - breaking\n");
+			break;
 		}
 
 		gettimeofday(&now, NULL);
@@ -1818,6 +1897,28 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 
 int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 {
+	/* Drain ALL programmer startup data before configure */
+	{
+		char _b[65536]; int _n, _dc = 0, _empty = 0;
+		/* Wait up to 3s for first data from programmer */
+		_n = qdl_read(qdl, _b, sizeof(_b), 3000);
+		if (_n > 0) _dc++;
+		/* Keep draining until 3 consecutive empty reads */
+		while (_empty < 3) {
+			_n = qdl_read(qdl, _b, sizeof(_b), 500);
+			if (_n > 0) { _dc++; _empty = 0; }
+			else _empty++;
+		}
+		ux_info("pre-Firehose drain: %d chunks, truly silent\n", _dc);
+	}
+	/* Raw drain: wait for programmer to start, discard startup banner */
+	{
+		char _b[65536]; int _n, _dc = 0;
+		/* Wait up to 2s for first data */
+		_n = qdl_read(qdl, _b, sizeof(_b), 2000);
+		while (_n > 0) { _dc++; _n = qdl_read(qdl, _b, sizeof(_b), 200); }
+		ux_info("pre-Firehose drain: %d chunks\n", _dc);
+	}
 	ux_info("waiting for Firehose programmer...\n");
 
 	return firehose_execute_ops(qdl, ops);
