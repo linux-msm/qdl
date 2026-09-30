@@ -111,7 +111,7 @@ static void firehose_debug_xml(const char *what, const char *xml)
 			*out++ = *in;
 	*out = '\0';
 
-	ux_debug("FIREHOSE %s: %s\n", what, copy);
+	ux_debug("FIREHOSE: %s: %s\n", what, copy);
 	free(copy);
 }
 
@@ -164,7 +164,7 @@ static int firehose_generic_parser(xmlNode *node, void *data __unused, bool *raw
 		return -EINVAL;
 
 	if (xmlStrcmp(node->name, (xmlChar *)"log") == 0) {
-		ux_log("LOG: %s\n", value);
+		ux_log("FIREHOSE: LOG: %s\n", value);
 		ret = -EAGAIN;
 	} else if (xmlStrcmp(value, (xmlChar *)"ACK") == 0) {
 		ret = FIREHOSE_ACK;
@@ -235,7 +235,7 @@ static int firehose_sha256_parser(xmlNode *node, void *data, bool *rawmode)
 		if (!op->digest_valid && extract_sha256_hex((const char *)value, op->digest))
 			op->digest_valid = true;
 
-		ux_log("LOG: %s\n", value);
+		ux_log("FIREHOSE: LOG: %s\n", value);
 		xmlFree(value);
 		return -EAGAIN;
 	}
@@ -493,7 +493,7 @@ static int firehose_configure_response_parser(xmlNode *node, void *data,
 		return -EINVAL;
 
 	if (xmlStrcmp(node->name, (xmlChar *)"log") == 0) {
-		ux_log("LOG: %s\n", value);
+		ux_log("FIREHOSE: LOG: %s\n", value);
 		xmlFree(value);
 		return -EAGAIN;
 	}
@@ -1143,7 +1143,7 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 		}
 	}
 
-	ux_debug("FIREHOSE RAW BINARY WRITE: %s, %d bytes\n",
+	ux_debug("FIREHOSE: RAW BINARY WRITE: %s, %d bytes\n",
 		 program->filename, sector_size * num_sectors);
 
 	fill = program->sparse && program->sparse_chunk_type == CHUNK_TYPE_FILL;
@@ -1917,7 +1917,7 @@ static int firehose_getstorageinfo_parser(xmlNode *node, void *data,
 			json_free(json);
 		}
 	} else {
-		ux_debug("LOG: %s\n", value);
+		ux_debug("FIREHOSE: LOG: %s\n", value);
 	}
 
 	xmlFree(value);
