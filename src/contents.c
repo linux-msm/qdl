@@ -1118,11 +1118,6 @@ int contents_resolve_path(struct contents_filter *filter, const char *filename, 
 
 	/* Look for a match */
 	list_for_each_entry(entry, &contents->entries, node) {
-		/*
-		ux_debug("resolve_path: checking entry filename='%s' storage='%s' flavor='%s'\n",
-			 entry->filename, contents_storage_name(entry->storage_type),
-			 entry->flavor ? entry->flavor : "NULL");
-		*/
 		if (storage_type != QDL_STORAGE_UNKNOWN &&
 		    entry->storage_type != QDL_STORAGE_UNKNOWN &&
 		    entry->storage_type != storage_type) {
