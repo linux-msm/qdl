@@ -17,9 +17,11 @@
 #include "file.h"
 #include "firehose.h"
 #include "pathbuf.h"
+#include "meta_cli.h"
 #include "qdl.h"
 
 #ifdef _WIN32
+#include <windows.h>
 #define ROOT_PATH_TAG "windows_root_path"
 #else
 #define ROOT_PATH_TAG "linux_root_path"
@@ -61,6 +63,9 @@ struct contents {
 	size_t num_flavors;
 };
 
+static int contents_populate_from_metacli(struct contents *contents, struct metacli_ctx *ctx,
+					   enum qdl_storage_type storage_type, const char *flavor,
+					   const char *sku);
 struct contents_filter {
 	struct contents *contents;
 
@@ -731,6 +736,7 @@ static int contents_decode_selectors(struct contents *contents, char *pattern,
 	enum qdl_storage_type storage;
 	size_t num_valid_selectors;
 	char *flavor;
+	char *sku;
 	size_t count = 0;
 	char *token;
 	char *save;
@@ -823,9 +829,15 @@ static int contents_decode_selectors(struct contents *contents, char *pattern,
 			goto err_free_selectors;
 		}
 
-		if (strchr(flavor, '/')) {
-			ux_err("invalid flavor selector \"%s\"\n", flavor);
-			goto err_free_selectors;
+		sku = strchr(flavor, '/');
+		if (sku) {
+			*sku = '\0';
+			sku++;
+			if (!sku[0]) {
+				ux_err("invalid sku selection for storage \"%s\" flavor \"%s\"\n",
+				       token, flavor);
+				goto err_free_selectors;
+			}
 		}
 
 		if (!contents_flavor_is_valid(contents, flavor)) {
@@ -895,9 +907,74 @@ int contents_load(struct list_head *ops, const char *filename, char *specifier,
 	int i;
 
 	list_init(&contents.entries);
+struct metacli_ctx *metacli_ctx = NULL;
+
+	ux_debug("contents_load: filename='%s' pattern='%s'\n", filename, pattern ? pattern : "NULL");
+
+	/* Try meta_cli first if available */
+	if (metacli_locate(filename, &metacli_ctx)) {
+		ux_info("using meta_cli for contents.xml\n");
+		/* Parse pattern directly to get storage/flavor/sku without needing contents */
+		enum qdl_storage_type selected_storage = QDL_STORAGE_UNKNOWN;
+		const char *selected_flavor = NULL;
+		const char *selected_sku = NULL;
+
+		if (pattern) {
+			char *pattern_copy = strdup(pattern);
+			char *slash = strchr(pattern_copy, '/');
+			ux_debug("Pattern parsing: pattern='%s' slash=%p\n", pattern, slash);
+			if (slash) {
+				char *slash2;
+
+				*slash = '\0';
+				selected_storage = decode_storage_type(pattern_copy);
+
+				slash2 = strchr(slash + 1, '/');
+				if (slash2) {
+					*slash2 = '\0';
+					selected_sku = strdup(slash2 + 1);
+					if (selected_sku && *selected_sku == '\0') {
+						free((char *)selected_sku);
+						selected_sku = NULL;
+					}
+				}
+
+				selected_flavor = strdup(slash + 1);
+				ux_debug("  storage='%s' flavor='%s' sku='%s'\n", pattern_copy,
+					 selected_flavor, selected_sku ? selected_sku : "NULL");
+				if (*selected_flavor == '\0') {
+					free((char *)selected_flavor);
+					selected_flavor = NULL;
+				}
+			} else {
+				selected_storage = decode_storage_type(pattern_copy);
+				ux_debug("  storage='%s' flavor=NULL sku=NULL\n", pattern_copy);
+			}
+			free(pattern_copy);
+		}
+
+		ret = contents_populate_from_metacli(&contents, metacli_ctx, selected_storage,
+						      selected_flavor, selected_sku);
+		if (selected_flavor)
+			free((char *)selected_flavor);
+		if (selected_sku)
+			free((char *)selected_sku);
+		metacli_ctx_free(metacli_ctx);
+		if (ret == 0) {
+			/* meta_cli succeeded, continue with populated contents */
+			goto decode_selectors;
+		}
+		/* meta_cli failed, fall back to XML parsing */
+		ux_info("meta_cli failed, falling back to XML parser\n");
+		list_init(&contents.entries);
+		contents.num_flavors = 0;
+		contents.flavors = NULL;
+	}
+
 	ret = contents_load_xml(&contents, filename);
 	if (ret < 0)
 		goto out_free_contents;
+decode_selectors:
 
 	ret = contents_decode_selectors(&contents, pattern, &selectors);
 	if (ret < 0)
@@ -910,6 +987,8 @@ int contents_load(struct list_head *ops, const char *filename, char *specifier,
 	}
 
 	filter.contents = &contents;
+	filter.storage_type = selectors[0].storage_type;
+	filter.flavor = selectors[0].flavor;
 	ret = contents_find_programmers(&contents, &filter, images);
 	if (ret < 0)
 		goto out_free_contents;
@@ -1039,10 +1118,21 @@ int contents_resolve_path(struct contents_filter *filter, const char *filename, 
 
 	/* Look for a match */
 	list_for_each_entry(entry, &contents->entries, node) {
-		if (entry->storage_type != QDL_STORAGE_UNKNOWN && entry->storage_type != storage_type) {
+		/*
+		ux_debug("resolve_path: checking entry filename='%s' storage='%s' flavor='%s'\n",
+			 entry->filename, contents_storage_name(entry->storage_type),
+			 entry->flavor ? entry->flavor : "NULL");
+		*/
+		if (storage_type != QDL_STORAGE_UNKNOWN &&
+		    entry->storage_type != QDL_STORAGE_UNKNOWN &&
+		    entry->storage_type != storage_type) {
+			ux_debug("  storage mismatch: entry='%s' filter='%s', skipping\n",
+				 contents_storage_name(entry->storage_type),
+				 contents_storage_name(storage_type));
 			continue;
 		}
 		if (entry->flavor && flavor && strcmp(entry->flavor, flavor)) {
+			ux_debug("  flavor mismatch, skipping\n");
 			continue;
 		}
 
@@ -1059,9 +1149,10 @@ int contents_resolve_path(struct contents_filter *filter, const char *filename, 
 	 * didn't find an exact match, search adjacent to all other files...
 	 */
 	list_for_each_entry(entry, &contents->entries, node) {
-		if (entry->storage_type != QDL_STORAGE_UNKNOWN && entry->storage_type != storage_type) {
+		if (storage_type != QDL_STORAGE_UNKNOWN &&
+		    entry->storage_type != QDL_STORAGE_UNKNOWN &&
+		    entry->storage_type != storage_type)
 			continue;
-		}
 		if (entry->flavor && flavor && strcmp(entry->flavor, flavor)) {
 			continue;
 		}
@@ -1077,4 +1168,561 @@ int contents_resolve_path(struct contents_filter *filter, const char *filename, 
 	}
 
 	return 0;
+}
+
+/**
+ * contents_filename_is_lite() - detect a "lite" firehose programmer by name
+ * @filename: bare filename to check
+ *
+ * meta_cli's device programmer file lists carry no firehose_type the way
+ * contents.xml's firehose_type="lite" attribute does, so this is inferred
+ * from the filename instead. There is no portable case-insensitive
+ * strstr(), so lowercase into a scratch buffer and use strstr() on that.
+ *
+ * Returns: true if @filename contains "lite" (case-insensitive)
+ */
+static bool contents_filename_is_lite(const char *filename)
+{
+	char lower[PATH_MAX];
+	size_t len = strlen(filename);
+	size_t i;
+
+	if (len >= sizeof(lower))
+		len = sizeof(lower) - 1;
+
+	for (i = 0; i < len; i++)
+		lower[i] = (char)tolower((unsigned char)filename[i]);
+	lower[len] = '\0';
+
+	return strstr(lower, "lite") != NULL;
+}
+
+/**
+ * contents_populate_device_programmer() - get device programmer files
+ * @contents: contents database to append entries to
+ * @ctx: meta_cli context
+ * @storage_type: storage type to query
+ * @flavor: flavor to query, or NULL
+ *
+ * Tries get_device_programmer_config first. If it does not yield both a
+ * programmer_bin and a programmer_config entry, falls back to get_files
+ * for the device_programmer file type.
+ *
+ * Returns: 0 on success, -1 if neither call returned parseable JSON
+ */
+static int contents_populate_device_programmer(struct contents *contents, struct metacli_ctx *ctx,
+						enum qdl_storage_type storage_type, const char *flavor)
+{
+	char storage_arg[256] = "";
+	char flavor_arg[256] = "";
+	char *cmd_argv_prog[4];
+	int cmd_argc = 0;
+	int prog_bin_count = 0;
+	int prog_count = 0;
+	struct json_value *prog_config = NULL;
+	struct contents_entry *entry;
+	bool prog_call_ok;
+
+	cmd_argv_prog[cmd_argc++] = "get_device_programmer_config";
+	snprintf(storage_arg, sizeof(storage_arg), "storage=%s", encode_storage_type(storage_type));
+	cmd_argv_prog[cmd_argc++] = storage_arg;
+
+	if (flavor) {
+		snprintf(flavor_arg, sizeof(flavor_arg), "flavor=%s", flavor);
+		cmd_argv_prog[cmd_argc++] = flavor_arg;
+	}
+	cmd_argv_prog[cmd_argc] = NULL;
+
+	prog_call_ok = metacli_run_json(ctx, cmd_argv_prog, &prog_config) == 0;
+
+	if (prog_call_ok) {
+		struct json_value *prog_bin_array = json_get_child(prog_config, "programmer_bin");
+		struct json_value *prog_array = json_get_child(prog_config, "programmer_config");
+
+		prog_bin_count = prog_bin_array ? json_count_children(prog_bin_array) : 0;
+		prog_count = prog_array ? json_count_children(prog_array) : 0;
+
+		/*
+		 * Only commit entries once we know get_device_programmer_config
+		 * yielded both a programmer_bin and a programmer_config file.
+		 */
+		if (prog_bin_count > 0 && prog_count > 0) {
+			/* Add programmer_bin files as DEVICE_PROGRAMMER entries */
+			for (int p = 0; p < prog_bin_count; p++) {
+				const char *prog_bin = json_get_element_string(prog_bin_array, p);
+				if (prog_bin) {
+#ifdef _WIN32
+					char normalized[MAX_PATH];
+					if (GetFullPathNameA(prog_bin, MAX_PATH, normalized, NULL)) {
+						prog_bin = normalized;
+					}
+#endif
+					char *bin_copy = strdup(prog_bin);
+					const char *basename_str = basename(bin_copy);
+					entry = calloc(1, sizeof(*entry));
+					if (!entry) {
+						free(bin_copy);
+						json_free(prog_config);
+						return -1;
+					}
+					entry->file_type = CONTENTS_FILE_DEVICE_PROGRAMMER;
+					entry->storage_type = storage_type;
+					if (contents_filename_is_lite(basename_str))
+						entry->firehose_type = FIREHOSE_TYPE_LITE;
+					if (flavor) {
+						entry->flavor = strdup(flavor);
+						if (!entry->flavor) {
+							free(entry);
+							free(bin_copy);
+							json_free(prog_config);
+							return -1;
+						}
+					}
+					entry->filename = strdup(basename_str);
+					free(bin_copy);
+					if (!entry->filename) {
+						free(entry->flavor);
+						free(entry);
+						json_free(prog_config);
+						return -1;
+					}
+					qdl_pathbuf_reset(&entry->path);
+#ifdef _WIN32
+					strncpy(entry->path.buf, prog_bin, PATH_MAX - 1);
+					entry->path.len = strlen(prog_bin);
+					ux_debug("Added programmer_bin DEVICE_PROGRAMMER: filename=%s path=%s\n", entry->filename, entry->path.buf);
+#else
+					qdl_pathbuf_push(&entry->path, prog_bin);
+					ux_debug("Added programmer_bin DEVICE_PROGRAMMER: filename=%s path=%s\n", entry->filename, qdl_pathbuf_str(&entry->path));
+#endif
+					list_append(&contents->entries, &entry->node);
+				}
+			}
+
+			/* Add programmer_config files as PROGRAMMER_XML entries */
+			for (int p = 0; p < prog_count; p++) {
+				const char *prog_file = json_get_element_string(prog_array, p);
+				if (prog_file) {
+					entry = calloc(1, sizeof(*entry));
+					if (!entry) {
+						json_free(prog_config);
+						return -1;
+					}
+					entry->file_type = CONTENTS_FILE_PROGRAMMER_XML;
+					entry->storage_type = storage_type;
+					if (flavor) {
+						entry->flavor = strdup(flavor);
+						if (!entry->flavor) {
+							free(entry);
+							json_free(prog_config);
+							return -1;
+						}
+					}
+					entry->filename = strdup(prog_file);
+					if (!entry->filename) {
+						free(entry->flavor);
+						free(entry);
+						json_free(prog_config);
+						return -1;
+					}
+					qdl_pathbuf_reset(&entry->path);
+					qdl_pathbuf_push(&entry->path, prog_file);
+					list_append(&contents->entries, &entry->node);
+				}
+			}
+		}
+		json_free(prog_config);
+	}
+
+	if (prog_bin_count > 0 && prog_count > 0)
+		return 0;
+
+	/*
+	 * get_device_programmer_config did not yield both a programmer_bin
+	 * and a programmer_config entry -- fall back to get_files for the
+	 * device programmer binaries.
+	 */
+	{
+		char *cmd_argv_files[5];
+		int files_argc = 0;
+		struct json_value *device_programmer_files = NULL;
+		int dp_count;
+
+		cmd_argv_files[files_argc++] = "get_files";
+		cmd_argv_files[files_argc++] = "file_types=['device_programmer']";
+		cmd_argv_files[files_argc++] = storage_arg;
+
+		if (flavor)
+			cmd_argv_files[files_argc++] = flavor_arg;
+
+		cmd_argv_files[files_argc] = NULL;
+
+		if (metacli_run_json(ctx, cmd_argv_files, &device_programmer_files) != 0)
+			return -1;
+
+		dp_count = json_count_children(device_programmer_files);
+
+		for (int p = 0; p < dp_count; p++) {
+			const char *dp_file = json_get_element_string(device_programmer_files, p);
+
+			if (dp_file) {
+				const char *dp_basename = basename((char *)dp_file);
+
+				entry = calloc(1, sizeof(*entry));
+				if (!entry) {
+					json_free(device_programmer_files);
+					return -1;
+				}
+				entry->file_type = CONTENTS_FILE_DEVICE_PROGRAMMER;
+				entry->storage_type = storage_type;
+				if (contents_filename_is_lite(dp_basename))
+					entry->firehose_type = FIREHOSE_TYPE_LITE;
+				if (flavor) {
+					entry->flavor = strdup(flavor);
+					if (!entry->flavor) {
+						free(entry);
+						json_free(device_programmer_files);
+						return -1;
+					}
+				}
+				entry->filename = strdup(dp_basename);
+				if (!entry->filename) {
+					free(entry->flavor);
+					free(entry);
+					json_free(device_programmer_files);
+					return -1;
+				}
+				qdl_pathbuf_reset(&entry->path);
+#ifdef _WIN32
+				strncpy(entry->path.buf, dp_file, PATH_MAX - 1);
+				entry->path.len = strlen(dp_file);
+#else
+				qdl_pathbuf_push(&entry->path, dp_file);
+#endif
+				list_append(&contents->entries, &entry->node);
+			}
+		}
+		json_free(device_programmer_files);
+	}
+
+	return 0;
+}
+
+static int contents_populate_from_metacli(struct contents *contents, struct metacli_ctx *ctx,
+					   enum qdl_storage_type storage_type, const char *flavor,
+					   const char *sku)
+{
+	struct json_value *storage_types = NULL;
+	struct json_value *flavors = NULL;
+	struct json_value *partition_files = NULL;
+	struct contents_entry *entry;
+	enum qdl_storage_type st;
+	const char *storage_str, *flavor_str, *file_path;
+	const char *validated_sku = NULL;
+	char *cmd_argv[6];
+	int storage_count, flavor_count, file_count;
+	int i, j, k;
+	int ret = -1;
+
+	/* Get storage types */
+	cmd_argv[0] = "get_storage_types";
+	cmd_argv[1] = NULL;
+	if (metacli_run_json(ctx, cmd_argv, &storage_types) < 0)
+		return -1;
+
+	storage_count = json_count_children(storage_types);
+	if (storage_count <= 0) {
+		ux_err("meta_cli returned no storage types\n");
+		json_free(storage_types);
+		return -1;
+	}
+
+	/* Get product flavors */
+	cmd_argv[0] = "get_product_flavors";
+	cmd_argv[1] = NULL;
+	if (metacli_run_json(ctx, cmd_argv, &flavors) < 0) {
+		json_free(storage_types);
+		return -1;
+	}
+
+	flavor_count = json_count_children(flavors);
+
+	/* Populate flavors array */
+	if (flavor_count > 0) {
+		contents->flavors = calloc(flavor_count, sizeof(char *));
+		if (!contents->flavors) {
+			json_free(storage_types);
+			json_free(flavors);
+			return -1;
+		}
+
+		for (i = 0; i < flavor_count; i++) {
+			flavor_str = json_get_element_string(flavors, i);
+			if (flavor_str) {
+				contents->flavors[i] = strdup(flavor_str);
+				if (!contents->flavors[i]) {
+					json_free(storage_types);
+					json_free(flavors);
+					return -1;
+				}
+				contents->num_flavors++;
+			}
+		}
+	}
+
+	/*
+	 * Get and validate the SKU config list, if the caller selected one.
+	 * get_sku_config_list may not exist on older meta_cli builds, and an
+	 * unrecognized sku is just a user typo -- neither is fatal to loading
+	 * contents.xml, it just means we proceed without SKU filtering.
+	 */
+	if (sku) {
+		struct json_value *skus = NULL;
+		int sku_count;
+
+		cmd_argv[0] = "get_sku_config_list";
+		cmd_argv[1] = NULL;
+		if (metacli_run_json(ctx, cmd_argv, &skus) < 0) {
+			ux_info("meta_cli: get_sku_config_list unavailable, ignoring sku \"%s\"\n", sku);
+		} else {
+			sku_count = json_count_children(skus);
+			for (i = 0; i < sku_count; i++) {
+				const char *sku_str = json_get_element_string(skus, i);
+
+				if (sku_str && !strcmp(sku_str, sku)) {
+					validated_sku = sku;
+					break;
+				}
+			}
+			if (!validated_sku)
+				ux_info("meta_cli: sku \"%s\" not in get_sku_config_list, ignoring\n", sku);
+			json_free(skus);
+		}
+	}
+
+	/* For each storage type and flavor combination, get partition files */
+	for (i = 0; i < storage_count; i++) {
+		storage_str = json_get_element_string(storage_types, i);
+		if (!storage_str)
+			continue;
+
+		st = decode_storage_type((char *)storage_str);
+		if (st == QDL_STORAGE_UNKNOWN) {
+			ux_info("meta_cli: unknown storage type \"%s\", skipping\n", storage_str);
+			continue;
+		}
+
+		/* Only query the storage type the caller actually selected */
+		if (storage_type != QDL_STORAGE_UNKNOWN && st != storage_type)
+			continue;
+
+		/* If no flavors, process once with NULL flavor */
+		int flavor_iterations = flavor_count > 0 ? flavor_count : 1;
+
+		for (j = 0; j < flavor_iterations; j++) {
+			flavor_str = flavor_count > 0 ? json_get_element_string(flavors, j) : NULL;
+
+			/* Only query the flavor the caller actually selected */
+			if (flavor && flavor_str && strcmp(flavor, flavor_str))
+				continue;
+
+			/* Build get_partition_files command */
+			char flavor_arg[256] = "";
+			char storage_arg[256] = "";
+			char sku_arg[256] = "";
+			char *cmd_argv_partition[7];
+			int cmd_argc = 0;
+
+			cmd_argv_partition[cmd_argc++] = "get_partition_files";
+			cmd_argv_partition[cmd_argc++] = "group=True";
+
+			if (flavor_str) {
+				snprintf(flavor_arg, sizeof(flavor_arg), "flavor=%s", flavor_str);
+				cmd_argv_partition[cmd_argc++] = flavor_arg;
+			}
+
+			if (validated_sku) {
+				snprintf(sku_arg, sizeof(sku_arg), "sku_config=%s", validated_sku);
+				cmd_argv_partition[cmd_argc++] = sku_arg;
+			}
+
+			snprintf(storage_arg, sizeof(storage_arg), "storage=%s", storage_str);
+			cmd_argv_partition[cmd_argc++] = storage_arg;
+			cmd_argv_partition[cmd_argc++] = "critical=False";
+			cmd_argv_partition[cmd_argc] = NULL;
+
+			if (metacli_run_json(ctx, cmd_argv_partition, &partition_files) < 0) {
+				json_free(storage_types);
+				json_free(flavors);
+				return -1;
+			}
+
+			/* Process partition files */
+			struct json_value *file_val = json_get_child(partition_files, "partition");
+			if (file_val) {
+				file_count = json_count_children(file_val);
+				for (k = 0; k < file_count; k++) {
+					file_path = json_get_element_string(file_val, k);
+					if (file_path) {
+						entry = calloc(1, sizeof(*entry));
+						if (!entry) {
+							json_free(storage_types);
+							json_free(flavors);
+							json_free(partition_files);
+							return -1;
+						}
+						entry->file_type = CONTENTS_FILE_PROGRAM;
+						entry->storage_type = st;
+						if (flavor_str) {
+							entry->flavor = strdup(flavor_str);
+							if (!entry->flavor) {
+								free(entry);
+								json_free(storage_types);
+								json_free(flavors);
+								json_free(partition_files);
+								return -1;
+							}
+						}
+						entry->filename = strdup(basename((char *)file_path));
+						if (!entry->filename) {
+							free(entry->flavor);
+							free(entry);
+							json_free(storage_types);
+							json_free(flavors);
+							json_free(partition_files);
+							return -1;
+						}
+						qdl_pathbuf_reset(&entry->path);
+#ifdef _WIN32
+						strncpy(entry->path.buf, file_path, PATH_MAX - 1);
+						entry->path.len = strlen(file_path);
+#else
+						qdl_pathbuf_push(&entry->path, file_path);
+#endif
+						list_append(&contents->entries, &entry->node);
+					}
+				}
+			}
+
+			/* Process partition_patch files */
+			file_val = json_get_child(partition_files, "partition_patch");
+			if (file_val) {
+				file_count = json_count_children(file_val);
+				for (k = 0; k < file_count; k++) {
+					file_path = json_get_element_string(file_val, k);
+					if (file_path) {
+						entry = calloc(1, sizeof(*entry));
+						if (!entry) {
+							json_free(storage_types);
+							json_free(flavors);
+							json_free(partition_files);
+							return -1;
+						}
+						entry->file_type = CONTENTS_FILE_PATCH;
+						entry->storage_type = st;
+						if (flavor_str) {
+							entry->flavor = strdup(flavor_str);
+							if (!entry->flavor) {
+								free(entry);
+								json_free(storage_types);
+								json_free(flavors);
+								json_free(partition_files);
+								return -1;
+							}
+						}
+						entry->filename = strdup(file_path);
+						if (!entry->filename) {
+							free(entry->flavor);
+							free(entry);
+							json_free(storage_types);
+							json_free(flavors);
+							json_free(partition_files);
+							return -1;
+						}
+						qdl_pathbuf_reset(&entry->path);
+#ifdef _WIN32
+						strncpy(entry->path.buf, file_path, PATH_MAX - 1);
+						entry->path.len = strlen(file_path);
+#else
+						qdl_pathbuf_push(&entry->path, file_path);
+#endif
+						list_append(&contents->entries, &entry->node);
+					}
+				}
+			}
+
+			/* Process partition_bin files (binaries referenced by
+			 * <program filename="..."> inside the partition files
+			 * above, e.g. persist.img referenced from a rawprogram
+			 * XML). These are lookup-only entries: contents_load()
+			 * never loads them directly, but contents_resolve_path()
+			 * matches them by filename so program_resolve_path() can
+			 * find the meta_cli-resolved absolute path instead of
+			 * relying on the file sitting next to the rawprogram XML.
+			 */
+			file_val = json_get_child(partition_files, "partition_bin");
+			if (file_val) {
+				file_count = json_count_children(file_val);
+				for (k = 0; k < file_count; k++) {
+					file_path = json_get_element_string(file_val, k);
+					if (file_path) {
+						entry = calloc(1, sizeof(*entry));
+						if (!entry) {
+							json_free(storage_types);
+							json_free(flavors);
+							json_free(partition_files);
+							return -1;
+						}
+						entry->file_type = CONTENTS_FILE_OTHER;
+						entry->storage_type = st;
+						if (flavor_str) {
+							entry->flavor = strdup(flavor_str);
+							if (!entry->flavor) {
+								free(entry);
+								json_free(storage_types);
+								json_free(flavors);
+								json_free(partition_files);
+								return -1;
+							}
+						}
+						entry->filename = strdup(basename((char *)file_path));
+						if (!entry->filename) {
+							free(entry->flavor);
+							free(entry);
+							json_free(storage_types);
+							json_free(flavors);
+							json_free(partition_files);
+							return -1;
+						}
+						qdl_pathbuf_reset(&entry->path);
+#ifdef _WIN32
+						strncpy(entry->path.buf, file_path, PATH_MAX - 1);
+						entry->path.len = strlen(file_path);
+#else
+						qdl_pathbuf_push(&entry->path, file_path);
+#endif
+						list_append(&contents->entries, &entry->node);
+					}
+				}
+			}
+
+			json_free(partition_files);
+		}
+	}
+
+	/* Get device programmer files for the selected storage/flavor */
+	if (storage_type != QDL_STORAGE_UNKNOWN) {
+		if (contents_populate_device_programmer(contents, ctx, storage_type, flavor) < 0) {
+			json_free(storage_types);
+			json_free(flavors);
+			return -1;
+		}
+	}
+
+	ret = 0;
+
+	json_free(storage_types);
+	json_free(flavors);
+
+	return ret;
 }

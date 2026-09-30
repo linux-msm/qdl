@@ -157,4 +157,39 @@ static inline int qdl_mkdir_p(const char *path)
 	return 0;
 }
 
+/**
+ * qdl_process_result - result of running a child process
+ * @stdout_buf: malloc'd, NUL-terminated stdout; caller must free
+ * @stdout_len: length of stdout_buf (excluding NUL terminator)
+ * @exit_code: exit code of the child process (valid only if !timed_out)
+ * @timed_out: true if the process was killed due to timeout
+ */
+struct qdl_process_result {
+	char *stdout_buf;
+	size_t stdout_len;
+	int exit_code;
+	bool timed_out;
+};
+
+/**
+ * qdl_run_capture() - run a child process and capture its stdout
+ * @argv: NULL-terminated argv vector; argv[0] is the program name
+ * @timeout_ms: timeout in milliseconds; 0 means no timeout
+ * @result: output structure to be filled
+ *
+ * Runs a child process without invoking a shell. argv[0] is searched in PATH.
+ * Captures stdout into a malloc'd buffer. On timeout, the process is killed
+ * and result->timed_out is set to true.
+ *
+ * Returns: 0 on success, -1 on error (with errno set).
+ * The caller must free result->stdout_buf.
+ */
+int qdl_run_capture(char *const argv[], int timeout_ms, struct qdl_process_result *result);
+
+/**
+ * qdl_process_result_free() - free resources from qdl_run_capture()
+ * @result: result structure to free
+ */
+void qdl_process_result_free(struct qdl_process_result *result);
+
 #endif
