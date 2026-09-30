@@ -55,7 +55,7 @@ enum {
  * of size 8192"). Matching a stable prefix avoids coupling to the trailing
  * byte count, which varies per programmer build.
  */
-#define VIP_PROGRAMMER_MARKER "VIP is enabled, receiving the signed table"
+#define VIP_PROGRAMMER_MARKER "VIP is enabled"
 
 static void firehose_check_vip_marker(struct qdl_device *qdl, xmlNode *node)
 {
@@ -87,6 +87,50 @@ static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
 	va_end(ap);
 }
 
+/*
+ * Some OPlus/Qualcomm SM8850 loader builds emit malformed XML in which two
+ * attributes are not separated by whitespace, e.g.
+ *
+ *   <response value="NAK" rawmode="false" code="0x9000016"msg=" " />
+ *
+ * libxml2 rejects this as a fatal "attributes construct error". Return a
+ * corrected copy with the missing separators inserted, or NULL when the input
+ * needed no changes (so the caller can keep the original error).
+ */
+static char *firehose_response_fixup(const void *buf, size_t len, size_t *out_len)
+{
+	const char *in = buf;
+	char *out;
+	size_t i, j = 0;
+	bool in_quote = false;
+	bool patched = false;
+
+	out = malloc(len * 2 + 1);
+	if (!out)
+		return NULL;
+
+	for (i = 0; i < len; i++) {
+		out[j++] = in[i];
+		if (in[i] == '"') {
+			in_quote = !in_quote;
+			if (!in_quote && i + 1 < len &&
+			    (isalpha((unsigned char)in[i + 1]) || in[i + 1] == '_')) {
+				out[j++] = ' ';
+				patched = true;
+			}
+		}
+	}
+	out[j] = '\0';
+
+	if (!patched) {
+		free(out);
+		return NULL;
+	}
+
+	*out_len = j;
+	return out;
+}
+
 static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 {
 	xmlNode *node;
@@ -94,6 +138,17 @@ static xmlNode *firehose_response_parse(const void *buf, size_t len, int *error)
 	xmlDoc *doc;
 
 	doc = xmlReadMemory(buf, len, NULL, NULL, 0);
+	if (!doc) {
+		size_t fixed_len = 0;
+		char *fixed = firehose_response_fixup(buf, len, &fixed_len);
+
+		if (fixed) {
+			doc = xmlReadMemory(fixed, (int)fixed_len, NULL, NULL, 0);
+			free(fixed);
+			if (doc)
+				ux_debug("firehose: repaired malformed response XML\n");
+		}
+	}
 	if (!doc) {
 		ux_err("failed to parse firehose response\n");
 		*error = -EINVAL;
