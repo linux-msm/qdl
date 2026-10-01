@@ -1616,10 +1616,8 @@ static int contents_populate_device_programmer_from_metacli(struct contents *con
 #ifdef _WIN32
 					strncpy(entry->path.buf, prog_bin, PATH_MAX - 1);
 					entry->path.len = strlen(prog_bin);
-					ux_debug("Added programmer_bin DEVICE_PROGRAMMER: filename=%s path=%s\n", entry->filename, entry->path.buf);
 #else
 					qdl_pathbuf_push(&entry->path, prog_bin);
-					ux_debug("Added programmer_bin DEVICE_PROGRAMMER: filename=%s path=%s\n", entry->filename, qdl_pathbuf_str(&entry->path));
 #endif
 					list_append(&contents->entries, &entry->node);
 				}
