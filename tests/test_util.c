@@ -22,10 +22,6 @@
 #include "qdl.h"
 #include "file.h"
 
-#ifdef _WIN32
-const char *__progname = "test_util";
-#endif
-
 /* --- stubs for symbols referenced by unrelated util.c code --- */
 void ux_err(const char *fmt, ...) { (void)fmt; }
 int qdl_file_open(struct qdl_zip *z, const char *f, struct qdl_file *file)

@@ -18,19 +18,11 @@
 #include "file.h"
 #include "oscompat.h"
 #include "qdl.h"
-#include "version.h"
 
 static uint8_t to_hex(uint8_t ch)
 {
 	ch &= 0xf;
 	return ch <= 9 ? '0' + ch : 'a' + ch - 10;
-}
-
-void print_version(void)
-{
-	extern const char *__progname;
-
-	fprintf(stdout, "%s version %s\n", __progname, VERSION);
 }
 
 void print_hex_dump(const char *prefix, const void *buf, size_t len)

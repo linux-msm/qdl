@@ -6,8 +6,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include "oscompat.h"
-
-extern const char *__progname;
+#include "qdl.h"
 
 void timeradd(const struct timeval *a, const struct timeval *b, struct timeval *result)
 {
@@ -24,7 +23,7 @@ void err(int eval, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	fprintf(stderr, "%s: ", __progname);
+	fprintf(stderr, "%s: ", ux_progname());
 	if (fmt) {
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, ": ");
@@ -39,7 +38,7 @@ void errx(int eval, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	fprintf(stderr, "%s: ", __progname);
+	fprintf(stderr, "%s: ", ux_progname());
 	if (fmt)
 		vfprintf(stderr, fmt, ap);
 	fprintf(stderr, "\n");
@@ -52,7 +51,7 @@ void warn(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	fprintf(stderr, "%s: ", __progname);
+	fprintf(stderr, "%s: ", ux_progname());
 	if (fmt) {
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, ": ");
@@ -66,7 +65,7 @@ void warnx(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	fprintf(stderr, "%s: ", __progname);
+	fprintf(stderr, "%s: ", ux_progname());
 	if (fmt)
 		vfprintf(stderr, fmt, ap);
 	fprintf(stderr, "\n");

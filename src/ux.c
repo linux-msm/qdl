@@ -36,6 +36,9 @@ static const char * const progress_dashes = DASHES;
 static unsigned int ux_width;
 static unsigned int ux_cur_line_length;
 
+/* Name used to prefix diagnostics, set by each executable via ux_set_progname() */
+static const char *ux_progname_str = "qdl";
+
 /* Whether the next character written to each stream starts a new line */
 static bool ux_stdout_bol = true;
 static bool ux_stderr_bol = true;
@@ -132,6 +135,52 @@ static void ux_vprint(FILE *fp, bool *bol, const char *fmt, va_list ap)
 	if (buf != stack_buf)
 		free(buf);
 	fflush(fp);
+}
+
+/*
+ * ux_set_progname() - set the name used to prefix diagnostics
+ * @name:	program name or path, typically argv[0]
+ *
+ * Only the final path component is kept, so a full path to the executable
+ * can be passed as is. A trailing ".exe" is dropped on Windows so the prefix
+ * reads the same across platforms. Until this is called, "qdl" is used.
+ */
+void ux_set_progname(const char *name)
+{
+	const char *base = name;
+	const char *p;
+
+	if (!name || !*name)
+		return;
+
+	for (p = name; *p; p++) {
+		if (*p == '/' || *p == '\\')
+			base = p + 1;
+	}
+
+	if (!*base)
+		return;
+
+#ifdef _WIN32
+	{
+		static char stripped[64];
+		size_t len = strlen(base);
+
+		if (len > 4 && len - 4 < sizeof(stripped) &&
+		    !_stricmp(base + len - 4, ".exe")) {
+			memcpy(stripped, base, len - 4);
+			stripped[len - 4] = '\0';
+			base = stripped;
+		}
+	}
+#endif
+
+	ux_progname_str = base;
+}
+
+const char *ux_progname(void)
+{
+	return ux_progname_str;
 }
 
 /* Clear ux_cur_line_length characters of the progress bar from the screen */

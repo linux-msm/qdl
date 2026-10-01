@@ -22,10 +22,6 @@
 #include "ufs.h"
 #include "common.h"
 
-#ifdef _WIN32
-const char *__progname = "test_ufs";
-#endif
-
 /* --- stubs --- */
 void ux_err(const char *fmt, ...) { (void)fmt; }
 void ux_info(const char *fmt, ...) { (void)fmt; }

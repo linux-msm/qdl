@@ -22,10 +22,6 @@
 #include "flashmap.h"
 #include "qdl.h"
 
-#ifdef _WIN32
-const char *__progname = "test_flashmap";
-#endif
-
 #define FLASHMAP_JSON_FILENAME "flashmap.json"
 #define FLASHMAP_MULTI_JSON_FILENAME "flashmap-multi.json"
 #define FLASHMAP_ZIP_FILENAME "flashmap.zip"

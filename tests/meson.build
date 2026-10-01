@@ -228,7 +228,6 @@ if cmocka_dep.found()
       pathbuf_src,
       program_src,
       util_src,
-      version_h,
     ],
     dependencies : common_dep + [cmocka_dep],
     include_directories : inc,

@@ -38,10 +38,6 @@
 #define TEST_INCDIR_PAYLOAD TEST_INCDIR "/" TEST_PAYLOAD
 #define TEST_XMLDIR_PAYLOAD TEST_XMLDIR "/" TEST_PAYLOAD
 
-#ifdef _WIN32
-const char *__progname = "test_program_load_xml";
-#endif
-
 bool qdl_debug;
 
 static const char *existing_paths[4];

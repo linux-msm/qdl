@@ -32,10 +32,7 @@
 #include "ufs.h"
 #include "oscompat.h"
 #include "vip.h"
-
-#ifdef _WIN32
-const char *__progname = "qdl";
-#endif
+#include "version.h"
 
 #define MAX_USBFS_BULK_SIZE	(16 * 1024)
 
@@ -43,23 +40,21 @@ bool qdl_debug;
 
 static void print_usage(FILE *out)
 {
-	extern const char *__progname;
-
-	fprintf(out, "Usage: %s [options] <prog.mbn> (<program-xml> | <patch-xml> | <read-xml>)...\n", __progname);
-	fprintf(out, "       %s [options] <prog.mbn> ((read | write) <address> <binary>)...\n", __progname);
-	fprintf(out, "       %s [options] <prog.mbn> (erase <address>)...\n", __progname);
-	fprintf(out, "       %s [options] <prog.mbn> (sha256 <address>)...\n", __progname);
-	fprintf(out, "       %s [options] <prog.mbn> (reset)\n", __progname);
-	fprintf(out, "       %s list\n", __progname);
-	fprintf(out, "       %s chipinfo\n", __progname);
-	fprintf(out, "       %s reset\n", __progname);
-	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", __progname);
-	fprintf(out, "       %s ks [-p <sahara-dev-node> | --serial=T] -s <id:file-path>...\n", __progname);
-	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", __progname);
-	fprintf(out, "       %s create-zip <zipfile> <contents>[::<specifier>]\n", __progname);
+	fprintf(out, "Usage: %s [options] <prog.mbn> (<program-xml> | <patch-xml> | <read-xml>)...\n", ux_progname());
+	fprintf(out, "       %s [options] <prog.mbn> ((read | write) <address> <binary>)...\n", ux_progname());
+	fprintf(out, "       %s [options] <prog.mbn> (erase <address>)...\n", ux_progname());
+	fprintf(out, "       %s [options] <prog.mbn> (sha256 <address>)...\n", ux_progname());
+	fprintf(out, "       %s [options] <prog.mbn> (reset)\n", ux_progname());
+	fprintf(out, "       %s list\n", ux_progname());
+	fprintf(out, "       %s chipinfo\n", ux_progname());
+	fprintf(out, "       %s reset\n", ux_progname());
+	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", ux_progname());
+	fprintf(out, "       %s ks [-p <sahara-dev-node> | --serial=T] -s <id:file-path>...\n", ux_progname());
+	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", ux_progname());
+	fprintf(out, "       %s create-zip <zipfile> <contents>[::<specifier>]\n", ux_progname());
 	fprintf(out, "       %s create-sahara-archive <archive.bin> "
 		"(<id:file>[,<id:file>...] | <sahara.xml> | <contents.xml>[::<specifier>])\n",
-		__progname);
+		ux_progname());
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
 	fprintf(out, " -v, --version\t\t\tPrint the current version and exit\n");
 	fprintf(out, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
@@ -93,9 +88,14 @@ static void print_usage(FILE *out)
 	fprintf(out, " <archive.bin>\tSahara programmer archive to create\n");
 	fprintf(out, " <specifier>\tcomma-separated list of specifiers, such as storage type, layout, and flavors\n");
 	fprintf(out, "\n");
-	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
-	fprintf(out, "         %s flash contents.xml::ufs,spinor/safe_rtos\n", __progname);
-	fprintf(out, "         %s flash installer.zip::layout1/ufs\n", __progname);
+	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", ux_progname());
+	fprintf(out, "         %s flash contents.xml::ufs,spinor/safe_rtos\n", ux_progname());
+	fprintf(out, "         %s flash installer.zip::layout1/ufs\n", ux_progname());
+}
+
+static void print_version(void)
+{
+	fprintf(stdout, "%s version %s\n", ux_progname(), VERSION);
 }
 
 static int qdl_list(FILE *out)
@@ -1085,6 +1085,8 @@ out_cleanup:
 int main(int argc, char **argv)
 {
 	int i;
+
+	ux_set_progname(argv[0]);
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "list"))
