@@ -288,8 +288,11 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 		if (n == -ETIMEDOUT && resp >= 0)
 			break;
 		/* We want to return resp on error, to not lose the reset response */
-		else if (n == -EIO)
+		else if (n == -EIO || n == -ENODEV) {
+			if (resp < 0)
+				resp = n;
 			break;
+		}
 
 		if (n == -ETIMEDOUT || n == 0) {
 			gettimeofday(&now, NULL);
@@ -1528,6 +1531,8 @@ int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs
 				bool commit)
 {
 	xmlNode *node_to_send;
+	xmlNode *root;
+	xmlDoc *doc;
 	int ret;
 
 	node_to_send = xmlNewNode(NULL, (xmlChar *)"ufs");
@@ -1538,17 +1543,45 @@ int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs
 		xml_setpropf(node_to_send, "slot", "%u", qdl->slot);
 	}
 
+	doc = xmlNewDoc((xmlChar *)"1.0");
+	root = xmlNewNode(NULL, (xmlChar *)"data");
+	xmlDocSetRootElement(doc, root);
+	xmlAddChild(root, node_to_send);
+
+	ret = firehose_write(qdl, doc);
+	xmlFreeDoc(doc);
+	if (ret < 0)
+		return -1;
+
 	/*
 	 * A commit epilogue writes the UFS configuration descriptor and can
 	 * take a while; the validation pass (commit=0) is cheap.
+	 *
+	 * Some programmers reset the device immediately after committing the
+	 * UFS configuration descriptor, dropping the USB link before they can
+	 * send back an ACK. Treat that USB disconnect (-ENODEV) as a successful
+	 * completion when commit=1: if the programmer accepted all prior
+	 * descriptors without a NAK and then reset, the provisioning was
+	 * applied. A real failure (e.g. bad descriptor) would have produced a
+	 * NAK earlier in the sequence.
+	 *
+	 * Return 1 in this case to signal to the caller that the device has
+	 * already reset and no further reset should be sent.
 	 */
-	ret = firehose_send_single_tag(qdl, node_to_send,
-				       commit ? FIREHOSE_UFS_COMMIT_TIMEOUT_MS :
-						FIREHOSE_UFS_TAG_TIMEOUT_MS);
-	if (ret)
-		ux_err("failed to apply ufs epilogue\n");
+	ret = firehose_read(qdl, commit ? FIREHOSE_UFS_COMMIT_TIMEOUT_MS :
+					  FIREHOSE_UFS_TAG_TIMEOUT_MS,
+			    firehose_generic_parser, NULL);
+	if (ret == FIREHOSE_ACK)
+		return 0;
 
-	return ret == FIREHOSE_ACK ? 0 : -1;
+	if (commit && ret == -ENODEV) {
+		ux_info("UFS provisioning commit: device reset without ACK, "
+			"assuming success\n");
+		return 1;
+	}
+
+	ux_err("failed to apply ufs epilogue\n");
+	return -1;
 }
 
 static int firehose_set_bootable(struct qdl_device *qdl, int part)
@@ -1702,6 +1735,12 @@ int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, boo
 	ret = ufs_provisioning_execute(ufs, qdl, firehose_apply_ufs_common,
 				       firehose_apply_ufs_body,
 				       firehose_apply_ufs_epilogue);
+	if (ret > 0) {
+		/* Epilogue signalled success + device already reset itself */
+		ux_info("UFS provisioning succeeded\n");
+		return 0;
+	}
+
 	if (!ret)
 		ux_info("UFS provisioning succeeded\n");
 	else
