@@ -11,7 +11,6 @@
 
 #ifndef _WIN32
 
-#include <err.h>
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
@@ -24,11 +23,6 @@
 #include <sys/time.h>
 
 void timeradd(const struct timeval *a, const struct timeval *b, struct timeval *result);
-
-void err(int eval, const char *fmt, ...);
-void errx(int eval, const char *fmt, ...);
-void warn(const char *fmt, ...);
-void warnx(const char *fmt, ...);
 
 #endif
 
