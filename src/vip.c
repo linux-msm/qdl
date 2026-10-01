@@ -49,7 +49,7 @@ static void print_digest(unsigned char *buf)
 
 	hex_str[SHA256_DIGEST_STRING_LENGTH - 1] = '\0';
 
-	ux_debug("FIREHOSE PACKET SHA256: %s\n", hex_str);
+	ux_debug("VIP: PACKET SHA256: %s\n", hex_str);
 }
 
 int vip_gen_init(struct qdl_device *qdl, const char *path)
@@ -59,22 +59,22 @@ int vip_gen_init(struct qdl_device *qdl, const char *path)
 	char filepath[PATH_MAX];
 
 	if (qdl->dev_type != QDL_DEVICE_SIM) {
-		ux_err("Should be executed in simulation dry-run mode\n");
+		ux_err("VIP: table generation requires the simulation dry-run mode\n");
 		return -1;
 	}
 
 	if (stat(path, &st) || !S_ISDIR(st.st_mode)) {
-		ux_err("Directory '%s' to store VIP tables doesn't exist\n", path);
+		ux_err("VIP: directory '%s' to store tables doesn't exist\n", path);
 		return -1;
 	}
 
 	vip_gen = malloc(sizeof(struct vip_table_generator));
 	if (!vip_gen) {
-		ux_err("Can't allocate memory for vip_table_generator\n");
+		ux_err("VIP: can't allocate memory for the table generator\n");
 		return -1;
 	}
 	if (!sim_set_digest_generation(true, qdl, vip_gen)) {
-		ux_err("Can't enable digest table generation\n");
+		ux_err("VIP: can't enable digest table generation\n");
 		goto out_cleanup;
 	}
 	vip_gen->digest_num_written = 0;
@@ -84,7 +84,7 @@ int vip_gen_init(struct qdl_device *qdl, const char *path)
 
 	vip_gen->digest_table_fd = fopen(filepath, "wb");
 	if (!vip_gen->digest_table_fd) {
-		ux_err("Can't create %s file\n", filepath);
+		ux_err("VIP: can't create %s file\n", filepath);
 		goto out_cleanup;
 	}
 
@@ -135,7 +135,7 @@ void vip_gen_chunk_store(struct qdl_device *qdl)
 	print_digest(vip_gen->hash);
 
 	if (fwrite(vip_gen->hash, SHA256_DIGEST_LENGTH, 1, vip_gen->digest_table_fd) != 1) {
-		ux_err("Failed to write digest to the " DIGEST_FULL_TABLE_FILE);
+		ux_err("VIP: failed to write digest to the " DIGEST_FULL_TABLE_FILE);
 		goto out_cleanup;
 	}
 
@@ -158,12 +158,12 @@ static int write_output_file(const char *filename, bool append, const void *data
 
 	fp = fopen(filename, mode);
 	if (!fp) {
-		ux_err("Failed to open file for appending\n");
+		ux_err("VIP: failed to open file for appending\n");
 		return -1;
 	}
 
 	if (fwrite(data, 1, len, fp) != len) {
-		ux_err("Failed to append to file\n");
+		ux_err("VIP: failed to append to file\n");
 		fclose(fp);
 		return -1;
 	}
@@ -185,13 +185,13 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 	int fd = open(src_table, O_RDONLY | O_BINARY);
 
 	if (fd < 0) {
-		ux_err("Failed to open %s for reading\n", src_table);
+		ux_err("VIP: failed to open %s for reading\n", src_table);
 		return -1;
 	}
 
 	out = fopen(dest_table, "wb");
 	if (!out) {
-		ux_err("Failed to open %s for writing\n", dest_table);
+		ux_err("VIP: failed to open %s for writing\n", dest_table);
 		goto out_cleanup;
 	}
 
@@ -202,7 +202,7 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 	off_t offset = elem_size * start_digest;
 
 	if (lseek(fd, offset, SEEK_SET) != offset) {
-		ux_err("Failed to seek in %s\n", src_table);
+		ux_err("VIP: failed to seek in %s\n", src_table);
 		goto out_cleanup;
 	}
 
@@ -215,12 +215,12 @@ static int write_digests_to_table(char *src_table, char *dest_table, size_t star
 		ssize_t bytes = read(fd, buf, to_read);
 
 		if (bytes < 0 || (size_t)bytes != to_read) {
-			ux_err("Failed to read from %s\n", src_table);
+			ux_err("VIP: failed to read from %s\n", src_table);
 			goto out_cleanup;
 		}
 
 		if (fwrite(buf, 1, bytes, out) != (size_t)bytes) {
-			ux_err("Can't write digests to %s\n", dest_table);
+			ux_err("VIP: can't write digests to %s\n", dest_table);
 			goto out_cleanup;
 		}
 
@@ -270,7 +270,7 @@ static int create_chained_tables(struct vip_table_generator *vip_gen)
 
 	ret = write_digests_to_table(src_table, dest_table, 0, tosign_count, NULL);
 	if (ret) {
-		ux_err("Writing digests to %s failed\n", dest_table);
+		ux_err("VIP: writing digests to %s failed\n", dest_table);
 		goto out;
 	}
 
@@ -294,7 +294,7 @@ static int create_chained_tables(struct vip_table_generator *vip_gen)
 						     total_digests - remaining_digests,
 						     table_digests, &chain_ctxs[chain_idx]);
 			if (ret) {
-				ux_err("Writing digests to %s failed\n", dest_table);
+				ux_err("VIP: writing digests to %s failed\n", dest_table);
 				goto out;
 			}
 
@@ -303,7 +303,7 @@ static int create_chained_tables(struct vip_table_generator *vip_gen)
 				/* Add zero (the packet can't be multiple of 512 bytes) */
 				ret = write_output_file(dest_table, true, "\0", 1);
 				if (ret < 0) {
-					ux_err("Can't write 0 to %s\n", dest_table);
+					ux_err("VIP: can't write 0 to %s\n", dest_table);
 					goto out;
 				}
 				SHA256Update(&chain_ctxs[chain_idx], (const uint8_t *)"\0", 1);
@@ -336,7 +336,7 @@ static int create_chained_tables(struct vip_table_generator *vip_gen)
 
 		ret = write_output_file(dest_table, true, hash, SHA256_DIGEST_LENGTH);
 		if (ret < 0) {
-			ux_err("Failed to append hash to %s\n", dest_table);
+			ux_err("VIP: failed to append hash to %s\n", dest_table);
 			goto out;
 		}
 	}
@@ -357,10 +357,10 @@ void vip_gen_finalize(struct qdl_device *qdl)
 	if (vip_gen->digest_table_fd)
 		fclose(vip_gen->digest_table_fd);
 
-	ux_debug("VIP TABLE DIGESTS: %lu\n", vip_gen->digest_num_written);
+	ux_debug("VIP: digests written: %lu\n", vip_gen->digest_num_written);
 
 	if (create_chained_tables(vip_gen) < 0)
-		ux_err("Error occurred when creating table of digests\n");
+		ux_err("VIP: failed to create the table of digests\n");
 
 	free(vip_gen);
 	sim_set_digest_generation(false, qdl, NULL);
@@ -374,7 +374,7 @@ int vip_transfer_init(struct qdl_device *qdl, const char *vip_table_path)
 		 vip_table_path, DIGEST_TABLE_TO_SIGN_FILE_MBN);
 	qdl->vip_data.signed_table_fd = open(fullpath, O_RDONLY | O_BINARY);
 	if (qdl->vip_data.signed_table_fd < 0) {
-		ux_err("Can't open signed table %s\n", fullpath);
+		ux_err("VIP: can't open signed table %s\n", fullpath);
 		return -1;
 	}
 
@@ -390,7 +390,7 @@ int vip_transfer_init(struct qdl_device *qdl, const char *vip_table_path)
 			if (errno == ENOENT)
 				break;
 
-			ux_err("Can't open signed table %s\n", fullpath);
+			ux_err("VIP: can't open signed table %s\n", fullpath);
 			goto out_cleanup;
 		}
 
@@ -423,19 +423,19 @@ static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
 
 	ret = fstat(table_fd, &sb);
 	if (ret < 0) {
-		ux_err("Failed to stat digest table file\n");
+		ux_err("VIP: failed to stat digest table file\n");
 		return -1;
 	}
 
 	buf = malloc(sb.st_size);
 	if (!buf) {
-		ux_err("Failed to allocate transfer buffer\n");
+		ux_err("VIP: failed to allocate transfer buffer\n");
 		return -1;
 	}
 
 	n = read(table_fd, buf, sb.st_size);
 	if (n < 0 || n != sb.st_size) {
-		ux_err("failed to read binary\n");
+		ux_err("VIP: failed to read the table\n");
 		ret = -1;
 		goto out;
 	}
@@ -444,7 +444,7 @@ static int vip_transfer_send_raw(struct qdl_device *qdl, int table_fd)
 	n = qdl_write(qdl, buf, n, 1000);
 	qdl->vip_data.sending_table = false;
 	if (n < 0) {
-		ux_err("USB write failed for data chunk\n");
+		ux_err("VIP: USB write failed for data chunk\n");
 		ret = -1;
 		goto out;
 	}
@@ -467,10 +467,10 @@ int vip_transfer_handle_tables(struct qdl_device *qdl)
 		/* Send initial signed table */
 		ret = vip_transfer_send_raw(qdl, vip_data->signed_table_fd);
 		if (ret) {
-			ux_err("VIP: failed to send the Signed VIP table\n");
+			ux_err("VIP: failed to send the signed table\n");
 			return ret;
 		}
-		ux_debug("VIP: successfully sent the Initial VIP table\n");
+		ux_debug("VIP: sent the initial signed table\n");
 
 		vip_data->state = VIP_SEND_DATA;
 		vip_data->frames_sent = 0;
@@ -484,11 +484,11 @@ int vip_transfer_handle_tables(struct qdl_device *qdl)
 		}
 		ret = vip_transfer_send_raw(qdl, vip_data->chained_fds[vip_data->chained_cur]);
 		if (ret) {
-			ux_err("VIP: failed to send the chained VIP table\n");
+			ux_err("VIP: failed to send the chained table\n");
 			return ret;
 		}
 
-		ux_debug("VIP: successfully sent " CHAINED_TABLE_FILE_PREF "%lu.bin\n",
+		ux_debug("VIP: sent chained table " CHAINED_TABLE_FILE_PREF "%lu.bin\n",
 			 vip_data->chained_cur);
 
 		vip_data->state = VIP_SEND_DATA;

@@ -1674,7 +1674,7 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 		 * Demote VIP here so the table is never sent.
 		 */
 		if (!qdl->vip_data.programmer_requires_vip) {
-			ux_info("WARNING: --vip-table-path was provided but programmer did not announce VIP; continuing without VIP\n");
+			ux_info("VIP: WARNING: --vip-table-path was provided but programmer did not announce VIP; continuing without it\n");
 			qdl->vip_data.state = VIP_DISABLED;
 		}
 
@@ -1698,7 +1698,7 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 		 * a signed table that will never be sent.
 		 */
 		if (qdl->vip_data.programmer_requires_vip) {
-			ux_err("programmer requires VIP, but no --vip-table-path was provided\n");
+			ux_err("VIP: programmer requires VIP, but no --vip-table-path was provided\n");
 			return -1;
 		}
 
