@@ -76,6 +76,7 @@ struct contents_filter {
 struct contents_selector {
 	enum qdl_storage_type storage_type;
 	const char *flavor;
+	const char *sku;
 };
 
 static const char *contents_storage_name(enum qdl_storage_type storage)
@@ -653,6 +654,7 @@ static size_t contents_collect_valid_selectors(struct contents *contents,
 		selectors = new_selectors;
 		selectors[count].storage_type = entry->storage_type;
 		selectors[count].flavor = entry->flavor;
+		selectors[count].sku = NULL;
 		count++;
 	}
 
@@ -864,6 +866,7 @@ static int contents_decode_selectors(struct contents *contents, char *pattern,
 
 		selector.storage_type = storage;
 		selector.flavor = flavor;
+		selector.sku = NULL;
 
 append_selector:
 		if (contents_storage_is_selected(selectors, count, selector.storage_type)) {
@@ -889,101 +892,436 @@ err_free_valid_selectors:
 	return -1;
 }
 
+/**
+ * metacli_collect_valid_selectors() - build valid_selectors from meta_cli
+ * @ctx: meta_cli context
+ * @contents: contents->flavors/num_flavors are populated as a side effect
+ * @contents_selectors: output, same shape as contents_collect_valid_selectors()
+ *
+ * contents_collect_valid_selectors() scans contents->entries, which do not
+ * exist yet before contents_populate_from_metacli() runs. This builds the
+ * same (storage_type, flavor) cross product directly from meta_cli's
+ * get_storage_types/get_product_flavors instead.
+ *
+ * Returns: number of selectors, 0 on error
+ */
+static size_t metacli_collect_valid_selectors(struct metacli_ctx *ctx, struct contents *contents,
+					       struct contents_selector **contents_selectors)
+{
+	struct json_value *storage_types = NULL;
+	struct json_value *flavors = NULL;
+	struct contents_selector *new_selectors;
+	struct contents_selector *selectors = NULL;
+	const char *storage_str, *flavor_str;
+	char *cmd_argv[2];
+	int storage_count, flavor_count, flavor_iterations;
+	int i, j;
+	size_t count = 0;
+
+	cmd_argv[0] = "get_storage_types";
+	cmd_argv[1] = NULL;
+	if (metacli_run_json(ctx, cmd_argv, &storage_types) < 0)
+		return 0;
+
+	storage_count = json_count_children(storage_types);
+	if (storage_count <= 0) {
+		json_free(storage_types);
+		return 0;
+	}
+
+	cmd_argv[0] = "get_product_flavors";
+	cmd_argv[1] = NULL;
+	if (metacli_run_json(ctx, cmd_argv, &flavors) < 0) {
+		json_free(storage_types);
+		return 0;
+	}
+
+	flavor_count = json_count_children(flavors);
+
+	if (flavor_count > 0) {
+		contents->flavors = calloc(flavor_count, sizeof(char *));
+		if (!contents->flavors) {
+			json_free(storage_types);
+			json_free(flavors);
+			return 0;
+		}
+
+		for (i = 0; i < flavor_count; i++) {
+			flavor_str = json_get_element_string(flavors, i);
+			if (!flavor_str)
+				continue;
+
+			contents->flavors[contents->num_flavors] = strdup(flavor_str);
+			if (!contents->flavors[contents->num_flavors]) {
+				json_free(storage_types);
+				json_free(flavors);
+				return 0;
+			}
+			contents->num_flavors++;
+		}
+	}
+
+	flavor_iterations = contents->num_flavors > 0 ? (int)contents->num_flavors : 1;
+
+	for (i = 0; i < storage_count; i++) {
+		enum qdl_storage_type storage;
+
+		storage_str = json_get_element_string(storage_types, i);
+		if (!storage_str)
+			continue;
+
+		storage = decode_storage_type(storage_str);
+		if (storage == QDL_STORAGE_UNKNOWN)
+			continue;
+
+		for (j = 0; j < flavor_iterations; j++) {
+			new_selectors = realloc(selectors, (count + 1) * sizeof(*selectors));
+			if (!new_selectors) {
+				free(selectors);
+				json_free(storage_types);
+				json_free(flavors);
+				return 0;
+			}
+			selectors = new_selectors;
+			selectors[count].storage_type = storage;
+			/* contents->flavors[], not the json string -- it must
+			 * outlive this call, the json_value does not.
+			 */
+			selectors[count].flavor = contents->num_flavors > 0 ?
+						   contents->flavors[j] : NULL;
+			selectors[count].sku = NULL;
+			count++;
+		}
+	}
+
+	*contents_selectors = selectors;
+
+	json_free(storage_types);
+	json_free(flavors);
+
+	return count;
+}
+
+/**
+ * metacli_contents_decode_selectors() - contents_decode_selectors(), but
+ *	validated against meta_cli instead of contents->entries
+ * @ctx: meta_cli context
+ * @contents: contents->flavors/num_flavors are populated as a side effect
+ * @pattern: pattern string to split in place, or NULL
+ * @sku: output, pointer into @pattern, or NULL
+ * @contents_selectors: output selector array, same shape as
+ *	contents_decode_selectors()
+ *
+ * Needed because contents_populate_from_metacli() must know storage/
+ * flavor/sku before it has created any contents->entries for
+ * contents_decode_selectors() to validate against -- this does the exact
+ * same parsing and validation, just sourced from meta_cli's
+ * get_storage_types/get_product_flavors/get_sku_config_list. Its output
+ * is final: on success, contents_load() uses it directly and does not
+ * also run contents_decode_selectors().
+ *
+ * Returns: number of selectors on success, -1 on error
+ */
+static int metacli_contents_decode_selectors(struct metacli_ctx *ctx, struct contents *contents,
+					      char *pattern,
+					      struct contents_selector **contents_selectors)
+{
+	struct contents_selector *valid_selectors = NULL;
+	struct contents_selector *new_selectors;
+	struct contents_selector *selectors = NULL;
+	struct contents_selector selector;
+	enum qdl_storage_type storage;
+	size_t num_valid_selectors;
+	char *flavor;
+	char *sku;
+	size_t count = 0;
+	char *token;
+	char *save;
+	char *sep;
+	size_t matches;
+
+	num_valid_selectors = metacli_collect_valid_selectors(ctx, contents, &valid_selectors);
+	if (!num_valid_selectors) {
+		ux_err("meta_cli does not provide any valid storage/flavor combinations\n");
+		return -1;
+	}
+
+	if (!pattern) {
+		if (num_valid_selectors == 1) {
+			*contents_selectors = valid_selectors;
+			return 1;
+		}
+
+		if (num_valid_selectors > 1) {
+			ux_err("meta_cli reports multiple storage/flavor combinations; select one or more with ::<storage>/<flavor>\n");
+			contents_print_valid_selectors(valid_selectors, num_valid_selectors);
+			free(valid_selectors);
+			return -1;
+		}
+
+		free(valid_selectors);
+		return -1;
+	}
+
+	if (!pattern[0]) {
+		ux_err("empty storage/flavor selector\n");
+		goto err_free_valid_selectors;
+	}
+
+	for (token = strtok_r(pattern, ",", &save); token; token = strtok_r(NULL, ",", &save)) {
+		new_selectors = realloc(selectors, (count + 1) * sizeof(*selectors));
+		if (!new_selectors)
+			goto err_free_selectors;
+
+		selectors = new_selectors;
+
+		if (!token[0]) {
+			ux_err("empty storage/flavor selector\n");
+			goto err_free_selectors;
+		}
+
+		sep = strchr(token, '/');
+		if (!sep) {
+			storage = decode_storage_type(token);
+			if (storage != QDL_STORAGE_UNKNOWN) {
+				matches = contents_select_by_storage(valid_selectors, num_valid_selectors,
+								     storage, &selector);
+				if (matches == 1)
+					goto append_selector;
+
+				if (!matches)
+					ux_err("storage type \"%s\" has no valid flavor in meta_cli\n", token);
+				else
+					ux_err("storage type \"%s\" is ambiguous; specify a flavor\n", token);
+
+				contents_print_valid_selectors(valid_selectors, num_valid_selectors);
+				goto err_free_selectors;
+			}
+
+			matches = contents_select_by_flavor(valid_selectors, num_valid_selectors,
+							    token, &selector);
+			if (matches == 1)
+				goto append_selector;
+
+			if (matches > 1)
+				ux_err("flavor \"%s\" is ambiguous; specify a storage type\n", token);
+			else if (contents_flavor_is_valid(contents, token))
+				ux_err("flavor \"%s\" has no valid storage type in meta_cli\n", token);
+			else
+				ux_err("unknown storage type or flavor \"%s\"\n", token);
+
+			contents_print_valid_selectors(valid_selectors, num_valid_selectors);
+			goto err_free_selectors;
+		}
+
+		*sep = '\0';
+
+		flavor = sep + 1;
+		if (!token[0]) {
+			ux_err("missing storage selector for flavor \"%s\"\n", flavor);
+			goto err_free_selectors;
+		}
+		if (!flavor[0]) {
+			ux_err("invalid flavor selection for storage \"%s\"\n", token);
+			goto err_free_selectors;
+		}
+
+		sku = strchr(flavor, '/');
+		if (sku) {
+			*sku = '\0';
+			sku++;
+			if (!sku[0]) {
+				ux_err("invalid sku selection for storage \"%s\" flavor \"%s\"\n",
+				       token, flavor);
+				goto err_free_selectors;
+			}
+		}
+
+		if (!contents_flavor_is_valid(contents, flavor)) {
+			ux_err("invalid flavor \"%s\" requested\n", flavor);
+			ux_err("valid flavors:\n");
+
+			for (size_t flavor_idx = 0; flavor_idx < contents->num_flavors; flavor_idx++)
+				ux_err("  %s\n", contents->flavors[flavor_idx]);
+			goto err_free_selectors;
+		}
+
+		storage = decode_storage_type(token);
+		if (storage == QDL_STORAGE_UNKNOWN) {
+			ux_err("unknown storage type \"%s\"\n", token);
+			goto err_free_selectors;
+		}
+
+		if (!contents_selector_is_known(valid_selectors, num_valid_selectors, storage, flavor)) {
+			ux_err("storage/flavor combination \"%s/%s\" not reported by meta_cli\n",
+			       contents_storage_name(storage), flavor);
+			contents_print_valid_selectors(valid_selectors, num_valid_selectors);
+			goto err_free_selectors;
+		}
+
+		selector.storage_type = storage;
+		selector.flavor = flavor;
+		selector.sku = sku;
+
+append_selector:
+		if (contents_storage_is_selected(selectors, count, selector.storage_type)) {
+			ux_err("storage type \"%s\" selected multiple times\n",
+			       contents_storage_name(selector.storage_type));
+			goto err_free_selectors;
+		}
+
+		selectors[count] = selector;
+		count++;
+	}
+
+	*contents_selectors = selectors;
+	free(valid_selectors);
+
+	/*
+	 * Validate the sku against meta_cli, same as the storage/flavor
+	 * validation above. get_sku_config_list may not exist on older
+	 * meta_cli builds, and an unrecognized sku is just a user typo --
+	 * neither is fatal, it just means proceeding without sku filtering.
+	 */
+	if (count && selectors[0].sku) {
+		struct json_value *skus = NULL;
+		char *sku_cmd_argv[2] = { "get_sku_config_list", NULL };
+		bool sku_ok = false;
+
+		if (metacli_run_json(ctx, sku_cmd_argv, &skus) < 0) {
+			ux_info("meta_cli: get_sku_config_list unavailable, ignoring sku \"%s\"\n",
+				selectors[0].sku);
+		} else {
+			int sku_count = json_count_children(skus);
+			int sku_idx;
+
+			for (sku_idx = 0; sku_idx < sku_count; sku_idx++) {
+				const char *sku_str = json_get_element_string(skus, sku_idx);
+
+				if (sku_str && !strcmp(sku_str, selectors[0].sku)) {
+					sku_ok = true;
+					break;
+				}
+			}
+			if (!sku_ok)
+				ux_info("meta_cli: sku \"%s\" not in get_sku_config_list, ignoring\n",
+					selectors[0].sku);
+			json_free(skus);
+		}
+
+		if (!sku_ok)
+			selectors[0].sku = NULL;
+	}
+
+	return count;
+
+err_free_selectors:
+	free(selectors);
+err_free_valid_selectors:
+	free(valid_selectors);
+
+	return -1;
+}
+
+/**
+ * contents_free_entries() - free all entries and flavors
+ * @contents: contents database to clear
+ */
+static void contents_free_entries(struct contents *contents)
+{
+	struct contents_entry *entry;
+	struct contents_entry *next;
+	size_t flavor_idx;
+
+	for (flavor_idx = 0; flavor_idx < contents->num_flavors; flavor_idx++)
+		free(contents->flavors[flavor_idx]);
+	free(contents->flavors);
+
+	list_for_each_entry_safe(entry, next, &contents->entries, node) {
+		free(entry->filename);
+		free(entry->flavor);
+		free(entry);
+	}
+}
+
 int contents_load(struct list_head *ops, const char *filename, char *specifier,
 		  struct sahara_image *images, const char *incdir)
 {
 	struct contents_filter filter = {};
 	struct contents_entry *entry;
-	struct contents_entry *next;
 	struct contents contents = {};
+	struct metacli_ctx *metacli_ctx = NULL;
 	enum qdl_storage_type storage_type;
 	struct contents_selector *selectors = NULL;
 	struct firehose_op *op;
 	const char *flavor;
 	int num_selectors;
 	char *pattern = specifier;
-	size_t flavor_idx;
+	char *pattern_copy = NULL;
+	bool populated = false;
 	int ret;
 	int i;
 
 	list_init(&contents.entries);
-struct metacli_ctx *metacli_ctx = NULL;
 
 	ux_debug("contents_load: filename='%s' pattern='%s'\n", filename, pattern ? pattern : "NULL");
 
 	/* Try meta_cli first if available */
 	if (metacli_locate(filename, &metacli_ctx)) {
+		int decode_ret;
+
 		ux_info("using meta_cli for contents.xml\n");
-		/* Parse pattern directly to get storage/flavor/sku without needing contents */
-		enum qdl_storage_type selected_storage = QDL_STORAGE_UNKNOWN;
-		const char *selected_flavor = NULL;
-		const char *selected_sku = NULL;
 
-		if (pattern) {
-			char *pattern_copy = strdup(pattern);
-			char *slash = strchr(pattern_copy, '/');
-			ux_debug("Pattern parsing: pattern='%s' slash=%p\n", pattern, slash);
-			if (slash) {
-				char *slash2;
+		/*
+		 * Decode on a copy: metacli_contents_decode_selectors() splits
+		 * it in place, and contents_decode_selectors() below still
+		 * needs the original intact if this falls back to XML.
+		 */
+		pattern_copy = pattern ? strdup(pattern) : NULL;
 
-				*slash = '\0';
-				selected_storage = decode_storage_type(pattern_copy);
-
-				slash2 = strchr(slash + 1, '/');
-				if (slash2) {
-					*slash2 = '\0';
-					selected_sku = strdup(slash2 + 1);
-					if (selected_sku && *selected_sku == '\0') {
-						free((char *)selected_sku);
-						selected_sku = NULL;
-					}
-				}
-
-				selected_flavor = strdup(slash + 1);
-				ux_debug("  storage='%s' flavor='%s' sku='%s'\n", pattern_copy,
-					 selected_flavor, selected_sku ? selected_sku : "NULL");
-				if (*selected_flavor == '\0') {
-					free((char *)selected_flavor);
-					selected_flavor = NULL;
-				}
-			} else {
-				selected_storage = decode_storage_type(pattern_copy);
-				ux_debug("  storage='%s' flavor=NULL sku=NULL\n", pattern_copy);
-			}
-			free(pattern_copy);
+		decode_ret = metacli_contents_decode_selectors(metacli_ctx, &contents, pattern_copy,
+							       &selectors);
+		if (decode_ret > 0) {
+			num_selectors = decode_ret;
+			ret = contents_populate_from_metacli(&contents, metacli_ctx,
+							      selectors[0].storage_type,
+							      selectors[0].flavor, selectors[0].sku);
+		} else {
+			ret = -1;
 		}
 
-		ret = contents_populate_from_metacli(&contents, metacli_ctx, selected_storage,
-						      selected_flavor, selected_sku);
-		if (selected_flavor)
-			free((char *)selected_flavor);
-		if (selected_sku)
-			free((char *)selected_sku);
 		metacli_ctx_free(metacli_ctx);
+
 		if (ret == 0) {
-			/* meta_cli succeeded, continue with populated contents */
-			goto decode_selectors;
+			/* meta_cli succeeded; selectors are already final */
+			populated = true;
+		} else {
+			ux_info("meta_cli failed, falling back to XML parser\n");
+			free(selectors);
+			selectors = NULL;
+			free(pattern_copy);
+			pattern_copy = NULL;
+			contents_free_entries(&contents);
+			list_init(&contents.entries);
+			contents.num_flavors = 0;
+			contents.flavors = NULL;
 		}
-		/* meta_cli failed, fall back to XML parsing */
-		ux_info("meta_cli failed, falling back to XML parser\n");
-		list_init(&contents.entries);
-		contents.num_flavors = 0;
-		contents.flavors = NULL;
 	}
 
-	ret = contents_load_xml(&contents, filename);
-	if (ret < 0)
-		goto out_free_contents;
-decode_selectors:
+	if (!populated) {
+		ret = contents_load_xml(&contents, filename);
+		if (ret < 0)
+			goto out_free_contents;
 
-	ret = contents_decode_selectors(&contents, pattern, &selectors);
-	if (ret < 0)
-		goto out_free_contents;
-	num_selectors = ret;
-	if (num_selectors == 0) {
-		ux_err("contents.xml does not provide any valid storage/flavor combinations\n");
-		ret = -1;
-		goto out_free_contents;
+		ret = contents_decode_selectors(&contents, pattern, &selectors);
+		if (ret < 0)
+			goto out_free_contents;
+		num_selectors = ret;
+		if (num_selectors == 0) {
+			ux_err("contents.xml does not provide any valid storage/flavor combinations\n");
+			ret = -1;
+			goto out_free_contents;
+		}
 	}
 
 	filter.contents = &contents;
@@ -1042,16 +1380,9 @@ decode_selectors:
 	}
 
 out_free_contents:
-	for (flavor_idx = 0; flavor_idx < contents.num_flavors; flavor_idx++)
-		free(contents.flavors[flavor_idx]);
-	free(contents.flavors);
-
-	list_for_each_entry_safe(entry, next, &contents.entries, node) {
-		free(entry->filename);
-		free(entry->flavor);
-		free(entry);
-	}
+	contents_free_entries(&contents);
 	free(selectors);
+	free(pattern_copy);
 
 	return ret;
 }
@@ -1193,7 +1524,7 @@ static bool contents_filename_is_lite(const char *filename)
 }
 
 /**
- * contents_populate_device_programmer() - get device programmer files
+ * contents_populate_device_programmer_from_metacli() - get device programmer files
  * @contents: contents database to append entries to
  * @ctx: meta_cli context
  * @storage_type: storage type to query
@@ -1205,7 +1536,7 @@ static bool contents_filename_is_lite(const char *filename)
  *
  * Returns: 0 on success, -1 if neither call returned parseable JSON
  */
-static int contents_populate_device_programmer(struct contents *contents, struct metacli_ctx *ctx,
+static int contents_populate_device_programmer_from_metacli(struct contents *contents, struct metacli_ctx *ctx,
 						enum qdl_storage_type storage_type, const char *flavor)
 {
 	char storage_arg[256] = "";
@@ -1407,317 +1738,179 @@ static int contents_populate_from_metacli(struct contents *contents, struct meta
 					   enum qdl_storage_type storage_type, const char *flavor,
 					   const char *sku)
 {
-	struct json_value *storage_types = NULL;
-	struct json_value *flavors = NULL;
 	struct json_value *partition_files = NULL;
+	struct json_value *file_val;
 	struct contents_entry *entry;
-	enum qdl_storage_type st;
-	const char *storage_str, *flavor_str, *file_path;
-	const char *validated_sku = NULL;
-	char *cmd_argv[6];
-	int storage_count, flavor_count, file_count;
-	int i, j, k;
-	int ret = -1;
-
-	/* Get storage types */
-	cmd_argv[0] = "get_storage_types";
-	cmd_argv[1] = NULL;
-	if (metacli_run_json(ctx, cmd_argv, &storage_types) < 0)
-		return -1;
-
-	storage_count = json_count_children(storage_types);
-	if (storage_count <= 0) {
-		ux_err("meta_cli returned no storage types\n");
-		json_free(storage_types);
-		return -1;
-	}
-
-	/* Get product flavors */
-	cmd_argv[0] = "get_product_flavors";
-	cmd_argv[1] = NULL;
-	if (metacli_run_json(ctx, cmd_argv, &flavors) < 0) {
-		json_free(storage_types);
-		return -1;
-	}
-
-	flavor_count = json_count_children(flavors);
-
-	/* Populate flavors array */
-	if (flavor_count > 0) {
-		contents->flavors = calloc(flavor_count, sizeof(char *));
-		if (!contents->flavors) {
-			json_free(storage_types);
-			json_free(flavors);
-			return -1;
-		}
-
-		for (i = 0; i < flavor_count; i++) {
-			flavor_str = json_get_element_string(flavors, i);
-			if (flavor_str) {
-				contents->flavors[i] = strdup(flavor_str);
-				if (!contents->flavors[i]) {
-					json_free(storage_types);
-					json_free(flavors);
-					return -1;
-				}
-				contents->num_flavors++;
-			}
-		}
-	}
+	const char *file_path;
+	char flavor_arg[256] = "";
+	char storage_arg[256] = "";
+	char sku_arg[256] = "";
+	char *cmd_argv_partition[7];
+	int cmd_argc = 0;
+	int file_count, k;
 
 	/*
-	 * Get and validate the SKU config list, if the caller selected one.
-	 * get_sku_config_list may not exist on older meta_cli builds, and an
-	 * unrecognized sku is just a user typo -- neither is fatal to loading
-	 * contents.xml, it just means we proceed without SKU filtering.
+	 * storage_type/flavor/sku are already resolved and validated by
+	 * metacli_contents_decode_selectors() before this is called, so a
+	 * single get_partition_files call is all that's needed here.
 	 */
+	cmd_argv_partition[cmd_argc++] = "get_partition_files";
+	cmd_argv_partition[cmd_argc++] = "group=True";
+
+	if (flavor) {
+		snprintf(flavor_arg, sizeof(flavor_arg), "flavor=%s", flavor);
+		cmd_argv_partition[cmd_argc++] = flavor_arg;
+	}
+
 	if (sku) {
-		struct json_value *skus = NULL;
-		int sku_count;
+		snprintf(sku_arg, sizeof(sku_arg), "sku_config=%s", sku);
+		cmd_argv_partition[cmd_argc++] = sku_arg;
+	}
 
-		cmd_argv[0] = "get_sku_config_list";
-		cmd_argv[1] = NULL;
-		if (metacli_run_json(ctx, cmd_argv, &skus) < 0) {
-			ux_info("meta_cli: get_sku_config_list unavailable, ignoring sku \"%s\"\n", sku);
-		} else {
-			sku_count = json_count_children(skus);
-			for (i = 0; i < sku_count; i++) {
-				const char *sku_str = json_get_element_string(skus, i);
+	snprintf(storage_arg, sizeof(storage_arg), "storage=%s", encode_storage_type(storage_type));
+	cmd_argv_partition[cmd_argc++] = storage_arg;
+	cmd_argv_partition[cmd_argc++] = "critical=False";
+	cmd_argv_partition[cmd_argc] = NULL;
 
-				if (sku_str && !strcmp(sku_str, sku)) {
-					validated_sku = sku;
-					break;
+	if (metacli_run_json(ctx, cmd_argv_partition, &partition_files) < 0)
+		return -1;
+
+	/* Process partition files */
+	file_val = json_get_child(partition_files, "partition");
+	if (file_val) {
+		file_count = json_count_children(file_val);
+		for (k = 0; k < file_count; k++) {
+			file_path = json_get_element_string(file_val, k);
+			if (file_path) {
+				entry = calloc(1, sizeof(*entry));
+				if (!entry) {
+					json_free(partition_files);
+					return -1;
 				}
+				entry->file_type = CONTENTS_FILE_PROGRAM;
+				entry->storage_type = storage_type;
+				if (flavor) {
+					entry->flavor = strdup(flavor);
+					if (!entry->flavor) {
+						free(entry);
+						json_free(partition_files);
+						return -1;
+					}
+				}
+				entry->filename = strdup(basename((char *)file_path));
+				if (!entry->filename) {
+					free(entry->flavor);
+					free(entry);
+					json_free(partition_files);
+					return -1;
+				}
+				qdl_pathbuf_reset(&entry->path);
+#ifdef _WIN32
+				strncpy(entry->path.buf, file_path, PATH_MAX - 1);
+				entry->path.len = strlen(file_path);
+#else
+				qdl_pathbuf_push(&entry->path, file_path);
+#endif
+				list_append(&contents->entries, &entry->node);
 			}
-			if (!validated_sku)
-				ux_info("meta_cli: sku \"%s\" not in get_sku_config_list, ignoring\n", sku);
-			json_free(skus);
 		}
 	}
 
-	/* For each storage type and flavor combination, get partition files */
-	for (i = 0; i < storage_count; i++) {
-		storage_str = json_get_element_string(storage_types, i);
-		if (!storage_str)
-			continue;
-
-		st = decode_storage_type((char *)storage_str);
-		if (st == QDL_STORAGE_UNKNOWN) {
-			ux_info("meta_cli: unknown storage type \"%s\", skipping\n", storage_str);
-			continue;
-		}
-
-		/* Only query the storage type the caller actually selected */
-		if (storage_type != QDL_STORAGE_UNKNOWN && st != storage_type)
-			continue;
-
-		/* If no flavors, process once with NULL flavor */
-		int flavor_iterations = flavor_count > 0 ? flavor_count : 1;
-
-		for (j = 0; j < flavor_iterations; j++) {
-			flavor_str = flavor_count > 0 ? json_get_element_string(flavors, j) : NULL;
-
-			/* Only query the flavor the caller actually selected */
-			if (flavor && flavor_str && strcmp(flavor, flavor_str))
-				continue;
-
-			/* Build get_partition_files command */
-			char flavor_arg[256] = "";
-			char storage_arg[256] = "";
-			char sku_arg[256] = "";
-			char *cmd_argv_partition[7];
-			int cmd_argc = 0;
-
-			cmd_argv_partition[cmd_argc++] = "get_partition_files";
-			cmd_argv_partition[cmd_argc++] = "group=True";
-
-			if (flavor_str) {
-				snprintf(flavor_arg, sizeof(flavor_arg), "flavor=%s", flavor_str);
-				cmd_argv_partition[cmd_argc++] = flavor_arg;
-			}
-
-			if (validated_sku) {
-				snprintf(sku_arg, sizeof(sku_arg), "sku_config=%s", validated_sku);
-				cmd_argv_partition[cmd_argc++] = sku_arg;
-			}
-
-			snprintf(storage_arg, sizeof(storage_arg), "storage=%s", storage_str);
-			cmd_argv_partition[cmd_argc++] = storage_arg;
-			cmd_argv_partition[cmd_argc++] = "critical=False";
-			cmd_argv_partition[cmd_argc] = NULL;
-
-			if (metacli_run_json(ctx, cmd_argv_partition, &partition_files) < 0) {
-				json_free(storage_types);
-				json_free(flavors);
-				return -1;
-			}
-
-			/* Process partition files */
-			struct json_value *file_val = json_get_child(partition_files, "partition");
-			if (file_val) {
-				file_count = json_count_children(file_val);
-				for (k = 0; k < file_count; k++) {
-					file_path = json_get_element_string(file_val, k);
-					if (file_path) {
-						entry = calloc(1, sizeof(*entry));
-						if (!entry) {
-							json_free(storage_types);
-							json_free(flavors);
-							json_free(partition_files);
-							return -1;
-						}
-						entry->file_type = CONTENTS_FILE_PROGRAM;
-						entry->storage_type = st;
-						if (flavor_str) {
-							entry->flavor = strdup(flavor_str);
-							if (!entry->flavor) {
-								free(entry);
-								json_free(storage_types);
-								json_free(flavors);
-								json_free(partition_files);
-								return -1;
-							}
-						}
-						entry->filename = strdup(basename((char *)file_path));
-						if (!entry->filename) {
-							free(entry->flavor);
-							free(entry);
-							json_free(storage_types);
-							json_free(flavors);
-							json_free(partition_files);
-							return -1;
-						}
-						qdl_pathbuf_reset(&entry->path);
-#ifdef _WIN32
-						strncpy(entry->path.buf, file_path, PATH_MAX - 1);
-						entry->path.len = strlen(file_path);
-#else
-						qdl_pathbuf_push(&entry->path, file_path);
-#endif
-						list_append(&contents->entries, &entry->node);
+	/* Process partition_patch files */
+	file_val = json_get_child(partition_files, "partition_patch");
+	if (file_val) {
+		file_count = json_count_children(file_val);
+		for (k = 0; k < file_count; k++) {
+			file_path = json_get_element_string(file_val, k);
+			if (file_path) {
+				entry = calloc(1, sizeof(*entry));
+				if (!entry) {
+					json_free(partition_files);
+					return -1;
+				}
+				entry->file_type = CONTENTS_FILE_PATCH;
+				entry->storage_type = storage_type;
+				if (flavor) {
+					entry->flavor = strdup(flavor);
+					if (!entry->flavor) {
+						free(entry);
+						json_free(partition_files);
+						return -1;
 					}
 				}
-			}
-
-			/* Process partition_patch files */
-			file_val = json_get_child(partition_files, "partition_patch");
-			if (file_val) {
-				file_count = json_count_children(file_val);
-				for (k = 0; k < file_count; k++) {
-					file_path = json_get_element_string(file_val, k);
-					if (file_path) {
-						entry = calloc(1, sizeof(*entry));
-						if (!entry) {
-							json_free(storage_types);
-							json_free(flavors);
-							json_free(partition_files);
-							return -1;
-						}
-						entry->file_type = CONTENTS_FILE_PATCH;
-						entry->storage_type = st;
-						if (flavor_str) {
-							entry->flavor = strdup(flavor_str);
-							if (!entry->flavor) {
-								free(entry);
-								json_free(storage_types);
-								json_free(flavors);
-								json_free(partition_files);
-								return -1;
-							}
-						}
-						entry->filename = strdup(file_path);
-						if (!entry->filename) {
-							free(entry->flavor);
-							free(entry);
-							json_free(storage_types);
-							json_free(flavors);
-							json_free(partition_files);
-							return -1;
-						}
-						qdl_pathbuf_reset(&entry->path);
-#ifdef _WIN32
-						strncpy(entry->path.buf, file_path, PATH_MAX - 1);
-						entry->path.len = strlen(file_path);
-#else
-						qdl_pathbuf_push(&entry->path, file_path);
-#endif
-						list_append(&contents->entries, &entry->node);
-					}
+				entry->filename = strdup(file_path);
+				if (!entry->filename) {
+					free(entry->flavor);
+					free(entry);
+					json_free(partition_files);
+					return -1;
 				}
-			}
-
-			/* Process partition_bin files (binaries referenced by
-			 * <program filename="..."> inside the partition files
-			 * above, e.g. persist.img referenced from a rawprogram
-			 * XML). These are lookup-only entries: contents_load()
-			 * never loads them directly, but contents_resolve_path()
-			 * matches them by filename so program_resolve_path() can
-			 * find the meta_cli-resolved absolute path instead of
-			 * relying on the file sitting next to the rawprogram XML.
-			 */
-			file_val = json_get_child(partition_files, "partition_bin");
-			if (file_val) {
-				file_count = json_count_children(file_val);
-				for (k = 0; k < file_count; k++) {
-					file_path = json_get_element_string(file_val, k);
-					if (file_path) {
-						entry = calloc(1, sizeof(*entry));
-						if (!entry) {
-							json_free(storage_types);
-							json_free(flavors);
-							json_free(partition_files);
-							return -1;
-						}
-						entry->file_type = CONTENTS_FILE_OTHER;
-						entry->storage_type = st;
-						if (flavor_str) {
-							entry->flavor = strdup(flavor_str);
-							if (!entry->flavor) {
-								free(entry);
-								json_free(storage_types);
-								json_free(flavors);
-								json_free(partition_files);
-								return -1;
-							}
-						}
-						entry->filename = strdup(basename((char *)file_path));
-						if (!entry->filename) {
-							free(entry->flavor);
-							free(entry);
-							json_free(storage_types);
-							json_free(flavors);
-							json_free(partition_files);
-							return -1;
-						}
-						qdl_pathbuf_reset(&entry->path);
+				qdl_pathbuf_reset(&entry->path);
 #ifdef _WIN32
-						strncpy(entry->path.buf, file_path, PATH_MAX - 1);
-						entry->path.len = strlen(file_path);
+				strncpy(entry->path.buf, file_path, PATH_MAX - 1);
+				entry->path.len = strlen(file_path);
 #else
-						qdl_pathbuf_push(&entry->path, file_path);
+				qdl_pathbuf_push(&entry->path, file_path);
 #endif
-						list_append(&contents->entries, &entry->node);
-					}
-				}
+				list_append(&contents->entries, &entry->node);
 			}
-
-			json_free(partition_files);
 		}
 	}
+
+	/* Process partition_bin files (binaries referenced by
+	 * <program filename="..."> inside the partition files above, e.g.
+	 * persist.img referenced from a rawprogram XML). These are
+	 * lookup-only entries: contents_load() never loads them directly,
+	 * but contents_resolve_path() matches them by filename so
+	 * program_resolve_path() can find the meta_cli-resolved absolute
+	 * path instead of relying on the file sitting next to the
+	 * rawprogram XML.
+	 */
+	file_val = json_get_child(partition_files, "partition_bin");
+	if (file_val) {
+		file_count = json_count_children(file_val);
+		for (k = 0; k < file_count; k++) {
+			file_path = json_get_element_string(file_val, k);
+			if (file_path) {
+				entry = calloc(1, sizeof(*entry));
+				if (!entry) {
+					json_free(partition_files);
+					return -1;
+				}
+				entry->file_type = CONTENTS_FILE_OTHER;
+				entry->storage_type = storage_type;
+				if (flavor) {
+					entry->flavor = strdup(flavor);
+					if (!entry->flavor) {
+						free(entry);
+						json_free(partition_files);
+						return -1;
+					}
+				}
+				entry->filename = strdup(basename((char *)file_path));
+				if (!entry->filename) {
+					free(entry->flavor);
+					free(entry);
+					json_free(partition_files);
+					return -1;
+				}
+				qdl_pathbuf_reset(&entry->path);
+#ifdef _WIN32
+				strncpy(entry->path.buf, file_path, PATH_MAX - 1);
+				entry->path.len = strlen(file_path);
+#else
+				qdl_pathbuf_push(&entry->path, file_path);
+#endif
+				list_append(&contents->entries, &entry->node);
+			}
+		}
+	}
+
+	json_free(partition_files);
 
 	/* Get device programmer files for the selected storage/flavor */
-	if (storage_type != QDL_STORAGE_UNKNOWN) {
-		if (contents_populate_device_programmer(contents, ctx, storage_type, flavor) < 0) {
-			json_free(storage_types);
-			json_free(flavors);
-			return -1;
-		}
-	}
+	if (contents_populate_device_programmer_from_metacli(contents, ctx, storage_type, flavor) < 0)
+		return -1;
 
-	ret = 0;
-
-	json_free(storage_types);
-	json_free(flavors);
-
-	return ret;
+	return 0;
 }
