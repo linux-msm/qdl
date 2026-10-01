@@ -98,11 +98,11 @@ static void sim_enqueue(struct qdl_device_sim *qdl_sim, const char *xml)
 
 	resp = malloc(sizeof(*resp));
 	if (!resp)
-		err(1, "sim: failed to allocate response entry");
+		ux_die(1, "sim: failed to allocate response entry");
 
 	resp->data = strdup(xml);
 	if (!resp->data)
-		err(1, "sim: failed to duplicate response string");
+		ux_die(1, "sim: failed to duplicate response string");
 
 	resp->len = strlen(xml);
 	resp->next = NULL;

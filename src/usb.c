@@ -118,7 +118,7 @@ static bool usb_read_serial(struct libusb_device_handle *handle,
 
 	ret = libusb_get_string_descriptor_ascii(handle, desc->iProduct, (unsigned char *)buf, sizeof(buf));
 	if (ret < 0) {
-		warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
+		ux_warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
 		return false;
 	}
 
@@ -242,7 +242,7 @@ static bool usb_match_device(struct libusb_device_handle *handle,
 
 	ret = libusb_get_active_config_descriptor(libusb_get_device(handle), &config);
 	if (ret < 0) {
-		warnx("failed to acquire USB device's active config descriptor");
+		ux_warnx("failed to acquire USB device's active config descriptor");
 		return false;
 	}
 
@@ -271,7 +271,7 @@ static int usb_open_device(libusb_device *dev,
 
 	ret = libusb_open(dev, &handle);
 	if (ret < 0) {
-		warnx("unable to open USB device");
+		ux_warnx("unable to open USB device");
 		return 0;
 	}
 
@@ -282,7 +282,7 @@ static int usb_open_device(libusb_device *dev,
 
 	ret = libusb_claim_interface(handle, ifc_num);
 	if (ret < 0) {
-		warnx("failed to claim USB interface");
+		ux_warnx("failed to claim USB interface");
 		goto close;
 	}
 
@@ -522,7 +522,7 @@ static int usb_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int 
 		ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->in_ep,
 					   NULL, 0, NULL, timeout);
 		if (ret)
-			warnx("Unable to read ZLP: %s", libusb_strerror(ret));
+			ux_warnx("Unable to read ZLP: %s", libusb_strerror(ret));
 	}
 
 	return actual;
@@ -544,7 +544,7 @@ static int usb_write(struct qdl_device *qdl, const void *buf, size_t len, unsign
 		ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->out_ep, data,
 					   xfer, &actual, timeout);
 		if (ret != 0 && ret != LIBUSB_ERROR_TIMEOUT) {
-			warnx("bulk write failed: %s", libusb_strerror(ret));
+			ux_warnx("bulk write failed: %s", libusb_strerror(ret));
 			return -EIO;
 		}
 		if (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)
