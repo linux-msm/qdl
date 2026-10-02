@@ -511,6 +511,8 @@ static int usb_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int 
 	int ret;
 
 	ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->in_ep, buf, len, &actual, timeout);
+	if (ret == LIBUSB_ERROR_NO_DEVICE)
+		return -ENODEV;
 	if (ret != 0 && ret != LIBUSB_ERROR_TIMEOUT)
 		return -EIO;
 
