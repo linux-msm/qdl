@@ -13,6 +13,7 @@ lib_sources = files(
   'input_type.c', 'io.c', 'patch.c',
   'program.c', 'programmer.c', 'read.c', 'sahara_config.c', 'sha2.c', 'sim.c', 'ufs.c', 'usb.c',
   'vip.c', 'sparse.c', 'gpt.c', 'flashmap.c', 'json.c', 'contents.c', 'pathbuf.c',
+  'meta_cli.c',
 )
 
 # Zip container support: reading flash bundles (file_zip.c) and the
