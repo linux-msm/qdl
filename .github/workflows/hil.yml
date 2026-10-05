@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure
         run: meson setup build
@@ -61,7 +61,7 @@ jobs:
           meson test -C build --suite "${QDL_HIL_SUITE:-hil}" --print-errorlogs
 
       - name: Upload logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: hil-logs-${{ matrix.os }}-${{ matrix.board }}
@@ -83,7 +83,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # release: false reuses the MSYS2 installation already present on
       # the runner instead of downloading one per job. The package list
@@ -121,7 +121,7 @@ jobs:
           meson test -C build --suite "${QDL_HIL_SUITE:-hil}" --print-errorlogs
 
       - name: Upload logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: hil-logs-windows-${{ matrix.board }}
