@@ -175,6 +175,112 @@ struct sahara_debug_region64 {
 	char filename[20];
 };
 
+static const char *sahara_status_str(uint32_t status)
+{
+	switch (status) {
+	case 0x00:
+		return "success";
+	case 0x01:
+		return "invalid command received in current state";
+	case 0x02:
+		return "protocol mismatch between host and target";
+	case 0x03:
+		return "invalid target protocol version";
+	case 0x04:
+		return "invalid host protocol version";
+	case 0x05:
+		return "invalid packet size received";
+	case 0x06:
+		return "unexpected image ID received";
+	case 0x07:
+		return "invalid image header size received";
+	case 0x08:
+		return "invalid image data size received";
+	case 0x09:
+		return "invalid image type received";
+	case 0x0a:
+		return "invalid transmission length";
+	case 0x0b:
+		return "invalid reception length";
+	case 0x0c:
+		return "general transmission or reception error";
+	case 0x0d:
+		return "error while transmitting READ_DATA packet";
+	case 0x0e:
+		return "cannot receive specified number of program headers";
+	case 0x0f:
+		return "invalid data length received for program headers";
+	case 0x10:
+		return "multiple shared segments found in ELF image";
+	case 0x11:
+		return "uninitialized program header location";
+	case 0x12:
+		return "invalid destination address";
+	case 0x13:
+		return "invalid data size received in image header";
+	case 0x14:
+		return "invalid ELF header received";
+	case 0x15:
+		return "unknown host error received in HELLO_RESP";
+	case 0x16:
+		return "timeout while receiving data";
+	case 0x17:
+		return "timeout while transmitting data";
+	case 0x18:
+		return "invalid mode received from host";
+	case 0x19:
+		return "invalid memory read access";
+	case 0x1a:
+		return "host cannot handle read data size requested";
+	case 0x1b:
+		return "memory debug not supported";
+	case 0x1c:
+		return "invalid mode switch";
+	case 0x1d:
+		return "failed to execute command";
+	case 0x1e:
+		return "invalid parameter passed to command execution";
+	case 0x1f:
+		return "unsupported client command received";
+	case 0x20:
+		return "invalid client command received for data response";
+	case 0x21:
+		return "failed to authenticate hash table";
+	case 0x22:
+		return "failed to verify hash for a given segment of ELF image";
+	case 0x23:
+		return "failed to find hash table in ELF image";
+	case 0x24:
+		return "target failed to initialize";
+	case 0x25:
+		return "failed to find valid ELF image entry address";
+	case 0x26:
+		return "invalid ELF hash table size";
+	case 0x27:
+		return "Sahara reset command received from host";
+	case 0x28:
+		return "failed to find XBL_SEC segment in the ELF image";
+	case 0x29:
+		return "invalid ELF image format received";
+	case 0x2a:
+		return "invalid XBL-SEC ELF info received";
+	case 0x2b:
+		return "failure seen in auth initialization";
+	case 0x2c:
+		return "no loadable segments found";
+	case 0x2d:
+		return "invalid XBL info received";
+	case 0x2e:
+		return "FDL timeout reset occurred on target";
+	case 0x2f:
+		return "USB reconnect detected by target";
+	case 0x30:
+		return "target error does not map to any known Sahara error";
+	default:
+		return "invalid status code";
+	}
+}
+
 static void sahara_send_reset(struct qdl_device *qdl)
 {
 	struct sahara_pkt resp;
@@ -196,6 +302,10 @@ static int sahara_send_hello_resp(struct qdl_device *qdl, unsigned int version,
 	resp.hello_resp.compatible = 1;
 	resp.hello_resp.status = SAHARA_SUCCESS;
 	resp.hello_resp.mode = mode;
+
+	ux_debug("SAHARA: HELLO_RESP version: 0x%x compatible: 0x%x mode: %u\n",
+		 resp.hello_resp.version, resp.hello_resp.compatible,
+		 resp.hello_resp.mode);
 
 	qdl_write(qdl, &resp, resp.length, SAHARA_CMD_TIMEOUT_MS);
 	return 0;
@@ -323,10 +433,14 @@ static int sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 		return -1;
 	}
 
-	ux_debug("SAHARA: END OF IMAGE image: %d status: %d\n", pkt->eoi.image, pkt->eoi.status);
+	ux_debug("SAHARA: END OF IMAGE image: %u status: 0x%x (%s)\n",
+		 pkt->eoi.image, pkt->eoi.status,
+		 sahara_status_str(pkt->eoi.status));
 
 	if (pkt->eoi.status != 0) {
-		ux_err("SAHARA: received non-successful end-of-image result\n");
+		ux_err("SAHARA: received non-successful end-of-image result: "
+		       "0x%x (%s)\n", pkt->eoi.status,
+		       sahara_status_str(pkt->eoi.status));
 		return -1;
 	}
 
@@ -344,10 +458,11 @@ static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
 		return -1;
 	}
 
-	ux_debug("SAHARA: DONE status: %d\n", pkt->done_resp.status);
-
 	// 0 == PENDING, 1 == COMPLETE.  Device expects more images if
 	// PENDING is set in status.
+	ux_debug("SAHARA: DONE status: %u (%s)\n", pkt->done_resp.status,
+		 pkt->done_resp.status ? "complete" : "pending");
+
 	return pkt->done_resp.status;
 }
 
@@ -1114,8 +1229,9 @@ int sahara_chipinfo(struct qdl_device *qdl)
 	pkt = (struct sahara_pkt *)buf;
 	if (pkt->cmd != SAHARA_CMD_READY_CMD) {
 		if (pkt->cmd == SAHARA_END_OF_IMAGE_CMD)
-			ux_err("SAHARA: device rejected command mode (end-of-image status %u)\n",
-			       pkt->eoi.status);
+			ux_err("SAHARA: device rejected command mode: "
+			       "end-of-image status 0x%x (%s)\n",
+			       pkt->eoi.status, sahara_status_str(pkt->eoi.status));
 		else
 			ux_err("SAHARA: unexpected packet 0x%x while entering command mode\n",
 			       pkt->cmd);
@@ -1244,8 +1360,9 @@ int sahara_device_reset(struct qdl_device *qdl)
 		 * transfer packet carrying the error status.
 		 */
 		if (pkt->cmd == SAHARA_END_OF_IMAGE_CMD) {
-			ux_err("SAHARA: device rejected the reset request (end-of-image status %u)\n",
-			       pkt->eoi.status);
+			ux_err("SAHARA: device rejected the reset request: "
+			       "end-of-image status 0x%x (%s)\n",
+			       pkt->eoi.status, sahara_status_str(pkt->eoi.status));
 			return -1;
 		}
 
