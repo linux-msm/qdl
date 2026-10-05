@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Unit tests for the <patch> and <read> XML loaders (patch.c, read.c).
  * They turn XML into firehose op lists; util.c is linked in for the real
  * attribute accessors, and the device/ux layers are stubbed.

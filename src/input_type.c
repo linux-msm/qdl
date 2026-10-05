@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Classification of the positional inputs of the flashing flow: command
  * verbs, and XML input files told apart by their root and child
  * elements.

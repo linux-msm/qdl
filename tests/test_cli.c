@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Unit tests for qdl_parse_args(). Extracting the parser into cli.c (out of
  * qdl.c, which defines main()) is what makes it testable here. util.c is
  * linked for the real decode_storage_type()/decode_backend(); the ux and

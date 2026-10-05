@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * nbdkit plugin exposing a Qualcomm EDL device's storage as a block device.
  *
  * Based on the plugin from Bjorn Andersson's nbdkit branch, adapted to the

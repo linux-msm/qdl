@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Unit tests for the pure helpers in src/util.c: the storage address
  * parser, the storage-type encode/decode pair, and the XML attribute
  * accessors.
