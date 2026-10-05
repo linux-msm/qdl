@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Configure
         run: meson setup build
@@ -61,7 +61,7 @@ jobs:
           meson test -C build --suite "${QDL_HIL_SUITE:-hil}" --print-errorlogs
 
       - name: Upload logs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: hil-logs-${{ matrix.os }}-${{ matrix.board }}
@@ -83,13 +83,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # release: false reuses the MSYS2 installation already present on
       # the runner instead of downloading one per job. The package list
       # mirrors build.yml.
       - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: MINGW64
           release: false
@@ -121,7 +121,7 @@ jobs:
           meson test -C build --suite "${QDL_HIL_SUITE:-hil}" --print-errorlogs
 
       - name: Upload logs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: hil-logs-windows-${{ matrix.board }}
