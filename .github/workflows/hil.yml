@@ -54,9 +54,11 @@ jobs:
         run: meson compile -C build
 
       - name: Run HIL suite
+        env:
+          BOARD: ${{ matrix.board }}
         run: |
-          if [ "${{ matrix.board }}" != "default" ]; then
-            set -a; . "$HOME/hil/${{ matrix.board }}.env"; set +a
+          if [ "$BOARD" != "default" ]; then
+            set -a; . "$HOME/hil/$BOARD.env"; set +a
           fi
           meson test -C build --suite "${QDL_HIL_SUITE:-hil}" --print-errorlogs
 
@@ -114,9 +116,11 @@ jobs:
         run: meson compile -C build
 
       - name: Run HIL suite
+        env:
+          BOARD: ${{ matrix.board }}
         run: |
-          if [ "${{ matrix.board }}" != "default" ]; then
-            set -a; . "$HOME/hil/${{ matrix.board }}.env"; set +a
+          if [ "$BOARD" != "default" ]; then
+            set -a; . "$HOME/hil/$BOARD.env"; set +a
           fi
           meson test -C build --suite "${QDL_HIL_SUITE:-hil}" --print-errorlogs
 
