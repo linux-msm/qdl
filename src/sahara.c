@@ -501,7 +501,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 
 	fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 	if (fd < 0) {
-		ux_warn("SAHARA: failed to open \"%s\"", region.filename);
+		ux_warn("SAHARA: failed to open \"%s\" (\"%s\")", path, region.filename);
 		free(buf);
 		return -1;
 	}
