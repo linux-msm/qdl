@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Unit tests for the UFS provisioning loader. ufs_load() now operates on a
  * caller-owned struct ufs_provisioning instead of module globals, which is
  * what makes it testable here: the tests write a provisioning XML to a temp

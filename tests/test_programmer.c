@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Unit tests for the programmer CPIO archive decoder (programmer.c). The
  * decoder parses an untrusted blob, so the tests craft small newc CPIO
  * archives and verify both correct decoding and rejection of the

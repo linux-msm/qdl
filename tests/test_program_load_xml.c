@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
 #define _FILE_OFFSET_BITS 64
 #if defined(__APPLE__)
 #define _DARWIN_C_SOURCE

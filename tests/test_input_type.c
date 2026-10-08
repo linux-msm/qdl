@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Unit tests for detect_type(), which classifies a positional qdl
  * argument as a command verb or an input XML file (by inspecting the XML
  * root element). XML cases are written to a temporary file.

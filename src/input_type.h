@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
 #ifndef __INPUT_TYPE_H__
 #define __INPUT_TYPE_H__
 

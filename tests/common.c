@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

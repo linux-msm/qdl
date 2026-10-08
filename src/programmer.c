@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Sahara programmer handling: mapping the user's programmer specifier
  * onto the Sahara image table, and reading and writing the CPIO-based
  * programmer archives that carry multi-image boot chains.

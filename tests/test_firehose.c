@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Unit tests for the Firehose XML response parsers. They are file-local
  * in firehose.c, so the module is #included directly. Only the response
  * parsers are exercised; the rest of firehose.c (and its device / vip /
