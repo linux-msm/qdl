@@ -364,6 +364,23 @@ if cmocka_dep.found()
     protocol: 'tap',
     env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
   )
+
+  test_sahara_zlp = executable('test_sahara_zlp',
+    sources : [
+      'test_sahara_zlp.c',
+    ],
+    link_with : shared_lib,
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'sahara writes without ZLP',
+    test_sahara_zlp,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
 else
   warning('cmocka not found; skipping unit tests')
 endif

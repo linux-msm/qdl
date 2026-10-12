@@ -1168,14 +1168,7 @@ static void sahara_send_switch_mode(struct qdl_device *qdl, unsigned int mode)
 	qdl_write(qdl, &pkt, pkt.length, SAHARA_CMD_TIMEOUT_MS);
 }
 
-/*
- * Read and print the chip identity (serial, HW ID and OEM PK hash) by entering
- * Sahara command mode. Unlike the image-transfer path this requests
- * SAHARA_MODE_COMMAND in the HELLO response and drives EXECUTE transactions.
- * Command mode is left by switching back to image transfer, which returns the
- * device to its initial HELLO state.
- */
-int sahara_chipinfo(struct qdl_device *qdl)
+static int sahara_chipinfo_session(struct qdl_device *qdl)
 {
 	unsigned int version = SAHARA_VERSION;
 	struct sahara_pkt *pkt;
@@ -1249,17 +1242,7 @@ int sahara_chipinfo(struct qdl_device *qdl)
 	return ret;
 }
 
-/*
- * Reset the device over the Sahara protocol, from whichever Sahara state
- * it booted into: fresh EDL (image transfer pending) or crash mode
- * (memory debug). The HELLO is acknowledged with the mode the device
- * asked for, so no state transition is forced before the reset command.
- *
- * Return: 0 when the reset was issued over Sahara, 1 when a Firehose
- * programmer is already running (the caller should reset via Firehose
- * instead), -1 on failure.
- */
-int sahara_device_reset(struct qdl_device *qdl)
+static int sahara_device_reset_session(struct qdl_device *qdl)
 {
 	struct sahara_pkt *pkt;
 	char buf[4096];
@@ -1398,9 +1381,53 @@ firehose:
 	return 1;
 }
 
-int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
-	       const char *ramdump_path,
-	       const char *ramdump_filter)
+/*
+ * Reset the device over the Sahara protocol, from whichever Sahara state
+ * it booted into: fresh EDL (image transfer pending) or crash mode
+ * (memory debug). The HELLO is acknowledged with the mode the device
+ * asked for, so no state transition is forced before the reset command.
+ *
+ * Return: 0 when the reset was issued over Sahara, 1 when a Firehose
+ * programmer is already running (the caller should reset via Firehose
+ * instead), -1 on failure.
+ */
+int sahara_device_reset(struct qdl_device *qdl)
+{
+	bool zlp_on_write = qdl->zlp_on_write;
+	int ret;
+
+	/* Sahara transfers have a known length, don't terminate with a ZLP */
+	qdl->zlp_on_write = false;
+	ret = sahara_device_reset_session(qdl);
+	qdl->zlp_on_write = zlp_on_write;
+
+	return ret;
+}
+
+/*
+ * Read and print the chip identity (serial, HW ID and OEM PK hash) by entering
+ * Sahara command mode. Unlike the image-transfer path this requests
+ * SAHARA_MODE_COMMAND in the HELLO response and drives EXECUTE transactions.
+ * Command mode is left by switching back to image transfer, which returns the
+ * device to its initial HELLO state.
+ */
+int sahara_chipinfo(struct qdl_device *qdl)
+{
+	bool zlp_on_write = qdl->zlp_on_write;
+	int ret;
+
+	/* Sahara transfers have a known length, don't terminate with a ZLP */
+	qdl->zlp_on_write = false;
+	ret = sahara_chipinfo_session(qdl);
+	qdl->zlp_on_write = zlp_on_write;
+
+	return ret;
+}
+
+static int sahara_run_session(struct qdl_device *qdl,
+			      const struct sahara_image *images,
+			      const char *ramdump_path,
+			      const char *ramdump_filter)
 {
 	/*
 	 * Auto-detect that the device is already running the Firehose
@@ -1510,4 +1537,19 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	}
 
 	return done ? 0 : -1;
+}
+
+int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
+	       const char *ramdump_path,
+	       const char *ramdump_filter)
+{
+	bool zlp_on_write = qdl->zlp_on_write;
+	int ret;
+
+	/* Sahara transfers have a known length, don't terminate with a ZLP */
+	qdl->zlp_on_write = false;
+	ret = sahara_run_session(qdl, images, ramdump_path, ramdump_filter);
+	qdl->zlp_on_write = zlp_on_write;
+
+	return ret;
 }
