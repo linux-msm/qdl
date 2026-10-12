@@ -120,6 +120,8 @@ static int auto_write(struct qdl_device *qdl, const void *buf, size_t len, unsig
 {
 	struct qdl_device *inner = to_auto(qdl)->inner;
 
+	inner->zlp_on_write = qdl->zlp_on_write;
+
 	return inner->write(inner, buf, len, timeout);
 }
 
@@ -160,6 +162,7 @@ struct qdl_device *auto_init(void)
 	wrap->base.close = auto_close;
 	wrap->base.set_out_chunk_size = auto_set_out_chunk_size;
 	wrap->base.max_payload_size = 1048576;
+	wrap->base.zlp_on_write = true;
 
 	return &wrap->base;
 }

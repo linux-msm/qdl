@@ -560,7 +560,7 @@ static int usb_write(struct qdl_device *qdl, const void *buf, size_t len, unsign
 		data += actual;
 	}
 
-	if (len_orig % qdl_usb->out_maxpktsize == 0) {
+	if (qdl->zlp_on_write && len_orig % qdl_usb->out_maxpktsize == 0) {
 		ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->out_ep, NULL,
 					   0, &actual, timeout);
 		if (ret < 0)
@@ -593,6 +593,7 @@ struct qdl_device *usb_init(void)
 	qdl->close = usb_close;
 	qdl->set_out_chunk_size = usb_set_out_chunk_size;
 	qdl->max_payload_size = 1048576;
+	qdl->zlp_on_write = true;
 
 	return qdl;
 }

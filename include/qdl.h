@@ -84,6 +84,14 @@ struct qdl_device {
 	enum qdl_skipblock_mode skipblock_mode;
 	unsigned int slot;
 
+	/*
+	 * Terminate bulk writes that are a multiple of the max packet size
+	 * with a zero-length packet. Firehose relies on it to delimit
+	 * transfers, Sahara transfers have a length known to both sides and
+	 * some implementations time out on the extra packet.
+	 */
+	bool zlp_on_write;
+
 	int (*open)(struct qdl_device *qdl, const char *serial);
 	int (*read)(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
 	int (*write)(struct qdl_device *qdl, const void *buf, size_t nbytes, unsigned int timeout);

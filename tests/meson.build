@@ -347,6 +347,23 @@ if cmocka_dep.found()
     protocol: 'tap',
     env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
   )
+
+  test_usb_zlp = executable('test_usb_zlp',
+    sources : [
+      'test_usb_zlp.c',
+      files('../src/ux.c'),
+    ],
+    dependencies : common_dep + [cmocka_dep],
+    include_directories : inc,
+  )
+
+  test(
+    'usb write ZLP handling',
+    test_usb_zlp,
+    suite: 'unit',
+    protocol: 'tap',
+    env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+  )
 else
   warning('cmocka not found; skipping unit tests')
 endif
