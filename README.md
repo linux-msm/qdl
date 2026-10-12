@@ -4,6 +4,8 @@
 [![Build on push](https://github.com/linux-msm/qdl/actions/workflows/build.yml/badge.svg)](https://github.com/linux-msm/qdl/actions/workflows/build.yml)
 [![Latest release](https://img.shields.io/github/v/release/linux-msm/qdl?sort=semver)](https://github.com/linux-msm/qdl/releases/latest)
 [![Debian package](https://img.shields.io/debian/v/qdl/unstable?logo=debian&label=Debian)](https://tracker.debian.org/pkg/qdl)
+[![Fedora package](https://img.shields.io/fedora/v/qdl?logo=fedora&label=Fedora)](https://packages.fedoraproject.org/pkgs/qdl/qdl/)
+[![Homebrew formula](https://img.shields.io/homebrew/v/qdl?logo=homebrew&label=Homebrew)](https://formulae.brew.sh/formula/qdl)
 
 This tool communicates with Qualcomm EDL USB devices (Vendor ID `05c6`) to
 upload a flash loader and use it to flash images. Any Qualcomm device that
@@ -12,6 +14,44 @@ exposes a vendor-specific EDL interface is accepted; the Product ID (commonly
 new devices keep appearing with new IDs.
 
 ---
+
+## Install
+
+QDL is packaged for several distributions. The packaged version may lag
+behind the latest release; see [Repology](https://repology.org/project/qdl/versions)
+for an overview, or build from source as described in the
+[Build](#build) section below.
+
+### Debian and Ubuntu
+
+```bash
+sudo apt install qdl
+```
+
+Debian stable ships an older snapshot. The latest release is available from
+backports:
+
+```bash
+sudo apt install -t trixie-backports qdl
+```
+
+### Fedora and EPEL
+
+```bash
+sudo dnf install qdl
+```
+
+On RHEL, CentOS Stream, AlmaLinux or Rocky Linux, enable the
+[EPEL](https://docs.fedoraproject.org/en-US/epel/) repository first.
+
+### MacOS (Homebrew)
+
+QDL is also available in [Homebrew](https://formulae.brew.sh/formula/qdl).
+
+```bash
+brew update
+brew install qdl
+```
 
 ## Build
 
