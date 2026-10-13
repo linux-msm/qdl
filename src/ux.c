@@ -65,6 +65,8 @@ static const char * const ux_styles[] = {
 	[UX_STYLE_RX]		= "\033[36m",
 	[UX_STYLE_DIM]		= "\033[2m",
 	[UX_STYLE_PROGRESS]	= "\033[32m",
+	[UX_STYLE_SUCCESS]	= "\033[32m",
+	[UX_STYLE_SKIPPED]	= "\033[34m",
 };
 
 /* Name and color of each subsystem tag */
@@ -662,6 +664,65 @@ void ux_debug_tag(enum ux_tag tag, const char *fmt, ...)
 	va_start(ap, fmt);
 	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
 	va_end(ap);
+}
+
+static void ux_msgf(FILE *fp, bool *bol, enum ux_level level, enum ux_tag tag,
+		    const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vmsg(fp, bol, UX_STYLE_NONE, level, tag, fmt, ap);
+	va_end(ap);
+}
+
+/*
+ * Print '<verb> "<name>"<rest>' as an informational message, with the
+ * verb colored by @status and the name in bold on a terminal.
+ */
+void ux_status(enum ux_tag tag, enum ux_status status, const char *verb,
+	       const char *name, const char *fmt, ...)
+{
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_INFO, &tag);
+	const char *on;
+	const char *bold;
+	const char *off;
+	char rest[256];
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(rest, sizeof(rest), fmt, ap);
+	va_end(ap);
+
+	on = ux_style(stdout, status == UX_STATUS_DONE ? UX_STYLE_SUCCESS : UX_STYLE_SKIPPED);
+	bold = ux_style(stdout, UX_STYLE_HEADING);
+	off = ux_style(stdout, UX_STYLE_RESET);
+
+	ux_msgf(stdout, &ux_stdout_bol, level, tag, "%s%s%s \"%s%s%s\"%s\n",
+		on, verb, off, bold, name ? name : "", off, rest);
+}
+
+/* Format @bytes as e.g. "512 B" or "3.2 MiB"; returns @buf */
+const char *ux_format_size(char *buf, size_t len, uint64_t bytes)
+{
+	static const char * const units[] = { "KiB", "MiB", "GiB", "TiB" };
+	double value = bytes;
+	size_t unit = 0;
+
+	if (bytes < 1024) {
+		snprintf(buf, len, "%llu B", (unsigned long long)bytes);
+		return buf;
+	}
+
+	value /= 1024;
+	while (value >= 1024 && unit < ARRAY_SIZE(units) - 1) {
+		value /= 1024;
+		unit++;
+	}
+
+	snprintf(buf, len, "%.1f %s", value, units[unit]);
+
+	return buf;
 }
 
 void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
