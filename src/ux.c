@@ -54,6 +54,7 @@ static int ux_color_stdout = -1;
 static int ux_color_stderr = -1;
 
 static const char * const ux_styles[] = {
+	[UX_STYLE_NONE]		= "",
 	[UX_STYLE_RESET]	= "\033[0m",
 	[UX_STYLE_HEADING]	= "\033[1m",
 	[UX_STYLE_OPTION]	= "\033[1;36m",
@@ -84,7 +85,7 @@ static const char * const ux_styles[] = {
  * on the same stream without a new prefix.
  */
 
-/* Write the "<time> " prefix, return its width */
+/* Write the "<time> " prefix, return its width on screen */
 static int ux_print_prefix(FILE *fp)
 {
 	const char *stamp = "00:00:00";
@@ -100,26 +101,34 @@ static int ux_print_prefix(FILE *fp)
 	if (tm && strftime(buf, sizeof(buf), "%H:%M:%S", tm))
 		stamp = buf;
 
-	return fprintf(fp, "%s.%03ld ", stamp, (long)(tv.tv_usec / 1000));
+	fprintf(fp, "%s%s.%03ld%s ", ux_style(fp, UX_STYLE_DIM), stamp,
+		(long)(tv.tv_usec / 1000), ux_style(fp, UX_STYLE_RESET));
+
+	return strlen(stamp) + strlen(".000 ");
 }
 
 /*
- * Format a message and write it to @fp. In debug mode each line of the
- * message is prefixed, the first with the timestamp header and the rest
- * with padding of the same width, unless the line continues a previous
- * message that did not end with a newline. Blank lines are left bare.
+ * Format a message and write it to @fp in @style. In debug mode each line
+ * of the message is prefixed, the first with the timestamp header and the
+ * rest with padding of the same width, unless the line continues a
+ * previous message that did not end with a newline. Blank lines are left
+ * bare. The style is applied to each line separately and reset before the
+ * newline, so a line never leaks color into the next one.
  */
-static void ux_vprint(FILE *fp, bool *bol, const char *fmt, va_list ap)
+static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, const char *fmt, va_list ap)
 {
+	const char *on = ux_style(fp, style);
+	const char *off = *on ? ux_style(fp, UX_STYLE_RESET) : "";
 	char stack_buf[512];
 	char *buf = stack_buf;
 	const char *line;
 	const char *end;
+	size_t text_len;
 	int width = 0;
 	va_list aq;
 	int len;
 
-	if (!qdl_debug) {
+	if (!qdl_debug && !*on) {
 		vfprintf(fp, fmt, ap);
 		fflush(fp);
 		return;
@@ -142,14 +151,22 @@ static void ux_vprint(FILE *fp, bool *bol, const char *fmt, va_list ap)
 		end = strchr(line, '\n');
 		end = end ? end + 1 : line + strlen(line);
 
-		if (*bol && *line != '\n') {
+		if (qdl_debug && *bol && *line != '\n') {
 			if (!width)
 				width = ux_print_prefix(fp);
 			else
 				fprintf(fp, "%*s", width, "");
 		}
 
-		fwrite(line, 1, end - line, fp);
+		text_len = end - line - (end[-1] == '\n');
+		if (text_len) {
+			fputs(on, fp);
+			fwrite(line, 1, text_len, fp);
+			fputs(off, fp);
+		}
+		if (end[-1] == '\n')
+			fputc('\n', fp);
+
 		*bol = end[-1] == '\n';
 	}
 
@@ -371,22 +388,34 @@ void ux_err(const char *fmt, ...)
 	ux_clear_line();
 
 	va_start(ap, fmt);
-	ux_vprint(stderr, &ux_stderr_bol, fmt, ap);
+	ux_vprint(stderr, &ux_stderr_bol, UX_STYLE_ERROR, fmt, ap);
+	va_end(ap);
+}
+
+static void ux_report(enum ux_style style, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vprint(stderr, &ux_stderr_bol, style, fmt, ap);
 	va_end(ap);
 }
 
 /* Keep the err(3)/warn(3) text and errno semantics in the shared logger. */
-static void ux_vreport(int error, bool with_errno, const char *fmt, va_list ap)
+static void ux_vreport(enum ux_style style, int error, bool with_errno,
+		       const char *fmt, va_list ap)
 {
-	ux_err("%s: ", ux_progname());
+	ux_clear_line();
+
+	ux_report(style, "%s: ", ux_progname());
 	if (fmt) {
-		ux_vprint(stderr, &ux_stderr_bol, fmt, ap);
+		ux_vprint(stderr, &ux_stderr_bol, style, fmt, ap);
 		if (with_errno)
-			ux_err(": ");
+			ux_report(style, ": ");
 	}
 	if (with_errno)
-		ux_err("%s", strerror(error));
-	ux_err("\n");
+		ux_report(style, "%s", strerror(error));
+	ux_report(style, "\n");
 	errno = error;
 }
 
@@ -396,7 +425,7 @@ void ux_warn(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(error, true, fmt, ap);
+	ux_vreport(UX_STYLE_WARNING, error, true, fmt, ap);
 	va_end(ap);
 }
 
@@ -406,7 +435,7 @@ void ux_warnx(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(error, false, fmt, ap);
+	ux_vreport(UX_STYLE_WARNING, error, false, fmt, ap);
 	va_end(ap);
 }
 
@@ -416,7 +445,7 @@ void ux_die(int status, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(error, true, fmt, ap);
+	ux_vreport(UX_STYLE_ERROR, error, true, fmt, ap);
 	va_end(ap);
 	exit(status);
 }
@@ -427,7 +456,7 @@ void ux_diex(int status, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(error, false, fmt, ap);
+	ux_vreport(UX_STYLE_ERROR, error, false, fmt, ap);
 	va_end(ap);
 	exit(status);
 }
@@ -439,7 +468,7 @@ void ux_info(const char *fmt, ...)
 	ux_clear_line();
 
 	va_start(ap, fmt);
-	ux_vprint(stdout, &ux_stdout_bol, fmt, ap);
+	ux_vprint(stdout, &ux_stdout_bol, UX_STYLE_NONE, fmt, ap);
 	va_end(ap);
 }
 
@@ -453,7 +482,7 @@ void ux_log(const char *fmt, ...)
 	ux_clear_line();
 
 	va_start(ap, fmt);
-	ux_vprint(stdout, &ux_stdout_bol, fmt, ap);
+	ux_vprint(stdout, &ux_stdout_bol, UX_STYLE_LOG, fmt, ap);
 	va_end(ap);
 }
 
@@ -467,7 +496,7 @@ void ux_debug(const char *fmt, ...)
 	ux_clear_line();
 
 	va_start(ap, fmt);
-	ux_vprint(stdout, &ux_stdout_bol, fmt, ap);
+	ux_vprint(stdout, &ux_stdout_bol, UX_STYLE_NONE, fmt, ap);
 	va_end(ap);
 }
 

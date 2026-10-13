@@ -32,6 +32,7 @@ enum ux_color_mode {
 
 /* Text styles, emitted as ANSI escape sequences when color is enabled */
 enum ux_style {
+	UX_STYLE_NONE,
 	UX_STYLE_RESET,
 	UX_STYLE_HEADING,
 	UX_STYLE_OPTION,
