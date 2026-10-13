@@ -53,6 +53,9 @@ static enum ux_color_mode ux_color = UX_COLOR_AUTO;
 static int ux_color_stdout = -1;
 static int ux_color_stderr = -1;
 
+/* --quiet: only results, warnings and errors are printed */
+static bool ux_quiet;
+
 static const char * const ux_styles[] = {
 	[UX_STYLE_NONE]		= "",
 	[UX_STYLE_RESET]	= "\033[0m",
@@ -295,6 +298,18 @@ void ux_set_color_mode(enum ux_color_mode mode)
 	ux_color = mode;
 	ux_color_stdout = -1;
 	ux_color_stderr = -1;
+}
+
+/* Quiet mode drops info messages, status lines and the progress bar */
+void ux_set_quiet(bool quiet)
+{
+	ux_quiet = quiet;
+}
+
+/* Whether informational output is suppressed by --quiet */
+static bool ux_silenced(void)
+{
+	return ux_quiet && !qdl_debug;
 }
 
 #ifdef _WIN32
@@ -597,12 +612,29 @@ void ux_info(const char *fmt, ...)
 	enum ux_level level = ux_quiet_prefix(UX_LEVEL_INFO, &tag);
 	va_list ap;
 
+	if (ux_silenced())
+		return;
+
 	va_start(ap, fmt);
 	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
 	va_end(ap);
 }
 
 void ux_info_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_INFO, &tag);
+	va_list ap;
+
+	if (ux_silenced())
+		return;
+
+	va_start(ap, fmt);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
+	va_end(ap);
+}
+
+/* Like ux_info_tag(), but printed even in quiet mode */
+void ux_result_tag(enum ux_tag tag, const char *fmt, ...)
 {
 	enum ux_level level = ux_quiet_prefix(UX_LEVEL_INFO, &tag);
 	va_list ap;
@@ -690,6 +722,9 @@ void ux_status(enum ux_tag tag, enum ux_status status, const char *verb,
 	char rest[256];
 	va_list ap;
 
+	if (ux_silenced())
+		return;
+
 	va_start(ap, fmt);
 	vsnprintf(rest, sizeof(rest), fmt, ap);
 	va_end(ap);
@@ -740,7 +775,7 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 	va_list ap;
 
 	/* Don't print progress is window is too narrow, or if stdout is redirected */
-	if (ux_width < 30)
+	if (ux_width < 30 || ux_silenced())
 		return;
 
 	/* Avoid updating the console more than UX_PROGRESS_REFRESH_RATE per second */

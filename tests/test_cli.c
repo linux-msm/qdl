@@ -34,6 +34,10 @@ void ux_warnx(const char *fmt, ...) { (void)fmt; }
 const char *ux_style(FILE *fp, enum ux_style style) { (void)fp; (void)style; return ""; }
 const char *ux_progname(void) { return "test_cli"; }
 
+static bool quiet_set;
+
+void ux_set_quiet(bool quiet) { quiet_set = quiet; }
+
 /* Record what qdl_take_color_option() applies. */
 static enum ux_color_mode last_color_mode;
 static int color_mode_calls;
@@ -211,6 +215,27 @@ static int take_color(const char *const *tmpl, const char *const *expect)
 	return ret;
 }
 
+static void test_quiet(void **state)
+{
+	static const char *const shortopt[] = { "qdl", "-q", "prog", "f", NULL };
+	static const char *const longopt[] = { "qdl", "--quiet", "prog", "f", NULL };
+	static const char *const none[] = { "qdl", "prog", "f", NULL };
+	struct qdl_opts o;
+	(void)state;
+
+	quiet_set = false;
+	assert_int_equal(parse(&o, shortopt), QDL_ARGS_OK);
+	assert_true(quiet_set);
+
+	quiet_set = false;
+	assert_int_equal(parse(&o, longopt), QDL_ARGS_OK);
+	assert_true(quiet_set);
+
+	quiet_set = false;
+	assert_int_equal(parse(&o, none), QDL_ARGS_OK);
+	assert_false(quiet_set);
+}
+
 static void test_color_option(void **state)
 {
 	static const char *const never[] = { "qdl", "--color=never", "prog", "-d", "f", NULL };
@@ -273,6 +298,7 @@ int main(void)
 		cmocka_unit_test(test_dry_run_and_skipblock),
 		cmocka_unit_test(test_flags_and_values),
 		cmocka_unit_test(test_help_version_and_usage),
+		cmocka_unit_test(test_quiet),
 		cmocka_unit_test(test_color_option),
 		cmocka_unit_test(test_color_option_edge_cases),
 	};
