@@ -503,9 +503,10 @@ static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
 		ret = flashmap_load(firehose_ops, filename, specifier, images, incdir);
 		break;
 	default:
-		ux_err("flash input must be contents.xml, flashmap.json, or a zip containing flashmap.json\n");
-		if (!qdl_zip_supported())
-			ux_err("note: this qdl was built without zip-container support\n");
+		if (qdl_zip_supported())
+			ux_err("flash input must be contents.xml, flashmap.json, or a zip containing flashmap.json\n");
+		else
+			ux_err("flash input must be contents.xml or flashmap.json (built without zip support)\n");
 		ret = -1;
 		break;
 	}

@@ -98,11 +98,11 @@ static void sim_enqueue(struct qdl_device_sim *qdl_sim, const char *xml)
 
 	resp = malloc(sizeof(*resp));
 	if (!resp)
-		ux_die(1, "sim: failed to allocate response entry");
+		ux_die(1, "failed to allocate simulator response entry");
 
 	resp->data = strdup(xml);
 	if (!resp->data)
-		ux_die(1, "sim: failed to duplicate response string");
+		ux_die(1, "failed to duplicate simulator response string");
 
 	resp->len = strlen(xml);
 	resp->next = NULL;
@@ -245,8 +245,8 @@ static void sim_vip_recv_table(struct qdl_device_sim *qdl_sim,
 
 		hashes = sim_vip_signed_payload(buf, len, &payload_len);
 		if (!hashes) {
-			ux_err("sim: VIP signed table: unrecognised format "
-			       "(%zu bytes)\n", len);
+			ux_err_tag(UX_TAG_SIM, "VIP signed table: unrecognised format "
+				   "(%zu bytes)\n", len);
 			return;
 		}
 
@@ -284,12 +284,12 @@ static void sim_vip_recv_table(struct qdl_device_sim *qdl_sim,
 				}
 				got_hex[SHA256_DIGEST_STRING_LENGTH - 1] = '\0';
 				exp_hex[SHA256_DIGEST_STRING_LENGTH - 1] = '\0';
-				ux_err("sim: VIP chained table chain hash mismatch\n"
-				       "  computed:  %s\n"
-				       "  expected:  %s\n",
-				       got_hex, exp_hex);
+				ux_err_tag(UX_TAG_SIM, "VIP chained table chain hash mismatch\n"
+					   "  computed:  %s\n"
+					   "  expected:  %s\n",
+					   got_hex, exp_hex);
 			} else {
-				ux_debug("sim: VIP chained table chain hash OK\n");
+				ux_debug_tag(UX_TAG_SIM, "VIP chained table chain hash OK\n");
 			}
 			qdl_sim->vip_has_chain_hash = false;
 		}
@@ -323,9 +323,9 @@ static void sim_vip_recv_table(struct qdl_device_sim *qdl_sim,
 	data_count = has_chain_hash ? count - 1 : count;
 
 	if (qdl_sim->vip_hash_count + data_count > SIM_VIP_MAX_HASHES) {
-		ux_err("sim: VIP table overflow (%zu + %zu > %u), "
-		       "truncating\n",
-		       qdl_sim->vip_hash_count, data_count, SIM_VIP_MAX_HASHES);
+		ux_err_tag(UX_TAG_SIM, "VIP table overflow (%zu + %zu > %u), "
+			   "truncating\n",
+			   qdl_sim->vip_hash_count, data_count, SIM_VIP_MAX_HASHES);
 		data_count = SIM_VIP_MAX_HASHES - qdl_sim->vip_hash_count;
 	}
 
@@ -333,10 +333,10 @@ static void sim_vip_recv_table(struct qdl_device_sim *qdl_sim,
 	       hashes, data_count * SHA256_DIGEST_LENGTH);
 	qdl_sim->vip_hash_count += data_count;
 
-	ux_debug("sim: loaded %zu VIP chunk hashes from %s table "
-		 "(total: %zu)\n",
-		 data_count, is_signed ? "signed" : "chained",
-		 qdl_sim->vip_hash_count);
+	ux_debug_tag(UX_TAG_SIM, "loaded %zu VIP chunk hashes from %s table "
+		     "(total: %zu)\n",
+		     data_count, is_signed ? "signed" : "chained",
+		     qdl_sim->vip_hash_count);
 }
 
 /*
@@ -364,9 +364,9 @@ static void sim_vip_check_chunk(struct qdl_device_sim *qdl_sim,
 	SHA256Final(hash, &ctx);
 
 	if (qdl_sim->vip_hash_idx >= qdl_sim->vip_hash_count) {
-		ux_err("sim: VIP chunk %zu has no entry in the digest table "
-		       "(table has %zu entries)\n",
-		       qdl_sim->vip_hash_idx, qdl_sim->vip_hash_count);
+		ux_err_tag(UX_TAG_SIM, "VIP chunk %zu has no entry in the digest table "
+			   "(table has %zu entries)\n",
+			   qdl_sim->vip_hash_idx, qdl_sim->vip_hash_count);
 		qdl_sim->vip_hash_idx++;
 		return;
 	}
@@ -374,8 +374,8 @@ static void sim_vip_check_chunk(struct qdl_device_sim *qdl_sim,
 	expected = qdl_sim->vip_hashes[qdl_sim->vip_hash_idx];
 
 	if (memcmp(hash, expected, SHA256_DIGEST_LENGTH) == 0) {
-		ux_debug("sim: VIP chunk %zu hash OK\n",
-			 qdl_sim->vip_hash_idx);
+		ux_debug_tag(UX_TAG_SIM, "VIP chunk %zu hash OK\n",
+			     qdl_sim->vip_hash_idx);
 		qdl_sim->vip_hash_idx++;
 		return;
 	}
@@ -387,10 +387,10 @@ static void sim_vip_check_chunk(struct qdl_device_sim *qdl_sim,
 	got_hex[SHA256_DIGEST_STRING_LENGTH - 1] = '\0';
 	exp_hex[SHA256_DIGEST_STRING_LENGTH - 1] = '\0';
 
-	ux_err("sim: VIP hash mismatch for chunk %zu\n"
-	       "  computed:  %s\n"
-	       "  expected:  %s\n",
-	       qdl_sim->vip_hash_idx, got_hex, exp_hex);
+	ux_err_tag(UX_TAG_SIM, "VIP hash mismatch for chunk %zu\n"
+		   "  computed:  %s\n"
+		   "  expected:  %s\n",
+		   qdl_sim->vip_hash_idx, got_hex, exp_hex);
 
 	qdl_sim->vip_hash_idx++;
 }

@@ -61,6 +61,8 @@ static const char * const ux_styles[] = {
 	[UX_STYLE_ERROR]	= "\033[31m",
 	[UX_STYLE_WARNING]	= "\033[33m",
 	[UX_STYLE_LOG]		= "\033[36m",
+	[UX_STYLE_TX]		= "\033[32m",
+	[UX_STYLE_RX]		= "\033[36m",
 	[UX_STYLE_DIM]		= "\033[2m",
 	[UX_STYLE_PROGRESS]	= "\033[32m",
 };
@@ -364,6 +366,19 @@ const char *ux_style(FILE *fp, enum ux_style style)
 		return "";
 
 	return ux_styles[style];
+}
+
+/* "TX:" or "RX:" for a protocol trace, colored by direction on a terminal */
+const char *ux_direction(bool tx)
+{
+	static char label[2][24];
+	int i = tx ? 0 : 1;
+
+	snprintf(label[i], sizeof(label[i]), "%s%s:%s",
+		 ux_style(stdout, tx ? UX_STYLE_TX : UX_STYLE_RX), tx ? "TX" : "RX",
+		 ux_style(stdout, UX_STYLE_RESET));
+
+	return label[i];
 }
 
 /* Remove the progress bar, erasing the line on a terminal */

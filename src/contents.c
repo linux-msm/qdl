@@ -488,7 +488,7 @@ int contents_load_xml(struct contents *contents, const char *filename)
 	xmlFreeDoc(doc);
 
 	if (list_empty(&contents->entries))
-		ux_info("contents: no file entries parsed from \"%s\"\n", filename);
+		ux_info_tag(UX_TAG_CONTENTS, "no file entries parsed from \"%s\"\n", filename);
 
 	return 0;
 

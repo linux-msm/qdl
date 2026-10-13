@@ -303,7 +303,7 @@ static int usb_open_device(libusb_device *dev,
 		qdl->out_chunk_size = DEFAULT_OUT_CHUNK_SIZE;
 	}
 
-	ux_debug("USB: using out-chunk-size of %ld\n", qdl->out_chunk_size);
+	ux_debug_tag(UX_TAG_USB, "using out-chunk-size of %ld\n", qdl->out_chunk_size);
 
 	return 1;
 

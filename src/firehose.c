@@ -93,7 +93,7 @@ static void xml_setpropf(xmlNode *node, const char *attr, const char *fmt, ...)
  * terminate their responses the same way, which would otherwise split
  * the trace across lines and leave blank ones between messages.
  */
-static void firehose_debug_xml(const char *what, const char *xml)
+static void firehose_debug_xml(bool tx, const char *xml)
 {
 	const char *in;
 	char *copy;
@@ -111,7 +111,7 @@ static void firehose_debug_xml(const char *what, const char *xml)
 			*out++ = *in;
 	*out = '\0';
 
-	ux_debug("FIREHOSE: %s: %s\n", what, copy);
+	ux_debug_tag(UX_TAG_FIREHOSE, "%s %s\n", ux_direction(tx), copy);
 	free(copy);
 }
 
@@ -164,7 +164,7 @@ static int firehose_generic_parser(xmlNode *node, void *data __unused, bool *raw
 		return -EINVAL;
 
 	if (xmlStrcmp(node->name, (xmlChar *)"log") == 0) {
-		ux_log("FIREHOSE: LOG: %s\n", value);
+		ux_log_tag(UX_TAG_FIREHOSE, "LOG: %s\n", value);
 		ret = -EAGAIN;
 	} else if (xmlStrcmp(value, (xmlChar *)"ACK") == 0) {
 		ret = FIREHOSE_ACK;
@@ -235,7 +235,7 @@ static int firehose_sha256_parser(xmlNode *node, void *data, bool *rawmode)
 		if (!op->digest_valid && extract_sha256_hex((const char *)value, op->digest))
 			op->digest_valid = true;
 
-		ux_log("FIREHOSE: LOG: %s\n", value);
+		ux_log_tag(UX_TAG_FIREHOSE, "LOG: %s\n", value);
 		xmlFree(value);
 		return -EAGAIN;
 	}
@@ -331,7 +331,7 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
 		}
 		buf[n] = '\0';
 
-		firehose_debug_xml("READ", buf);
+		firehose_debug_xml(false, buf);
 
 		/*
 		 * On stream-oriented transports (Windows COM port via the
@@ -418,7 +418,7 @@ static int firehose_vip_send_table(struct qdl_device *qdl)
 
 	ret = vip_transfer_handle_tables(qdl);
 	if (ret) {
-		ux_err("VIP: error occurred during VIP table transmission\n");
+		ux_err_tag(UX_TAG_VIP, "error occurred during VIP table transmission\n");
 		return -1;
 	}
 
@@ -427,11 +427,11 @@ static int firehose_vip_send_table(struct qdl_device *qdl)
 
 	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
 	if (ret) {
-		ux_err("VIP: sending of digest table failed\n");
+		ux_err_tag(UX_TAG_VIP, "sending of digest table failed\n");
 		return -1;
 	}
 
-	ux_info("VIP: digest table has been sent successfully\n");
+	ux_info_tag(UX_TAG_VIP, "digest table has been sent successfully\n");
 
 	vip_transfer_clear_status(qdl);
 
@@ -455,7 +455,7 @@ static int firehose_write(struct qdl_device *qdl, xmlDoc *doc)
 	vip_gen_chunk_init(qdl);
 
 	for (;;) {
-		firehose_debug_xml("WRITE", (const char *)s);
+		firehose_debug_xml(true, (const char *)s);
 		vip_gen_chunk_update(qdl, s, len);
 		ret = qdl_write(qdl, s, len, 1000);
 
@@ -496,7 +496,7 @@ static int firehose_configure_response_parser(xmlNode *node, void *data,
 		return -EINVAL;
 
 	if (xmlStrcmp(node->name, (xmlChar *)"log") == 0) {
-		ux_log("FIREHOSE: LOG: %s\n", value);
+		ux_log_tag(UX_TAG_FIREHOSE, "LOG: %s\n", value);
 		xmlFree(value);
 		return -EAGAIN;
 	}
@@ -589,7 +589,7 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 		qdl->max_payload_size = size;
 	}
 
-	ux_debug("accepted max payload size: %zu\n", qdl->max_payload_size);
+	ux_debug_tag(UX_TAG_FIREHOSE, "accepted max payload size: %zu\n", qdl->max_payload_size);
 
 	/*
 	 * Skip sector size probing when VIP is active: the probe read commands
@@ -631,7 +631,7 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 	}
 
 	if (qdl->sector_size)
-		ux_debug("detected sector size of: %zd\n", qdl->sector_size);
+		ux_debug_tag(UX_TAG_FIREHOSE, "detected sector size of: %zd\n", qdl->sector_size);
 
 	return 0;
 }
@@ -679,7 +679,8 @@ static int firehose_erase(struct qdl_device *qdl, struct firehose_op *program)
 	if (ret)
 		ux_err("failed to erase %s+0x%x\n", program->start_sector, program->num_sectors);
 	else
-		ux_info("successfully erased %s+0x%x\n", program->start_sector, program->num_sectors);
+		ux_info_tag(UX_TAG_FIREHOSE, "successfully erased %s+0x%x\n",
+			    program->start_sector, program->num_sectors);
 
 out:
 	xmlFreeDoc(doc);
@@ -968,8 +969,8 @@ static int firehose_program_skipblock(struct qdl_device *qdl,
 		else
 			chunk_id[0] = '\0';
 
-		ux_info("hashing \"%s\"%s locally (%zu KiB)...\n",
-			program->label, chunk_id, region_bytes >> 10);
+		ux_info_tag(UX_TAG_FIREHOSE, "hashing \"%s\"%s locally (%zu KiB)...\n",
+			    program->label, chunk_id, region_bytes >> 10);
 
 		if (firehose_region_local_digest(qdl, file, file_byte_off,
 						 region_bytes, buf,
@@ -982,8 +983,8 @@ static int firehose_program_skipblock(struct qdl_device *qdl,
 				.start_sector = chunk_start,
 			};
 
-			ux_info("requesting flash digest for \"%s\"%s...\n",
-				program->label, chunk_id);
+			ux_info_tag(UX_TAG_FIREHOSE, "requesting flash digest for \"%s\"%s...\n",
+				    program->label, chunk_id);
 
 			if (firehose_getsha256digest(qdl, &digest_op) == 0 &&
 			    !memcmp(local_digest, digest_op.digest,
@@ -992,14 +993,14 @@ static int firehose_program_skipblock(struct qdl_device *qdl,
 		}
 
 		if (match) {
-			ux_info("skipped \"%s\"%s (sha256 match)\n",
-				program->label, chunk_id);
+			ux_info_tag(UX_TAG_FIREHOSE, "skipped \"%s\"%s (sha256 match)\n",
+				    program->label, chunk_id);
 			skipped++;
 			continue;
 		}
 
-		ux_info("sha256 mismatch for \"%s\"%s, flashing\n",
-			program->label, chunk_id);
+		ux_info_tag(UX_TAG_FIREHOSE, "sha256 mismatch for \"%s\"%s, flashing\n",
+			    program->label, chunk_id);
 
 		qdl_file_seek(file, file_byte_off, SEEK_SET);
 		if (firehose_program_raw_region(qdl, program, file, chunk_start,
@@ -1011,8 +1012,8 @@ static int firehose_program_skipblock(struct qdl_device *qdl,
 	}
 
 	if (split)
-		ux_info("\"%s\": %u chunk(s) flashed, %u skipped\n",
-			program->label, flashed, skipped);
+		ux_info_tag(UX_TAG_FIREHOSE, "\"%s\": %u chunk(s) flashed, %u skipped\n",
+			    program->label, flashed, skipped);
 
 	return 0;
 }
@@ -1141,13 +1142,13 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 				memcpy(buf + i, &fill_value, sizeof(fill_value));
 			break;
 		default:
-			ux_err("[SPARSE] invalid chunk type\n");
+			ux_err_tag(UX_TAG_SPARSE, "invalid chunk type\n");
 			goto err_free_doc;
 		}
 	}
 
-	ux_debug("FIREHOSE: RAW BINARY WRITE: %s, %d bytes\n",
-		 program->filename, sector_size * num_sectors);
+	ux_debug_tag(UX_TAG_FIREHOSE_RAW, "%s %s, %zu bytes\n", ux_direction(true),
+		     program->filename, (size_t)sector_size * num_sectors);
 
 	fill = program->sparse && program->sparse_chunk_type == CHUNK_TYPE_FILL;
 	ret = firehose_stream_out(qdl, program, &file, sector_size, num_sectors, buf,
@@ -1165,12 +1166,12 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	}
 
 	if (t) {
-		ux_info("flashed \"%s\" successfully at %lukB/s\n",
-			program->label,
-			(unsigned long)sector_size * num_sectors / t / 1024);
+		ux_info_tag(UX_TAG_FIREHOSE, "flashed \"%s\" successfully at %lukB/s\n",
+			    program->label,
+			    (unsigned long)sector_size * num_sectors / t / 1024);
 	} else {
-		ux_info("flashed \"%s\" successfully\n",
-			program->label);
+		ux_info_tag(UX_TAG_FIREHOSE, "flashed \"%s\" successfully\n",
+			    program->label);
 	}
 
 	xmlFreeDoc(doc);
@@ -1247,6 +1248,10 @@ static int firehose_issue_read(struct qdl_device *qdl, struct firehose_op *read_
 		goto out;
 	}
 
+	ux_debug_tag(UX_TAG_FIREHOSE_RAW, "%s %s, %zu bytes\n", ux_direction(false),
+		     read_op->filename ? read_op->filename : "(buffer)",
+		     (size_t)sector_size * read_op->num_sectors);
+
 	t0 = time(NULL);
 
 	left = read_op->num_sectors;
@@ -1322,12 +1327,12 @@ static int firehose_issue_read(struct qdl_device *qdl, struct firehose_op *read_
 
 	if (!quiet) {
 		if (t) {
-			ux_info("read \"%s\" successfully at %ldkB/s\n",
-				read_op->filename,
-				(unsigned long)sector_size * read_op->num_sectors / t / 1024);
+			ux_info_tag(UX_TAG_FIREHOSE, "read \"%s\" successfully at %ldkB/s\n",
+				    read_op->filename,
+				    (unsigned long)sector_size * read_op->num_sectors / t / 1024);
 		} else {
-			ux_info("read \"%s\" successfully\n",
-				read_op->filename);
+			ux_info_tag(UX_TAG_FIREHOSE, "read \"%s\" successfully\n",
+				    read_op->filename);
 		}
 	}
 
@@ -1349,7 +1354,7 @@ static int firehose_read_op(struct qdl_device *qdl, struct firehose_op *op)
 
 	fd = open(op->filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 	if (fd < 0) {
-		ux_info("unable to open %s...\n", op->filename);
+		ux_info_tag(UX_TAG_FIREHOSE, "unable to open %s...\n", op->filename);
 		return -1;
 	}
 
@@ -1433,7 +1438,7 @@ static int firehose_apply_patch(struct qdl_device *qdl, struct firehose_op *patc
 	if (strcmp(patch->filename, "DISK"))
 		return 0;
 
-	ux_debug("applying patch \"%s\"\n", patch->what);
+	ux_debug_tag(UX_TAG_FIREHOSE, "applying patch \"%s\"\n", patch->what);
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
 	root = xmlNewNode(NULL, (xmlChar *)"data");
@@ -1603,8 +1608,8 @@ int firehose_apply_ufs_epilogue(struct qdl_device *qdl, struct ufs_epilogue *ufs
 		return 0;
 
 	if (commit && ret == -ENODEV) {
-		ux_info("UFS provisioning commit: device reset without ACK, "
-			"assuming success\n");
+		ux_info_tag(UX_TAG_FIREHOSE, "UFS provisioning commit: device reset without ACK, "
+			    "assuming success\n");
 		return 1;
 	}
 
@@ -1637,7 +1642,7 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 		return -1;
 	}
 
-	ux_info("partition %d is now bootable\n", part);
+	ux_info_tag(UX_TAG_FIREHOSE, "partition %d is now bootable\n", part);
 	return 0;
 }
 
@@ -1707,7 +1712,8 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 		 * Demote VIP here so the table is never sent.
 		 */
 		if (!qdl->vip_data.programmer_requires_vip) {
-			ux_info("VIP: WARNING: --vip-table-path was provided but programmer did not announce VIP; continuing without it\n");
+			ux_info_tag(UX_TAG_VIP, "WARNING: --vip-table-path was provided but programmer "
+				    "did not announce VIP; continuing without it\n");
 			qdl->vip_data.state = VIP_DISABLED;
 		}
 
@@ -1731,7 +1737,7 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 		 * a signed table that will never be sent.
 		 */
 		if (qdl->vip_data.programmer_requires_vip) {
-			ux_err("VIP: programmer requires VIP, but no --vip-table-path was provided\n");
+			ux_err_tag(UX_TAG_VIP, "programmer requires VIP, but no --vip-table-path was provided\n");
 			return -1;
 		}
 
@@ -1765,14 +1771,14 @@ int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, boo
 				       firehose_apply_ufs_epilogue);
 	if (ret > 0) {
 		/* Epilogue signalled success + device already reset itself */
-		ux_info("UFS provisioning succeeded\n");
+		ux_info_tag(UX_TAG_FIREHOSE, "UFS provisioning succeeded\n");
 		return 0;
 	}
 
 	if (!ret)
-		ux_info("UFS provisioning succeeded\n");
+		ux_info_tag(UX_TAG_FIREHOSE, "UFS provisioning succeeded\n");
 	else
-		ux_info("UFS provisioning failed\n");
+		ux_info_tag(UX_TAG_FIREHOSE, "UFS provisioning failed\n");
 
 	if (!skip_reset)
 		firehose_reset(qdl);
@@ -1875,7 +1881,7 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 				ux_progress("Applying patches", ++patch_idx, patch_count);
 
 			if (op == status_patch)
-				ux_info("%d patches applied\n", patch_idx);
+				ux_info_tag(UX_TAG_FIREHOSE, "%d patches applied\n", patch_idx);
 			break;
 		case FIREHOSE_OP_SET_BOOTABLE:
 			firehose_set_bootable(qdl, op->partition);
@@ -1896,7 +1902,7 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 
 int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 {
-	ux_info("waiting for Firehose programmer...\n");
+	ux_info_tag(UX_TAG_FIREHOSE, "waiting for Firehose programmer...\n");
 
 	return firehose_execute_ops(qdl, ops);
 }
@@ -1956,7 +1962,7 @@ static int firehose_getstorageinfo_parser(xmlNode *node, void *data,
 			json_free(json);
 		}
 	} else {
-		ux_debug("FIREHOSE: LOG: %s\n", value);
+		ux_debug_tag(UX_TAG_FIREHOSE, "LOG: %s\n", value);
 	}
 
 	xmlFree(value);

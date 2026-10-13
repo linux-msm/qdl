@@ -26,22 +26,22 @@ int sparse_header_parse(struct qdl_file *file, sparse_header_t *sparse_header)
 	qdl_file_seek(file, 0, SEEK_SET);
 
 	if (qdl_file_read(file, sparse_header, sizeof(sparse_header_t)) != sizeof(sparse_header_t)) {
-		ux_err("[SPARSE] Unable to read sparse header\n");
+		ux_err_tag(UX_TAG_SPARSE, "Unable to read sparse header\n");
 		return -EINVAL;
 	}
 
 	if (sparse_header->magic != SPARSE_HEADER_MAGIC) {
-		ux_err("[SPARSE] Invalid magic in sparse header\n");
+		ux_err_tag(UX_TAG_SPARSE, "Invalid magic in sparse header\n");
 		return -EINVAL;
 	}
 
 	if (sparse_header->major_version != SPARSE_HEADER_MAJOR_VER) {
-		ux_err("[SPARSE] Invalid major version in sparse header\n");
+		ux_err_tag(UX_TAG_SPARSE, "Invalid major version in sparse header\n");
 		return -EINVAL;
 	}
 
 	if (sparse_header->minor_version != SPARSE_HEADER_MINOR_VER) {
-		ux_err("[SPARSE] Invalid minor version in sparse header\n");
+		ux_err_tag(UX_TAG_SPARSE, "Invalid minor version in sparse header\n");
 		return -EINVAL;
 	}
 
@@ -65,14 +65,14 @@ int sparse_chunk_header_parse(struct qdl_file *file,
 	*value = 0;
 
 	if (qdl_file_read(file, &chunk_header, sizeof(chunk_header_t)) != sizeof(chunk_header_t)) {
-		ux_err("[SPARSE] Unable to read sparse chunk header\n");
+		ux_err_tag(UX_TAG_SPARSE, "Unable to read sparse chunk header\n");
 		return -EINVAL;
 	}
 
 	if (sparse_header->chunk_hdr_sz > sizeof(chunk_header_t)) {
 		if (qdl_file_seek(file, sparse_header->chunk_hdr_sz - sizeof(chunk_header_t),
 				  SEEK_CUR) < 0) {
-			ux_err("[SPARSE] Unable to seek past extended chunk header\n");
+			ux_err_tag(UX_TAG_SPARSE, "Unable to seek past extended chunk header\n");
 			return -EINVAL;
 		}
 	}
@@ -83,37 +83,37 @@ int sparse_chunk_header_parse(struct qdl_file *file,
 	switch (type) {
 	case CHUNK_TYPE_RAW:
 		if (chunk_header.total_sz != (sparse_header->chunk_hdr_sz + *chunk_size)) {
-			ux_err("[SPARSE] Bogus chunk size, type Raw\n");
+			ux_err_tag(UX_TAG_SPARSE, "Bogus chunk size, type Raw\n");
 			return -EINVAL;
 		}
 
 		/* Save the current file offset in the 'value' variable */
 		*offset = qdl_file_seek(file, 0, SEEK_CUR);
 		if (*offset < 0) {
-			ux_err("[SPARSE] Unable to determine chunk offset\n");
+			ux_err_tag(UX_TAG_SPARSE, "Unable to determine chunk offset\n");
 			return -EINVAL;
 		}
 
 		/* Move the file cursor forward by the size of the chunk */
 		if (qdl_file_seek(file, *chunk_size, SEEK_CUR) < 0) {
-			ux_err("[SPARSE] Unable to seek past raw chunk data\n");
+			ux_err_tag(UX_TAG_SPARSE, "Unable to seek past raw chunk data\n");
 			return -EINVAL;
 		}
 		break;
 	case CHUNK_TYPE_DONT_CARE:
 		if (chunk_header.total_sz != sparse_header->chunk_hdr_sz) {
-			ux_err("[SPARSE] Bogus chunk size, type Don't Care\n");
+			ux_err_tag(UX_TAG_SPARSE, "Bogus chunk size, type Don't Care\n");
 			return -EINVAL;
 		}
 		break;
 	case CHUNK_TYPE_FILL:
 		if (chunk_header.total_sz != (sparse_header->chunk_hdr_sz + sizeof(fill_value))) {
-			ux_err("[SPARSE] Bogus chunk size, type Fill\n");
+			ux_err_tag(UX_TAG_SPARSE, "Bogus chunk size, type Fill\n");
 			return -EINVAL;
 		}
 
 		if (qdl_file_read(file, &fill_value, sizeof(fill_value)) != sizeof(fill_value)) {
-			ux_err("[SPARSE] Unable to read fill value\n");
+			ux_err_tag(UX_TAG_SPARSE, "Unable to read fill value\n");
 			return -EINVAL;
 		}
 
@@ -121,7 +121,7 @@ int sparse_chunk_header_parse(struct qdl_file *file,
 		*value = fill_value;
 		break;
 	default:
-		ux_err("[SPARSE] Unknown chunk type: %#x\n", type);
+		ux_err_tag(UX_TAG_SPARSE, "Unknown chunk type: %#x\n", type);
 		return -EINVAL;
 	}
 

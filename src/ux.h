@@ -39,6 +39,8 @@ enum ux_style {
 	UX_STYLE_ERROR,
 	UX_STYLE_WARNING,
 	UX_STYLE_LOG,
+	UX_STYLE_TX,
+	UX_STYLE_RX,
 	UX_STYLE_DIM,
 	UX_STYLE_PROGRESS,
 };
@@ -61,6 +63,8 @@ enum ux_tag {
 	UX_TAG_QUD,
 	UX_TAG_MINIDUMP,
 };
+
+const char *ux_direction(bool tx);
 
 void ux_err_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_warn_tag(enum ux_tag tag, const char *fmt, ...);
