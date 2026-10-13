@@ -305,13 +305,16 @@ const char *ux_style(FILE *fp, enum ux_style style)
 	return ux_styles[style];
 }
 
-/* Clear ux_cur_line_length characters of the progress bar from the screen */
+/* Remove the progress bar, erasing the line on a terminal */
 static void ux_clear_line(void)
 {
 	if (!ux_cur_line_length)
 		return;
 
-	printf("%*s\r", ux_cur_line_length, "");
+	if (ux_color_enabled(stdout))
+		fputs("\r\033[2K", stdout);
+	else
+		printf("%*s\r", ux_cur_line_length, "");
 	fflush(stdout);
 	ux_cur_line_length = 0;
 }
@@ -503,6 +506,8 @@ void ux_debug(const char *fmt, ...)
 void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 {
 	static struct timeval last_progress_update;
+	const char *on = ux_style(stdout, UX_STYLE_PROGRESS);
+	const char *off = *on ? ux_style(stdout, UX_STYLE_RESET) : "";
 	unsigned long elapsed_us;
 	unsigned int bar_length;
 	unsigned int bars;
@@ -538,11 +543,13 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 	bars = percent * bar_length;
 	dashes = bar_length - bars;
 
-	printf("%-20.20s [%.*s%.*s] %1.2f%%%n\r", task_name,
-	       bars, progress_hashes,
+	printf("%-20.20s [%s%.*s%s%.*s] %1.2f%%%n\r", task_name,
+	       on, bars, progress_hashes, off,
 	       dashes, progress_dashes,
 	       percent * 100,
 	       &ux_cur_line_length);
+	/* Only count what takes up columns, so clearing never wraps the line */
+	ux_cur_line_length -= strlen(on) + strlen(off);
 	fflush(stdout);
 
 	gettimeofday(&last_progress_update, NULL);
