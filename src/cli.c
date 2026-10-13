@@ -32,6 +32,7 @@ void print_usage(FILE *out)
 		"(<id:file>[,<id:file>...] | <sahara.xml> | <contents.xml>[::<specifier>])\n",
 		ux_progname());
 	fprintf(out, " -d, --debug\t\t\tPrint detailed debug info\n");
+	fprintf(out, "     --color[=W]\t\tColorize output W: <auto|always|never> (default: auto)\n");
 	fprintf(out, " -v, --version\t\t\tPrint the current version and exit\n");
 	fprintf(out, " -n, --dry-run\t\t\tDry run execution, no device reading or flashing\n");
 	fprintf(out, " -f, --allow-missing\t\tAllow skipping of missing files during flashing\n");
@@ -67,6 +68,55 @@ void print_usage(FILE *out)
 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", ux_progname());
 	fprintf(out, "         %s flash contents.xml::ufs,spinor/safe_rtos\n", ux_progname());
 	fprintf(out, "         %s flash installer.zip::layout1/ufs\n", ux_progname());
+}
+
+/*
+ * qdl_take_color_option() - strip --color[=WHEN] from @argv and apply it
+ *
+ * Done before dispatch, as every subcommand has its own option parser.
+ * Arguments after "--" are left alone; the last occurrence wins.
+ *
+ * Return: 0, or -1 if WHEN is invalid.
+ */
+int qdl_take_color_option(int *argc, char **argv)
+{
+	enum ux_color_mode mode;
+	const char *value;
+	int out = 1;
+	int i;
+
+	/* Keep an empty argv empty, argv[1] is past its end */
+	if (*argc < 1)
+		return 0;
+
+	for (i = 1; i < *argc; i++) {
+		if (!strcmp(argv[i], "--")) {
+			while (i < *argc)
+				argv[out++] = argv[i++];
+			break;
+		}
+
+		if (!strcmp(argv[i], "--color")) {
+			value = NULL;
+		} else if (!strncmp(argv[i], "--color=", 8)) {
+			value = argv[i] + 8;
+		} else {
+			argv[out++] = argv[i];
+			continue;
+		}
+
+		if (decode_color_mode(value, &mode) < 0) {
+			ux_warnx("unknown color mode \"%s\" (expected auto|always|never)", value);
+			return -1;
+		}
+
+		ux_set_color_mode(mode);
+	}
+
+	*argc = out;
+	argv[out] = NULL;
+
+	return 0;
 }
 
 void print_version(void)

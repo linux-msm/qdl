@@ -931,7 +931,14 @@ int main(int argc, char **argv)
 {
 	int i;
 
+	/* execve() allows an empty argv, where argv[0] is already NULL */
+	if (argc < 1)
+		return 1;
+
 	ux_set_progname(argv[0]);
+
+	if (qdl_take_color_option(&argc, argv))
+		return 1;
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "list"))

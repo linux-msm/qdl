@@ -30,7 +30,18 @@ bool qdl_debug;
 
 void ux_err(const char *fmt, ...) { (void)fmt; }
 void ux_info(const char *fmt, ...) { (void)fmt; }
+void ux_warnx(const char *fmt, ...) { (void)fmt; }
 const char *ux_progname(void) { return "test_cli"; }
+
+/* Record what qdl_take_color_option() applies. */
+static enum ux_color_mode last_color_mode;
+static int color_mode_calls;
+
+void ux_set_color_mode(enum ux_color_mode mode)
+{
+	last_color_mode = mode;
+	color_mode_calls++;
+}
 
 /* Fatal logging lives in ux.c, which the test does not link. */
 void __attribute__((noreturn)) ux_diex(int status, const char *fmt, ...)
@@ -164,6 +175,95 @@ static void test_help_version_and_usage(void **state)
 	assert_int_equal(parse(&o, none), QDL_ARGS_ERROR);
 }
 
+/*
+ * Run qdl_take_color_option() on a copy of @tmpl and check the remaining
+ * arguments against @expect. Returns the function's result.
+ */
+static int take_color(const char *const *tmpl, const char *const *expect)
+{
+	char *argv[16];
+	int argc = 0;
+	int ret;
+	int i;
+
+	while (tmpl[argc]) {
+		assert_true((size_t)argc < ARRAY_SIZE(argv) - 1);
+		argv[argc] = (char *)tmpl[argc];
+		argc++;
+	}
+	argv[argc] = NULL;
+
+	last_color_mode = UX_COLOR_AUTO;
+	color_mode_calls = 0;
+
+	ret = qdl_take_color_option(&argc, argv);
+	if (ret < 0)
+		return ret;
+
+	for (i = 0; expect[i]; i++) {
+		assert_true(i < argc);
+		assert_string_equal(argv[i], expect[i]);
+	}
+	assert_int_equal(argc, i);
+	assert_null(argv[argc]);
+
+	return ret;
+}
+
+static void test_color_option(void **state)
+{
+	static const char *const never[] = { "qdl", "--color=never", "prog", "-d", "f", NULL };
+	static const char *const never_left[] = { "qdl", "prog", "-d", "f", NULL };
+	static const char *const bare[] = { "qdl", "ramdump", "--color", "-o", "out", NULL };
+	static const char *const bare_left[] = { "qdl", "ramdump", "-o", "out", NULL };
+	static const char *const twice[] = { "qdl", "--color=never", "list", "--color=auto", NULL };
+	static const char *const twice_left[] = { "qdl", "list", NULL };
+	static const char *const none[] = { "qdl", "--help", NULL };
+	(void)state;
+
+	assert_int_equal(take_color(never, never_left), 0);
+	assert_int_equal(color_mode_calls, 1);
+	assert_int_equal(last_color_mode, UX_COLOR_NEVER);
+
+	/* A bare --color means always, and is found after a subcommand too. */
+	assert_int_equal(take_color(bare, bare_left), 0);
+	assert_int_equal(last_color_mode, UX_COLOR_ALWAYS);
+
+	/* The last occurrence wins. */
+	assert_int_equal(take_color(twice, twice_left), 0);
+	assert_int_equal(color_mode_calls, 2);
+	assert_int_equal(last_color_mode, UX_COLOR_AUTO);
+
+	assert_int_equal(take_color(none, none), 0);
+	assert_int_equal(color_mode_calls, 0);
+}
+
+static void test_color_option_edge_cases(void **state)
+{
+	static const char *const dashdash[] = { "qdl", "--color=never", "--", "--color=always", NULL };
+	static const char *const dashdash_left[] = { "qdl", "--", "--color=always", NULL };
+	static const char *const bogus[] = { "qdl", "--color=sometimes", "list", NULL };
+	static const char *const prefix[] = { "qdl", "--colorful", NULL };
+	static const char *const empty[] = { NULL };
+	(void)state;
+
+	/* Arguments after "--" are positional and stay untouched. */
+	assert_int_equal(take_color(dashdash, dashdash_left), 0);
+	assert_int_equal(color_mode_calls, 1);
+	assert_int_equal(last_color_mode, UX_COLOR_NEVER);
+
+	assert_int_equal(take_color(bogus, bogus), -1);
+	assert_int_equal(color_mode_calls, 0);
+
+	/* Only an exact --color or --color=... is taken. */
+	assert_int_equal(take_color(prefix, prefix), 0);
+	assert_int_equal(color_mode_calls, 0);
+
+	/* An empty argv, as execve() allows, stays empty. */
+	assert_int_equal(take_color(empty, empty), 0);
+	assert_int_equal(color_mode_calls, 0);
+}
+
 int main(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -172,6 +272,8 @@ int main(void)
 		cmocka_unit_test(test_dry_run_and_skipblock),
 		cmocka_unit_test(test_flags_and_values),
 		cmocka_unit_test(test_help_version_and_usage),
+		cmocka_unit_test(test_color_option),
+		cmocka_unit_test(test_color_option_edge_cases),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

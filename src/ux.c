@@ -9,6 +9,7 @@
 #include <string.h>
 #include <time.h>
 #ifdef _WIN32
+#include <io.h>
 #include <windows.h>
 #else
 #include <sys/ioctl.h>
@@ -46,6 +47,22 @@ static const char *ux_progname_str = "qdl";
 /* Whether the next character written to each stream starts a new line */
 static bool ux_stdout_bol = true;
 static bool ux_stderr_bol = true;
+
+/* Color policy from --color, and the per-stream decision (-1: undecided) */
+static enum ux_color_mode ux_color = UX_COLOR_AUTO;
+static int ux_color_stdout = -1;
+static int ux_color_stderr = -1;
+
+static const char * const ux_styles[] = {
+	[UX_STYLE_RESET]	= "\033[0m",
+	[UX_STYLE_HEADING]	= "\033[1m",
+	[UX_STYLE_OPTION]	= "\033[1;36m",
+	[UX_STYLE_ERROR]	= "\033[31m",
+	[UX_STYLE_WARNING]	= "\033[33m",
+	[UX_STYLE_LOG]		= "\033[36m",
+	[UX_STYLE_DIM]		= "\033[2m",
+	[UX_STYLE_PROGRESS]	= "\033[32m",
+};
 
 /*
  * Levels of output:
@@ -185,6 +202,90 @@ void ux_set_progname(const char *name)
 const char *ux_progname(void)
 {
 	return ux_progname_str;
+}
+
+/*
+ * Auto mode colors a stream only if it is a terminal, NO_COLOR is unset
+ * and TERM is not "dumb".
+ */
+void ux_set_color_mode(enum ux_color_mode mode)
+{
+	ux_color = mode;
+	ux_color_stdout = -1;
+	ux_color_stderr = -1;
+}
+
+#ifdef _WIN32
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
+
+/* Let a Windows 10+ console interpret ANSI sequences on @fp */
+static bool ux_enable_vt(FILE *fp)
+{
+	HANDLE h = (HANDLE)_get_osfhandle(_fileno(fp));
+	DWORD mode;
+
+	if (h == INVALID_HANDLE_VALUE || !GetConsoleMode(h, &mode))
+		return false;
+
+	if (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+		return true;
+
+	return SetConsoleMode(h, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+}
+#endif
+
+static bool ux_color_detect(FILE *fp)
+{
+	const char *env;
+	bool vt = true;
+
+	if (ux_color == UX_COLOR_NEVER)
+		return false;
+
+#ifdef _WIN32
+	vt = ux_enable_vt(fp);
+#endif
+
+	if (ux_color == UX_COLOR_ALWAYS)
+		return true;
+
+	env = getenv("NO_COLOR");
+	if (env && *env)
+		return false;
+
+	env = getenv("TERM");
+	if (env && !strcmp(env, "dumb"))
+		return false;
+
+	return vt && isatty(fileno(fp));
+}
+
+static bool ux_color_enabled(FILE *fp)
+{
+	int *cached;
+
+	if (fp == stdout)
+		cached = &ux_color_stdout;
+	else if (fp == stderr)
+		cached = &ux_color_stderr;
+	else
+		return ux_color_detect(fp);
+
+	if (*cached < 0)
+		*cached = ux_color_detect(fp);
+
+	return *cached;
+}
+
+/* ANSI sequence for @style, or "" when @fp is not colorized */
+const char *ux_style(FILE *fp, enum ux_style style)
+{
+	if ((size_t)style >= ARRAY_SIZE(ux_styles) || !ux_color_enabled(fp))
+		return "";
+
+	return ux_styles[style];
 }
 
 /* Clear ux_cur_line_length characters of the progress bar from the screen */
