@@ -547,6 +547,16 @@ void ux_warn_tag(enum ux_tag tag, const char *fmt, ...)
 	va_end(ap);
 }
 
+void ux_warnx_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	int error = errno;
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vreport(UX_STYLE_WARNING, UX_LEVEL_WARN, tag, error, false, fmt, ap);
+	va_end(ap);
+}
+
 void ux_warnx(const char *fmt, ...)
 {
 	int error = errno;

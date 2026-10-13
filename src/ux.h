@@ -68,6 +68,7 @@ const char *ux_direction(bool tx);
 
 void ux_err_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_warn_tag(enum ux_tag tag, const char *fmt, ...);
+void ux_warnx_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_info_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_log_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_debug_tag(enum ux_tag tag, const char *fmt, ...);

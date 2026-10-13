@@ -1063,10 +1063,9 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 		num_sectors = (qdl_file_getsize(&file) + sector_size - 1) / sector_size;
 
 		if (program->num_sectors && num_sectors > program->num_sectors) {
-			ux_err("%s too big for %s truncated to %d\n",
-			       program->filename,
-			       program->label,
-			       program->num_sectors * sector_size);
+			ux_warnx("%s too big for %s, truncated to %u bytes",
+				 program->filename, program->label,
+				 program->num_sectors * sector_size);
 			num_sectors = program->num_sectors;
 		}
 	}
@@ -1712,8 +1711,8 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 		 * Demote VIP here so the table is never sent.
 		 */
 		if (!qdl->vip_data.programmer_requires_vip) {
-			ux_info_tag(UX_TAG_VIP, "WARNING: --vip-table-path was provided but programmer "
-				    "did not announce VIP; continuing without it\n");
+			ux_warnx_tag(UX_TAG_VIP, "--vip-table-path was provided but programmer "
+				     "did not announce VIP; continuing without it");
 			qdl->vip_data.state = VIP_DISABLED;
 		}
 
