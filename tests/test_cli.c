@@ -31,6 +31,7 @@ bool qdl_debug;
 void ux_err(const char *fmt, ...) { (void)fmt; }
 void ux_info(const char *fmt, ...) { (void)fmt; }
 void ux_warnx(const char *fmt, ...) { (void)fmt; }
+const char *ux_style(FILE *fp, enum ux_style style) { (void)fp; (void)style; return ""; }
 const char *ux_progname(void) { return "test_cli"; }
 
 /* Record what qdl_take_color_option() applies. */
