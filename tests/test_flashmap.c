@@ -24,6 +24,8 @@
 
 #define FLASHMAP_JSON_FILENAME "flashmap.json"
 #define FLASHMAP_MULTI_JSON_FILENAME "flashmap-multi.json"
+#define FLASHMAP_MULTI_WITH_DEFAULT_JSON_FILENAME "flashmap-multi-with-default.json"
+#define FLASHMAP_MULTI_TWO_DEFAULTS_JSON_FILENAME "flashmap-multi-two-defaults.json"
 #define FLASHMAP_ZIP_FILENAME "flashmap.zip"
 #define PROGRAMMER_FILENAME "prog_firehose_ddr.elf"
 #define PROGRAM0_FILENAME "rawprogram0.xml"
@@ -109,6 +111,82 @@ static const char flashmap_multi_json[] =
 	"  ]"
 	"}";
 
+static const char flashmap_multi_with_default_json[] =
+	"{"
+	"  \"version\": \"1.1.0\","
+	"  \"products\": ["
+	"    {"
+	"      \"name\": \"unit-test\","
+	"      \"layouts\": ["
+	"        {"
+	"          \"name\": \"layout0\","
+	"          \"programmer\": [\"" PROGRAMMER_FILENAME "\"],"
+	"          \"programmable\": ["
+	"            {"
+	"              \"memory\": \"ufs\","
+	"              \"slot\": 0,"
+	"              \"files\": [\"" PROGRAM0_FILENAME "\"]"
+	"            }"
+	"          ]"
+	"        },"
+	"        {"
+	"          \"name\": \"layout1\","
+	"          \"default\": true,"
+	"          \"programmer\": [\"" PROGRAMMER_FILENAME "\"],"
+	"          \"programmable\": ["
+	"            {"
+	"              \"memory\": \"spinor\","
+	"              \"slot\": 0,"
+	"              \"files\": ["
+	"                \"" PROGRAM0_FILENAME "\","
+	"                \"" PROGRAM1_FILENAME "\","
+	"                \"" PATCH0_FILENAME "\","
+	"                \"" PATCH1_FILENAME "\""
+	"              ]"
+	"            }"
+	"          ]"
+	"        }"
+	"      ]"
+	"    }"
+	"  ]"
+	"}";
+
+static const char flashmap_multi_two_defaults_json[] =
+	"{"
+	"  \"version\": \"1.1.0\","
+	"  \"products\": ["
+	"    {"
+	"      \"name\": \"unit-test\","
+	"      \"layouts\": ["
+	"        {"
+	"          \"name\": \"layout0\","
+	"          \"default\": true,"
+	"          \"programmer\": [\"" PROGRAMMER_FILENAME "\"],"
+	"          \"programmable\": ["
+	"            {"
+	"              \"memory\": \"ufs\","
+	"              \"slot\": 0,"
+	"              \"files\": [\"" PROGRAM0_FILENAME "\"]"
+	"            }"
+	"          ]"
+	"        },"
+	"        {"
+	"          \"name\": \"layout1\","
+	"          \"default\": true,"
+	"          \"programmer\": [\"" PROGRAMMER_FILENAME "\"],"
+	"          \"programmable\": ["
+	"            {"
+	"              \"memory\": \"ufs\","
+	"              \"slot\": 0,"
+	"              \"files\": [\"" PROGRAM0_FILENAME "\"]"
+	"            }"
+	"          ]"
+	"        }"
+	"      ]"
+	"    }"
+	"  ]"
+	"}";
+
 static const char program_xml[] =
 	"<data>"
 	"  <program SECTOR_SIZE_IN_BYTES=\"512\" filename=\"payload.bin\" label=\"test\" "
@@ -124,6 +202,8 @@ static const char patch_xml[] =
 static const struct mock_file mock_files[] = {
 	{ FLASHMAP_JSON_FILENAME, flashmap_json },
 	{ FLASHMAP_MULTI_JSON_FILENAME, flashmap_multi_json },
+	{ FLASHMAP_MULTI_WITH_DEFAULT_JSON_FILENAME, flashmap_multi_with_default_json },
+	{ FLASHMAP_MULTI_TWO_DEFAULTS_JSON_FILENAME, flashmap_multi_two_defaults_json },
 	{ PROGRAM0_FILENAME, program_xml },
 	{ PROGRAM1_FILENAME, program_xml },
 	{ PATCH0_FILENAME, patch_xml },
@@ -492,6 +572,44 @@ static void test_flashmap_multi_layout_can_select_first_layout(void **state)
 	reset_mock_state();
 }
 
+static void test_flashmap_multi_with_default_layout_no_selector(void **state)
+{
+	(void)state;
+	reset_mock_state();
+	assert_loads_as(FLASHMAP_MULTI_WITH_DEFAULT_JSON_FILENAME, NULL,
+			QDL_STORAGE_SPINOR, 2, 2);
+	reset_mock_state();
+}
+
+static void test_flashmap_multi_with_default_layout_with_selector(void **state)
+{
+	char specifier[] = "layout0/ufs";
+
+	(void)state;
+	reset_mock_state();
+	assert_loads_as(FLASHMAP_MULTI_WITH_DEFAULT_JSON_FILENAME, specifier,
+			QDL_STORAGE_UFS, 1, 0);
+	reset_mock_state();
+}
+
+static void test_flashmap_multi_two_defaults_fails(void **state)
+{
+	struct sahara_image images[MAPPING_SZ] = {};
+	struct list_head ops = LIST_INIT(ops);
+	int ret;
+
+	(void)state;
+	reset_mock_state();
+
+	ret = flashmap_load(&ops, FLASHMAP_MULTI_TWO_DEFAULTS_JSON_FILENAME, NULL,
+			    images, NULL);
+	assert_int_equal(ret, -1);
+	assert_true(list_empty(&ops));
+	assert_null(loaded_programmer);
+
+	sahara_images_free(images, MAPPING_SZ);
+}
+
 int main(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -502,6 +620,9 @@ int main(void)
 		cmocka_unit_test(test_flashmap_multi_layout_selects_layout),
 		cmocka_unit_test(test_flashmap_multi_layout_selects_layout_and_storage),
 		cmocka_unit_test(test_flashmap_multi_layout_can_select_first_layout),
+		cmocka_unit_test(test_flashmap_multi_with_default_layout_no_selector),
+		cmocka_unit_test(test_flashmap_multi_with_default_layout_with_selector),
+		cmocka_unit_test(test_flashmap_multi_two_defaults_fails),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
