@@ -12,6 +12,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -636,6 +637,16 @@ static int firehose_try_configure(struct qdl_device *qdl, bool skip_storage_init
 	return 0;
 }
 
+/* Totals of a firehose_run(), reported in its summary line */
+static struct {
+	unsigned int flashed;
+	unsigned int skipped;
+	unsigned int read;
+	unsigned int erased;
+	unsigned int patches;
+	uint64_t bytes_written;
+} firehose_stats;
+
 static int firehose_erase(struct qdl_device *qdl, struct firehose_op *program)
 {
 	unsigned int sector_size;
@@ -678,9 +689,11 @@ static int firehose_erase(struct qdl_device *qdl, struct firehose_op *program)
 	ret = firehose_read(qdl, 30000, firehose_generic_parser, NULL);
 	if (ret)
 		ux_err("failed to erase %s+0x%x\n", program->start_sector, program->num_sectors);
-	else
+	else {
 		ux_info_tag(UX_TAG_FIREHOSE, "successfully erased %s+0x%x\n",
 			    program->start_sector, program->num_sectors);
+		firehose_stats.erased++;
+	}
 
 out:
 	xmlFreeDoc(doc);
@@ -1065,10 +1078,13 @@ static int firehose_program_skipblock(struct qdl_device *qdl,
 			snprintf(note, sizeof(note), "sha256 match");
 		firehose_report(UX_STATUS_SKIPPED, "skipped", program->label,
 				(uint64_t)num_sectors * sector_size, 0, note);
+		firehose_stats.skipped++;
 	} else {
 		snprintf(note, sizeof(note), "%u of %u chunks", flashed, nchunks);
 		firehose_report(UX_STATUS_DONE, "flashed", program->label,
 				flashed_bytes, flash_ms, split ? note : NULL);
+		firehose_stats.flashed++;
+		firehose_stats.bytes_written += flashed_bytes;
 	}
 
 	return 0;
@@ -1221,6 +1237,8 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	ms = firehose_now_ms() - t0;
 	firehose_report(UX_STATUS_DONE, "flashed", program->label,
 			(uint64_t)sector_size * num_sectors, ms, NULL);
+	firehose_stats.flashed++;
+	firehose_stats.bytes_written += (uint64_t)sector_size * num_sectors;
 
 	xmlFreeDoc(doc);
 	free(buf);
@@ -1370,10 +1388,12 @@ static int firehose_issue_read(struct qdl_device *qdl, struct firehose_op *read_
 		goto out;
 	}
 
-	if (!quiet)
+	if (!quiet) {
 		firehose_report(UX_STATUS_DONE, "read", read_op->filename,
 				(uint64_t)sector_size * read_op->num_sectors,
 				firehose_now_ms() - t0, NULL);
+		firehose_stats.read++;
+	}
 
 out:
 	xmlFreeDoc(doc);
@@ -1916,8 +1936,10 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 			if (ret)
 				return ret;
 
-			if (op->filename && !strcmp(op->filename, "DISK"))
+			if (op->filename && !strcmp(op->filename, "DISK")) {
 				ux_progress("Applying patches", ++patch_idx, patch_count);
+				firehose_stats.patches++;
+			}
 
 			if (op == status_patch)
 				ux_info_tag(UX_TAG_FIREHOSE, "%d patches applied\n", patch_idx);
@@ -1939,11 +1961,80 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 	return 0;
 }
 
+/* Append ", <text>" to @buf, or just <text> when @buf is empty */
+static void firehose_append(char *buf, size_t len, const char *fmt, ...)
+{
+	size_t used = strlen(buf);
+	va_list ap;
+
+	if (used && used + 2 < len) {
+		buf[used++] = ',';
+		buf[used++] = ' ';
+		buf[used] = '\0';
+	}
+
+	va_start(ap, fmt);
+	vsnprintf(buf + used, len - used, fmt, ap);
+	va_end(ap);
+}
+
+/* Print one line summing up the run, unless it did nothing */
+static void firehose_summary(uint64_t ms)
+{
+	char line[256] = "";
+	char elapsed[32];
+	char rate[32] = "";
+	char size[16];
+
+	if (firehose_stats.flashed)
+		firehose_append(line, sizeof(line), "flashed %u partition%s",
+				firehose_stats.flashed,
+				firehose_stats.flashed == 1 ? "" : "s");
+	if (firehose_stats.skipped)
+		firehose_append(line, sizeof(line), "skipped %u", firehose_stats.skipped);
+	if (firehose_stats.read)
+		firehose_append(line, sizeof(line), "read %u", firehose_stats.read);
+	if (firehose_stats.erased)
+		firehose_append(line, sizeof(line), "erased %u", firehose_stats.erased);
+
+	if (!line[0])
+		return;
+
+	if (firehose_stats.bytes_written) {
+		ux_format_size(size, sizeof(size), firehose_stats.bytes_written);
+		if (ms >= 60000)
+			snprintf(elapsed, sizeof(elapsed), "%u min %u s",
+				 (unsigned int)(ms / 60000), (unsigned int)(ms / 1000 % 60));
+		else
+			snprintf(elapsed, sizeof(elapsed), "%.1f s", ms / 1000.0);
+		if (ms >= 500)
+			firehose_format_rate(rate, sizeof(rate), firehose_stats.bytes_written, ms);
+		snprintf(line + strlen(line), sizeof(line) - strlen(line),
+			 " (%s written in %s%s)", size, elapsed, rate);
+	}
+
+	if (firehose_stats.patches)
+		firehose_append(line, sizeof(line), "applied %u patch%s",
+				firehose_stats.patches,
+				firehose_stats.patches == 1 ? "" : "es");
+
+	ux_info_tag(UX_TAG_FIREHOSE, "%s\n", line);
+}
+
 int firehose_run(struct qdl_device *qdl, struct list_head *ops)
 {
+	uint64_t t0 = firehose_now_ms();
+	int ret;
+
+	memset(&firehose_stats, 0, sizeof(firehose_stats));
+
 	ux_info_tag(UX_TAG_FIREHOSE, "waiting for Firehose programmer...\n");
 
-	return firehose_execute_ops(qdl, ops);
+	ret = firehose_execute_ops(qdl, ops);
+	if (!ret)
+		firehose_summary(firehose_now_ms() - t0);
+
+	return ret;
 }
 
 /*
