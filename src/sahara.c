@@ -501,7 +501,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 
 	fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 	if (fd < 0) {
-		ux_warn("SAHARA: failed to open \"%s\"", region.filename);
+		ux_warn("SAHARA: failed to open \"%s\" (\"%s\")", path, region.filename);
 		free(buf);
 		return -1;
 	}
@@ -532,7 +532,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 			while (buf_offset < (size_t)n) {
 				written = write(fd, buf + buf_offset, n - buf_offset);
 				if (written <= 0) {
-					ux_warn("SAHARA: failed to write ramdump chunk to \"%s\"", region.filename);
+					ux_warn("SAHARA: failed to write ramdump chunk to \"%s\" (\"%s\")", path, region.filename);
 					goto out;
 				}
 				buf_offset += written;
@@ -545,7 +545,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 
 		chunk += DEBUG_BLOCK_SIZE;
 
-		ux_progress("%s", chunk, region.length, region.filename);
+		ux_progress("%s", chunk, region.length, path);
 	}
 
 	ret = 0;
