@@ -284,6 +284,22 @@ static void test_quiet_prefix(void **state)
 	assert_int_equal(tag, UX_TAG_NONE);
 }
 
+static void test_format_size(void **state)
+{
+	char buf[16];
+	(void)state;
+
+	assert_string_equal(ux_format_size(buf, sizeof(buf), 0), "0 B");
+	assert_string_equal(ux_format_size(buf, sizeof(buf), 1023), "1023 B");
+	assert_string_equal(ux_format_size(buf, sizeof(buf), 1024), "1.0 KiB");
+	assert_string_equal(ux_format_size(buf, sizeof(buf), 3355443), "3.2 MiB");
+	assert_string_equal(ux_format_size(buf, sizeof(buf), 536870912), "512.0 MiB");
+	assert_string_equal(ux_format_size(buf, sizeof(buf), 2254857830ULL), "2.1 GiB");
+	assert_string_equal(ux_format_size(buf, sizeof(buf), 5ULL << 40), "5.0 TiB");
+	/* Beyond the largest unit the value just grows. */
+	assert_string_equal(ux_format_size(buf, sizeof(buf), 2048ULL << 40), "2048.0 TiB");
+}
+
 int main(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -300,6 +316,7 @@ int main(void)
 		cmocka_unit_test_setup(test_level_once_per_line, setup),
 		cmocka_unit_test_setup(test_level_colored, setup),
 		cmocka_unit_test_setup(test_quiet_prefix, setup),
+		cmocka_unit_test_setup(test_format_size, setup),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

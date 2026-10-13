@@ -840,6 +840,46 @@ static int firehose_stream_out(struct qdl_device *qdl, struct firehose_op *progr
 	return 0;
 }
 
+/* Milliseconds from an arbitrary epoch, for measuring transfer rates */
+static uint64_t firehose_now_ms(void)
+{
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+
+	return (uint64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
+/* Format ", <rate>" for @bytes moved in @ms, in KiB/s below 1 MiB/s */
+static void firehose_format_rate(char *buf, size_t len, uint64_t bytes, uint64_t ms)
+{
+	double kib = bytes / 1024.0 / (ms / 1000.0);
+
+	if (kib < 1024)
+		snprintf(buf, len, ", %.1f KiB/s", kib);
+	else
+		snprintf(buf, len, ", %.1f MiB/s", kib / 1024);
+}
+
+/*
+ * Report the outcome of an operation on @name: its size, the rate when
+ * measurable and an optional @note.
+ */
+static void firehose_report(enum ux_status status, const char *verb, const char *name,
+			    uint64_t bytes, uint64_t ms, const char *note)
+{
+	char size[16];
+	char rate[32] = "";
+
+	ux_format_size(size, sizeof(size), bytes);
+	if (ms >= 500)
+		firehose_format_rate(rate, sizeof(rate), bytes, ms);
+
+	ux_status(UX_TAG_FIREHOSE, status, verb, name, "%s (%s%s%s%s)",
+		  status == UX_STATUS_DONE ? " successfully" : "", size, rate,
+		  note ? ", " : "", note ? note : "");
+}
+
 /*
  * Program the contiguous raw region [@start_sector, @start_sector +
  * @num_sectors) from the current position of @file: send the program
@@ -928,10 +968,13 @@ static int firehose_program_skipblock(struct qdl_device *qdl,
 	unsigned int nchunks = num_sectors / chunk_max +
 			       !!(num_sectors % chunk_max);
 	bool split = nchunks > 1;
-	unsigned int skipped = 0;
 	unsigned int flashed = 0;
+	uint64_t flashed_bytes = 0;
+	uint64_t flash_ms = 0;
 	unsigned int idx = 0;
 	unsigned int off;
+	char note[48];
+	uint64_t t0;
 
 	for (off = 0; off < num_sectors; off += chunk_max, idx++) {
 		unsigned int chunk_sectors = MIN(chunk_max, num_sectors - off);
@@ -969,8 +1012,9 @@ static int firehose_program_skipblock(struct qdl_device *qdl,
 		else
 			chunk_id[0] = '\0';
 
-		ux_info_tag(UX_TAG_FIREHOSE, "hashing \"%s\"%s locally (%zu KiB)...\n",
-			    program->label, chunk_id, region_bytes >> 10);
+		ux_progress("%s", idx, nchunks, program->label);
+		ux_debug_tag(UX_TAG_FIREHOSE, "hashing \"%s\"%s locally (%zu KiB)...\n",
+			     program->label, chunk_id, region_bytes >> 10);
 
 		if (firehose_region_local_digest(qdl, file, file_byte_off,
 						 region_bytes, buf,
@@ -983,8 +1027,8 @@ static int firehose_program_skipblock(struct qdl_device *qdl,
 				.start_sector = chunk_start,
 			};
 
-			ux_info_tag(UX_TAG_FIREHOSE, "requesting flash digest for \"%s\"%s...\n",
-				    program->label, chunk_id);
+			ux_debug_tag(UX_TAG_FIREHOSE, "requesting flash digest for \"%s\"%s...\n",
+				     program->label, chunk_id);
 
 			if (firehose_getsha256digest(qdl, &digest_op) == 0 &&
 			    !memcmp(local_digest, digest_op.digest,
@@ -993,27 +1037,39 @@ static int firehose_program_skipblock(struct qdl_device *qdl,
 		}
 
 		if (match) {
-			ux_info_tag(UX_TAG_FIREHOSE, "skipped \"%s\"%s (sha256 match)\n",
-				    program->label, chunk_id);
-			skipped++;
+			ux_debug_tag(UX_TAG_FIREHOSE, "sha256 match for \"%s\"%s, skipping\n",
+				     program->label, chunk_id);
 			continue;
 		}
 
-		ux_info_tag(UX_TAG_FIREHOSE, "sha256 mismatch for \"%s\"%s, flashing\n",
-			    program->label, chunk_id);
+		ux_debug_tag(UX_TAG_FIREHOSE, "sha256 mismatch for \"%s\"%s, flashing\n",
+			     program->label, chunk_id);
 
+		t0 = firehose_now_ms();
 		qdl_file_seek(file, file_byte_off, SEEK_SET);
 		if (firehose_program_raw_region(qdl, program, file, chunk_start,
 						chunk_sectors, sector_size, buf,
 						zlp_timeout) < 0)
 			return -1;
+		flash_ms += firehose_now_ms() - t0;
 
+		flashed_bytes += region_bytes;
 		flashed++;
 	}
 
-	if (split)
-		ux_info_tag(UX_TAG_FIREHOSE, "\"%s\": %u chunk(s) flashed, %u skipped\n",
-			    program->label, flashed, skipped);
+	/* One line per region, the per-chunk detail is in the debug log */
+	if (!flashed) {
+		if (split)
+			snprintf(note, sizeof(note), "%u chunks, sha256 match", nchunks);
+		else
+			snprintf(note, sizeof(note), "sha256 match");
+		firehose_report(UX_STATUS_SKIPPED, "skipped", program->label,
+				(uint64_t)num_sectors * sector_size, 0, note);
+	} else {
+		snprintf(note, sizeof(note), "%u of %u chunks", flashed, nchunks);
+		firehose_report(UX_STATUS_DONE, "flashed", program->label,
+				flashed_bytes, flash_ms, split ? note : NULL);
+	}
 
 	return 0;
 }
@@ -1028,8 +1084,8 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	xmlNode *node;
 	xmlDoc *doc;
 	void *buf;
-	time_t t0;
-	time_t t;
+	uint64_t t0;
+	uint64_t ms;
 	bool fill;
 	int ret;
 	size_t i;
@@ -1126,7 +1182,7 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 		goto err_free_doc;
 	}
 
-	t0 = time(NULL);
+	t0 = firehose_now_ms();
 
 	if (!program->sparse) {
 		qdl_file_seek(&file, (off_t)program->file_offset * sector_size, SEEK_SET);
@@ -1155,8 +1211,6 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 	if (ret)
 		goto err_free_doc;
 
-	t = time(NULL) - t0;
-
 	ret = firehose_read(qdl, 120000, firehose_generic_parser, NULL);
 	if (ret != FIREHOSE_ACK) {
 		ux_err("flashing of %s failed\n", program->label);
@@ -1164,14 +1218,9 @@ static int firehose_program(struct qdl_device *qdl, struct firehose_op *program)
 		goto err_free_doc;
 	}
 
-	if (t) {
-		ux_info_tag(UX_TAG_FIREHOSE, "flashed \"%s\" successfully at %lukB/s\n",
-			    program->label,
-			    (unsigned long)sector_size * num_sectors / t / 1024);
-	} else {
-		ux_info_tag(UX_TAG_FIREHOSE, "flashed \"%s\" successfully\n",
-			    program->label);
-	}
+	ms = firehose_now_ms() - t0;
+	firehose_report(UX_STATUS_DONE, "flashed", program->label,
+			(uint64_t)sector_size * num_sectors, ms, NULL);
 
 	xmlFreeDoc(doc);
 	free(buf);
@@ -1198,8 +1247,7 @@ static int firehose_issue_read(struct qdl_device *qdl, struct firehose_op *read_
 	xmlNode *node;
 	xmlDoc *doc;
 	void *buf;
-	time_t t0;
-	time_t t;
+	uint64_t t0;
 	size_t left;
 	int ret;
 	int n;
@@ -1251,7 +1299,7 @@ static int firehose_issue_read(struct qdl_device *qdl, struct firehose_op *read_
 		     read_op->filename ? read_op->filename : "(buffer)",
 		     (size_t)sector_size * read_op->num_sectors);
 
-	t0 = time(NULL);
+	t0 = firehose_now_ms();
 
 	left = read_op->num_sectors;
 	while (left > 0) {
@@ -1322,18 +1370,10 @@ static int firehose_issue_read(struct qdl_device *qdl, struct firehose_op *read_
 		goto out;
 	}
 
-	t = time(NULL) - t0;
-
-	if (!quiet) {
-		if (t) {
-			ux_info_tag(UX_TAG_FIREHOSE, "read \"%s\" successfully at %ldkB/s\n",
-				    read_op->filename,
-				    (unsigned long)sector_size * read_op->num_sectors / t / 1024);
-		} else {
-			ux_info_tag(UX_TAG_FIREHOSE, "read \"%s\" successfully\n",
-				    read_op->filename);
-		}
-	}
+	if (!quiet)
+		firehose_report(UX_STATUS_DONE, "read", read_op->filename,
+				(uint64_t)sector_size * read_op->num_sectors,
+				firehose_now_ms() - t0, NULL);
 
 out:
 	xmlFreeDoc(doc);

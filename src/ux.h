@@ -43,6 +43,8 @@ enum ux_style {
 	UX_STYLE_RX,
 	UX_STYLE_DIM,
 	UX_STYLE_PROGRESS,
+	UX_STYLE_SUCCESS,
+	UX_STYLE_SKIPPED,
 };
 
 void ux_set_color_mode(enum ux_color_mode mode);
@@ -72,6 +74,16 @@ void ux_warnx_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_info_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_log_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_debug_tag(enum ux_tag tag, const char *fmt, ...);
+
+/* Outcome of an operation reported by ux_status() */
+enum ux_status {
+	UX_STATUS_DONE,
+	UX_STATUS_SKIPPED,
+};
+
+void ux_status(enum ux_tag tag, enum ux_status status, const char *verb,
+	       const char *name, const char *fmt, ...);
+const char *ux_format_size(char *buf, size_t len, uint64_t bytes);
 
 int decode_color_mode(const char *name, enum ux_color_mode *out);
 
