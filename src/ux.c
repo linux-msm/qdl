@@ -84,6 +84,28 @@ static const struct {
 	[UX_TAG_MINIDUMP]		= { "MINIDUMP", "\033[35m" },
 };
 
+/* Severity of a message, printed as "NAME: " at the start of its line */
+enum ux_level {
+	UX_LEVEL_NONE,
+	UX_LEVEL_ERR,
+	UX_LEVEL_WARN,
+	UX_LEVEL_INFO,
+	UX_LEVEL_DEBUG,
+	UX_LEVEL_LOG,
+};
+
+static const struct {
+	const char *name;
+	const char *sgr;
+} ux_levels[] = {
+	[UX_LEVEL_NONE]		= { NULL, "" },
+	[UX_LEVEL_ERR]		= { "ERR", "\033[1;31m" },
+	[UX_LEVEL_WARN]		= { "WARN", "\033[1;33m" },
+	[UX_LEVEL_INFO]		= { "INFO", "\033[1m" },
+	[UX_LEVEL_DEBUG]	= { "DEBUG", "\033[2m" },
+	[UX_LEVEL_LOG]		= { "LOG", "\033[36m" },
+};
+
 /*
  * Levels of output:
  *
@@ -128,26 +150,25 @@ static int ux_print_prefix(FILE *fp)
 	return strlen(stamp) + strlen(".000 ");
 }
 
-/* Write the "NAME: " prefix of @tag, in its color when @fp is colorized */
-static void ux_print_tag(FILE *fp, enum ux_tag tag)
+/* Write a "NAME: " prefix, in color @sgr when @fp is colorized */
+static void ux_print_label(FILE *fp, const char *name, const char *sgr)
 {
 	bool color = ux_color_enabled(fp);
 
-	fprintf(fp, "%s%s:%s ", color ? ux_tags[tag].sgr : "", ux_tags[tag].name,
+	fprintf(fp, "%s%s:%s ", color ? sgr : "", name,
 		color ? ux_styles[UX_STYLE_RESET] : "");
 }
 
 /*
- * Format a message and write it to @fp in @style. In debug mode each line
- * of the message is prefixed, the first with the timestamp header and the
- * rest with padding of the same width, unless the line continues a
- * previous message that did not end with a newline. Blank lines are left
- * bare. The style is applied to each line separately and reset before the
- * newline, so a line never leaks color into the next one. A @tag other
- * than UX_TAG_NONE is printed as "NAME: " ahead of the message text.
+ * Format a message and write it to @fp. In debug mode each line of the
+ * message is prefixed, the first with the timestamp header and the rest
+ * with padding of the same width, unless the line continues a previous
+ * message that did not end with a newline. Blank lines are left bare.
+ * Each line is styled with @style separately; @level and @tag are printed
+ * ahead of the text, the level only at the start of a line.
  */
-static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, enum ux_tag tag,
-		      const char *fmt, va_list ap)
+static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, enum ux_level level,
+		      enum ux_tag tag, const char *fmt, va_list ap)
 {
 	const char *on = ux_style(fp, style);
 	const char *off = *on ? ux_style(fp, UX_STYLE_RESET) : "";
@@ -162,12 +183,8 @@ static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, enum ux_tag tag,
 
 	if ((size_t)tag >= ARRAY_SIZE(ux_tags))
 		tag = UX_TAG_NONE;
-
-	if (!qdl_debug && !*on && tag == UX_TAG_NONE) {
-		vfprintf(fp, fmt, ap);
-		fflush(fp);
-		return;
-	}
+	if ((size_t)level >= ARRAY_SIZE(ux_levels) || !*bol)
+		level = UX_LEVEL_NONE;
 
 	va_copy(aq, ap);
 	len = vsnprintf(stack_buf, sizeof(stack_buf), fmt, aq);
@@ -193,8 +210,12 @@ static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, enum ux_tag tag,
 				fprintf(fp, "%*s", width, "");
 		}
 
+		if (level != UX_LEVEL_NONE) {
+			ux_print_label(fp, ux_levels[level].name, ux_levels[level].sgr);
+			level = UX_LEVEL_NONE;
+		}
 		if (tag != UX_TAG_NONE) {
-			ux_print_tag(fp, tag);
+			ux_print_label(fp, ux_tags[tag].name, ux_tags[tag].sgr);
 			tag = UX_TAG_NONE;
 		}
 
@@ -424,12 +445,26 @@ void ux_init(void)
 
 #endif
 
-/* Print one message of a level that is shown unconditionally or in debug */
-static void ux_vmsg(FILE *fp, bool *bol, enum ux_style style, enum ux_tag tag,
-		    const char *fmt, va_list ap)
+/* Print one message, clearing the progress bar first */
+static void ux_vmsg(FILE *fp, bool *bol, enum ux_style style, enum ux_level level,
+		    enum ux_tag tag, const char *fmt, va_list ap)
 {
 	ux_clear_line();
-	ux_vprint(fp, bol, style, tag, fmt, ap);
+	ux_vprint(fp, bol, style, level, tag, fmt, ap);
+}
+
+/*
+ * Info, debug and log messages are bare outside debug mode; in debug mode
+ * they show their tag, or @level when they have none.
+ */
+static enum ux_level ux_quiet_prefix(enum ux_level level, enum ux_tag *tag)
+{
+	if (!qdl_debug) {
+		*tag = UX_TAG_NONE;
+		return UX_LEVEL_NONE;
+	}
+
+	return *tag == UX_TAG_NONE ? level : UX_LEVEL_NONE;
 }
 
 void ux_err(const char *fmt, ...)
@@ -437,7 +472,7 @@ void ux_err(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vmsg(stderr, &ux_stderr_bol, UX_STYLE_ERROR, UX_TAG_NONE, fmt, ap);
+	ux_vmsg(stderr, &ux_stderr_bol, UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_NONE, fmt, ap);
 	va_end(ap);
 }
 
@@ -446,34 +481,34 @@ void ux_err_tag(enum ux_tag tag, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vmsg(stderr, &ux_stderr_bol, UX_STYLE_ERROR, tag, fmt, ap);
+	ux_vmsg(stderr, &ux_stderr_bol, UX_STYLE_ERROR, UX_LEVEL_ERR, tag, fmt, ap);
 	va_end(ap);
 }
 
-static void ux_report(enum ux_style style, const char *fmt, ...)
+static void ux_report(enum ux_style style, enum ux_level level, const char *fmt, ...)
 {
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vprint(stderr, &ux_stderr_bol, style, UX_TAG_NONE, fmt, ap);
+	ux_vprint(stderr, &ux_stderr_bol, style, level, UX_TAG_NONE, fmt, ap);
 	va_end(ap);
 }
 
 /* Keep the err(3)/warn(3) text and errno semantics in the shared logger. */
-static void ux_vreport(enum ux_style style, enum ux_tag tag, int error,
-		       bool with_errno, const char *fmt, va_list ap)
+static void ux_vreport(enum ux_style style, enum ux_level level, enum ux_tag tag,
+		       int error, bool with_errno, const char *fmt, va_list ap)
 {
 	ux_clear_line();
 
-	ux_report(style, "%s: ", ux_progname());
+	ux_report(style, level, "%s: ", ux_progname());
 	if (fmt) {
-		ux_vprint(stderr, &ux_stderr_bol, style, tag, fmt, ap);
+		ux_vprint(stderr, &ux_stderr_bol, style, UX_LEVEL_NONE, tag, fmt, ap);
 		if (with_errno)
-			ux_report(style, ": ");
+			ux_report(style, UX_LEVEL_NONE, ": ");
 	}
 	if (with_errno)
-		ux_report(style, "%s", strerror(error));
-	ux_report(style, "\n");
+		ux_report(style, UX_LEVEL_NONE, "%s", strerror(error));
+	ux_report(style, UX_LEVEL_NONE, "\n");
 	errno = error;
 }
 
@@ -483,7 +518,7 @@ void ux_warn(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(UX_STYLE_WARNING, UX_TAG_NONE, error, true, fmt, ap);
+	ux_vreport(UX_STYLE_WARNING, UX_LEVEL_WARN, UX_TAG_NONE, error, true, fmt, ap);
 	va_end(ap);
 }
 
@@ -493,7 +528,7 @@ void ux_warn_tag(enum ux_tag tag, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(UX_STYLE_WARNING, tag, error, true, fmt, ap);
+	ux_vreport(UX_STYLE_WARNING, UX_LEVEL_WARN, tag, error, true, fmt, ap);
 	va_end(ap);
 }
 
@@ -503,7 +538,7 @@ void ux_warnx(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(UX_STYLE_WARNING, UX_TAG_NONE, error, false, fmt, ap);
+	ux_vreport(UX_STYLE_WARNING, UX_LEVEL_WARN, UX_TAG_NONE, error, false, fmt, ap);
 	va_end(ap);
 }
 
@@ -513,7 +548,7 @@ void ux_die(int status, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(UX_STYLE_ERROR, UX_TAG_NONE, error, true, fmt, ap);
+	ux_vreport(UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_NONE, error, true, fmt, ap);
 	va_end(ap);
 	exit(status);
 }
@@ -524,74 +559,83 @@ void ux_diex(int status, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(UX_STYLE_ERROR, UX_TAG_NONE, error, false, fmt, ap);
+	ux_vreport(UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_NONE, error, false, fmt, ap);
 	va_end(ap);
 	exit(status);
 }
 
 void ux_info(const char *fmt, ...)
 {
+	enum ux_tag tag = UX_TAG_NONE;
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_INFO, &tag);
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, UX_TAG_NONE, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
 	va_end(ap);
 }
 
 void ux_info_tag(enum ux_tag tag, const char *fmt, ...)
 {
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_INFO, &tag);
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, tag, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
 	va_end(ap);
 }
 
 void ux_log(const char *fmt, ...)
 {
+	enum ux_tag tag = UX_TAG_NONE;
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_LOG, &tag);
 	va_list ap;
 
 	if (!qdl_debug)
 		return;
 
 	va_start(ap, fmt);
-	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_LOG, UX_TAG_NONE, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_LOG, level, tag, fmt, ap);
 	va_end(ap);
 }
 
 void ux_log_tag(enum ux_tag tag, const char *fmt, ...)
 {
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_LOG, &tag);
 	va_list ap;
 
 	if (!qdl_debug)
 		return;
 
 	va_start(ap, fmt);
-	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_LOG, tag, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_LOG, level, tag, fmt, ap);
 	va_end(ap);
 }
 
 void ux_debug(const char *fmt, ...)
 {
+	enum ux_tag tag = UX_TAG_NONE;
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_DEBUG, &tag);
 	va_list ap;
 
 	if (!qdl_debug)
 		return;
 
 	va_start(ap, fmt);
-	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, UX_TAG_NONE, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
 	va_end(ap);
 }
 
 void ux_debug_tag(enum ux_tag tag, const char *fmt, ...)
 {
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_DEBUG, &tag);
 	va_list ap;
 
 	if (!qdl_debug)
 		return;
 
 	va_start(ap, fmt);
-	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, tag, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
 	va_end(ap);
 }
 

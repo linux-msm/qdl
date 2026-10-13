@@ -29,7 +29,7 @@ static void print_to(FILE *fp, bool *bol, enum ux_style style, const char *fmt, 
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vprint(fp, bol, style, UX_TAG_NONE, fmt, ap);
+	ux_vprint(fp, bol, style, UX_LEVEL_NONE, UX_TAG_NONE, fmt, ap);
 	va_end(ap);
 }
 
@@ -39,7 +39,17 @@ static void print_tagged(FILE *fp, bool *bol, enum ux_style style, enum ux_tag t
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vprint(fp, bol, style, tag, fmt, ap);
+	ux_vprint(fp, bol, style, UX_LEVEL_NONE, tag, fmt, ap);
+	va_end(ap);
+}
+
+static void print_level(FILE *fp, bool *bol, enum ux_style style, enum ux_level level,
+			enum ux_tag tag, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vprint(fp, bol, style, level, tag, fmt, ap);
 	va_end(ap);
 }
 
@@ -213,6 +223,67 @@ static void test_tag_after_debug_prefix(void **state)
 	assert_string_equal(out + 13, "USB: chunk\n");
 }
 
+static void test_level_plain(void **state)
+{
+	bool bol = true;
+	FILE *fp = open_out();
+	(void)state;
+
+	print_level(fp, &bol, UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_NONE, "boom\n");
+	print_level(fp, &bol, UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_SAHARA, "bad packet\n");
+	print_level(fp, &bol, UX_STYLE_WARNING, UX_LEVEL_WARN, UX_TAG_NONE, "careful\n");
+	assert_string_equal(read_out(fp),
+			    "ERR: boom\n"
+			    "ERR: SAHARA: bad packet\n"
+			    "WARN: careful\n");
+}
+
+static void test_level_once_per_line(void **state)
+{
+	bool bol = true;
+	FILE *fp = open_out();
+	(void)state;
+
+	/* A line assembled from several calls carries the level once. */
+	print_level(fp, &bol, UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_NONE, "qdl: ");
+	print_level(fp, &bol, UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_NONE, "no device\n");
+	print_level(fp, &bol, UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_NONE, "next\n");
+	assert_string_equal(read_out(fp), "ERR: qdl: no device\nERR: next\n");
+}
+
+static void test_level_colored(void **state)
+{
+	bool bol = true;
+	FILE *fp = open_out();
+	(void)state;
+
+	ux_set_color_mode(UX_COLOR_ALWAYS);
+	print_level(fp, &bol, UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_USB, "x\n");
+	assert_string_equal(read_out(fp),
+			    "\033[1;31mERR:\033[0m \033[1;36mUSB:\033[0m \033[31mx\033[0m\n");
+}
+
+static void test_quiet_prefix(void **state)
+{
+	enum ux_tag tag;
+	(void)state;
+
+	/* Regular output stays bare outside debug mode, tag or not. */
+	tag = UX_TAG_FIREHOSE;
+	assert_int_equal(ux_quiet_prefix(UX_LEVEL_INFO, &tag), UX_LEVEL_NONE);
+	assert_int_equal(tag, UX_TAG_NONE);
+
+	/* In debug mode the subsystem tag wins, the level fills in for none. */
+	qdl_debug = true;
+	tag = UX_TAG_FIREHOSE;
+	assert_int_equal(ux_quiet_prefix(UX_LEVEL_INFO, &tag), UX_LEVEL_NONE);
+	assert_int_equal(tag, UX_TAG_FIREHOSE);
+
+	tag = UX_TAG_NONE;
+	assert_int_equal(ux_quiet_prefix(UX_LEVEL_DEBUG, &tag), UX_LEVEL_DEBUG);
+	assert_int_equal(tag, UX_TAG_NONE);
+}
+
 int main(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -225,6 +296,10 @@ int main(void)
 		cmocka_unit_test_setup(test_tag_plain, setup),
 		cmocka_unit_test_setup(test_tag_colored_once, setup),
 		cmocka_unit_test_setup(test_tag_after_debug_prefix, setup),
+		cmocka_unit_test_setup(test_level_plain, setup),
+		cmocka_unit_test_setup(test_level_once_per_line, setup),
+		cmocka_unit_test_setup(test_level_colored, setup),
+		cmocka_unit_test_setup(test_quiet_prefix, setup),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
