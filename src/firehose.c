@@ -2018,7 +2018,7 @@ static void firehose_summary(uint64_t ms)
 				firehose_stats.patches,
 				firehose_stats.patches == 1 ? "" : "es");
 
-	ux_info_tag(UX_TAG_FIREHOSE, "%s\n", line);
+	ux_result_tag(UX_TAG_FIREHOSE, "%s\n", line);
 }
 
 int firehose_run(struct qdl_device *qdl, struct list_head *ops)

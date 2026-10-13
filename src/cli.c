@@ -40,6 +40,7 @@ void print_usage(FILE *out)
 		"(<id:file>[,<id:file>...] | <sahara.xml> | <contents.xml>[::<specifier>])\n",
 		ux_progname());
 	usage_opt(out, " ", "-d, --debug", "\t\t\tPrint detailed debug info");
+	usage_opt(out, " ", "-q, --quiet", "\t\t\tPrint only the summary, warnings and errors");
 	usage_opt(out, "     ", "--color[=W]", "\t\tColorize output W: <auto|always|never> (default: auto)");
 	usage_opt(out, " ", "-v, --version", "\t\t\tPrint the current version and exit");
 	usage_opt(out, " ", "-n, --dry-run", "\t\t\tDry run execution, no device reading or flashing");
@@ -159,6 +160,7 @@ int qdl_parse_args(int argc, char **argv, struct qdl_opts *opts)
 		{"create-digests", required_argument, 0, 't'},
 		{"slot", required_argument, 0, 'T'},
 		{"skip-reset", no_argument, 0, 'R'},
+		{"quiet", no_argument, 0, 'q'},
 		{"backend", required_argument, 0, OPT_BACKEND},
 		{"skipblock", required_argument, 0, OPT_SKIPBLOCK},
 		{"help", no_argument, 0, 'h'},
@@ -173,10 +175,13 @@ int qdl_parse_args(int argc, char **argv, struct qdl_opts *opts)
 		.slot = UINT_MAX,
 	};
 
-	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:Rh", options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:Rqh", options, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			qdl_debug = true;
+			break;
+		case 'q':
+			ux_set_quiet(true);
 			break;
 		case 'n':
 			opts->dev_type = QDL_DEVICE_SIM;

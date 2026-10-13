@@ -200,6 +200,25 @@ A few maintenance commands do not need a programmer at all and only speak
 Sahara to the device: `qdl chipinfo` prints the chip identification the
 device reports, and `qdl reset` reboots a device stuck in EDL mode.
 
+### Output
+
+A flashing run prints one line per region and ends with a summary of
+what it flashed, skipped, read and erased and the patches it applied:
+
+```text
+flashed "xbl_a" successfully (3.2 MiB)
+flashed "efi" successfully (512.0 MiB, 39.4 MiB/s)
+skipped "dtb_a" (8.0 MiB, sha256 match)
+flashed 34 partitions, skipped 1 (2.1 GiB written in 54.2 s, 40.2 MiB/s)
+```
+
+- `--quiet` prints only the summary, warnings and errors.
+- `--debug` prints the full protocol log. Each line is timestamped and
+  names the part of QDL it comes from, such as `SAHARA:` or `FIREHOSE:`.
+- Errors start with `ERR:` and warnings with `WARN:`.
+- `--color=auto|always|never` controls colored output. The default,
+  `auto`, colors only output to a terminal and honours `NO_COLOR`.
+
 ### Flashing installer packages
 
 Builds shipped as an installer package (a zip archive or an unpacked

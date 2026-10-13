@@ -48,6 +48,7 @@ enum ux_style {
 };
 
 void ux_set_color_mode(enum ux_color_mode mode);
+void ux_set_quiet(bool quiet);
 const char *ux_style(FILE *fp, enum ux_style style);
 
 /* Subsystem a message comes from, printed as a "NAME: " prefix */
@@ -74,6 +75,7 @@ void ux_warnx_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_info_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_log_tag(enum ux_tag tag, const char *fmt, ...);
 void ux_debug_tag(enum ux_tag tag, const char *fmt, ...);
+void ux_result_tag(enum ux_tag tag, const char *fmt, ...);
 
 /* Outcome of an operation reported by ux_status() */
 enum ux_status {
