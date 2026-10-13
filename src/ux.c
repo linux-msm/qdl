@@ -65,6 +65,25 @@ static const char * const ux_styles[] = {
 	[UX_STYLE_PROGRESS]	= "\033[32m",
 };
 
+/* Name and color of each subsystem tag */
+static const struct {
+	const char *name;
+	const char *sgr;
+} ux_tags[] = {
+	[UX_TAG_NONE]			= { NULL, "" },
+	[UX_TAG_SAHARA]			= { "SAHARA", "\033[1;35m" },
+	[UX_TAG_FIREHOSE]		= { "FIREHOSE", "\033[1;34m" },
+	[UX_TAG_FIREHOSE_RAW]	= { "FIREHOSE_RAW", "\033[34m" },
+	[UX_TAG_VIP]			= { "VIP", "\033[1;32m" },
+	[UX_TAG_USB]			= { "USB", "\033[1;36m" },
+	[UX_TAG_SPARSE]			= { "SPARSE", "\033[1m" },
+	[UX_TAG_FLASHMAP]		= { "FLASHMAP", "\033[1m" },
+	[UX_TAG_CONTENTS]		= { "CONTENTS", "\033[1m" },
+	[UX_TAG_SIM]			= { "SIM", "\033[2m" },
+	[UX_TAG_QUD]			= { "QUD", "\033[1;36m" },
+	[UX_TAG_MINIDUMP]		= { "MINIDUMP", "\033[35m" },
+};
+
 /*
  * Levels of output:
  *
@@ -84,6 +103,8 @@ static const char * const ux_styles[] = {
  * A message that does not end in a newline is continued by the next call
  * on the same stream without a new prefix.
  */
+
+static bool ux_color_enabled(FILE *fp);
 
 /* Write the "<time> " prefix, return its width on screen */
 static int ux_print_prefix(FILE *fp)
@@ -107,15 +128,26 @@ static int ux_print_prefix(FILE *fp)
 	return strlen(stamp) + strlen(".000 ");
 }
 
+/* Write the "NAME: " prefix of @tag, in its color when @fp is colorized */
+static void ux_print_tag(FILE *fp, enum ux_tag tag)
+{
+	bool color = ux_color_enabled(fp);
+
+	fprintf(fp, "%s%s:%s ", color ? ux_tags[tag].sgr : "", ux_tags[tag].name,
+		color ? ux_styles[UX_STYLE_RESET] : "");
+}
+
 /*
  * Format a message and write it to @fp in @style. In debug mode each line
  * of the message is prefixed, the first with the timestamp header and the
  * rest with padding of the same width, unless the line continues a
  * previous message that did not end with a newline. Blank lines are left
  * bare. The style is applied to each line separately and reset before the
- * newline, so a line never leaks color into the next one.
+ * newline, so a line never leaks color into the next one. A @tag other
+ * than UX_TAG_NONE is printed as "NAME: " ahead of the message text.
  */
-static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, const char *fmt, va_list ap)
+static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, enum ux_tag tag,
+		      const char *fmt, va_list ap)
 {
 	const char *on = ux_style(fp, style);
 	const char *off = *on ? ux_style(fp, UX_STYLE_RESET) : "";
@@ -128,7 +160,10 @@ static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, const char *fmt,
 	va_list aq;
 	int len;
 
-	if (!qdl_debug && !*on) {
+	if ((size_t)tag >= ARRAY_SIZE(ux_tags))
+		tag = UX_TAG_NONE;
+
+	if (!qdl_debug && !*on && tag == UX_TAG_NONE) {
 		vfprintf(fp, fmt, ap);
 		fflush(fp);
 		return;
@@ -156,6 +191,11 @@ static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, const char *fmt,
 				width = ux_print_prefix(fp);
 			else
 				fprintf(fp, "%*s", width, "");
+		}
+
+		if (tag != UX_TAG_NONE) {
+			ux_print_tag(fp, tag);
+			tag = UX_TAG_NONE;
 		}
 
 		text_len = end - line - (end[-1] == '\n');
@@ -384,14 +424,29 @@ void ux_init(void)
 
 #endif
 
+/* Print one message of a level that is shown unconditionally or in debug */
+static void ux_vmsg(FILE *fp, bool *bol, enum ux_style style, enum ux_tag tag,
+		    const char *fmt, va_list ap)
+{
+	ux_clear_line();
+	ux_vprint(fp, bol, style, tag, fmt, ap);
+}
+
 void ux_err(const char *fmt, ...)
 {
 	va_list ap;
 
-	ux_clear_line();
+	va_start(ap, fmt);
+	ux_vmsg(stderr, &ux_stderr_bol, UX_STYLE_ERROR, UX_TAG_NONE, fmt, ap);
+	va_end(ap);
+}
+
+void ux_err_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vprint(stderr, &ux_stderr_bol, UX_STYLE_ERROR, fmt, ap);
+	ux_vmsg(stderr, &ux_stderr_bol, UX_STYLE_ERROR, tag, fmt, ap);
 	va_end(ap);
 }
 
@@ -400,19 +455,19 @@ static void ux_report(enum ux_style style, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vprint(stderr, &ux_stderr_bol, style, fmt, ap);
+	ux_vprint(stderr, &ux_stderr_bol, style, UX_TAG_NONE, fmt, ap);
 	va_end(ap);
 }
 
 /* Keep the err(3)/warn(3) text and errno semantics in the shared logger. */
-static void ux_vreport(enum ux_style style, int error, bool with_errno,
-		       const char *fmt, va_list ap)
+static void ux_vreport(enum ux_style style, enum ux_tag tag, int error,
+		       bool with_errno, const char *fmt, va_list ap)
 {
 	ux_clear_line();
 
 	ux_report(style, "%s: ", ux_progname());
 	if (fmt) {
-		ux_vprint(stderr, &ux_stderr_bol, style, fmt, ap);
+		ux_vprint(stderr, &ux_stderr_bol, style, tag, fmt, ap);
 		if (with_errno)
 			ux_report(style, ": ");
 	}
@@ -428,7 +483,17 @@ void ux_warn(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(UX_STYLE_WARNING, error, true, fmt, ap);
+	ux_vreport(UX_STYLE_WARNING, UX_TAG_NONE, error, true, fmt, ap);
+	va_end(ap);
+}
+
+void ux_warn_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	int error = errno;
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vreport(UX_STYLE_WARNING, tag, error, true, fmt, ap);
 	va_end(ap);
 }
 
@@ -438,7 +503,7 @@ void ux_warnx(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(UX_STYLE_WARNING, error, false, fmt, ap);
+	ux_vreport(UX_STYLE_WARNING, UX_TAG_NONE, error, false, fmt, ap);
 	va_end(ap);
 }
 
@@ -448,7 +513,7 @@ void ux_die(int status, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(UX_STYLE_ERROR, error, true, fmt, ap);
+	ux_vreport(UX_STYLE_ERROR, UX_TAG_NONE, error, true, fmt, ap);
 	va_end(ap);
 	exit(status);
 }
@@ -459,7 +524,7 @@ void ux_diex(int status, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(UX_STYLE_ERROR, error, false, fmt, ap);
+	ux_vreport(UX_STYLE_ERROR, UX_TAG_NONE, error, false, fmt, ap);
 	va_end(ap);
 	exit(status);
 }
@@ -468,10 +533,17 @@ void ux_info(const char *fmt, ...)
 {
 	va_list ap;
 
-	ux_clear_line();
+	va_start(ap, fmt);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, UX_TAG_NONE, fmt, ap);
+	va_end(ap);
+}
+
+void ux_info_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vprint(stdout, &ux_stdout_bol, UX_STYLE_NONE, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, tag, fmt, ap);
 	va_end(ap);
 }
 
@@ -482,10 +554,20 @@ void ux_log(const char *fmt, ...)
 	if (!qdl_debug)
 		return;
 
-	ux_clear_line();
+	va_start(ap, fmt);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_LOG, UX_TAG_NONE, fmt, ap);
+	va_end(ap);
+}
+
+void ux_log_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	va_list ap;
+
+	if (!qdl_debug)
+		return;
 
 	va_start(ap, fmt);
-	ux_vprint(stdout, &ux_stdout_bol, UX_STYLE_LOG, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_LOG, tag, fmt, ap);
 	va_end(ap);
 }
 
@@ -496,10 +578,20 @@ void ux_debug(const char *fmt, ...)
 	if (!qdl_debug)
 		return;
 
-	ux_clear_line();
+	va_start(ap, fmt);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, UX_TAG_NONE, fmt, ap);
+	va_end(ap);
+}
+
+void ux_debug_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	va_list ap;
+
+	if (!qdl_debug)
+		return;
 
 	va_start(ap, fmt);
-	ux_vprint(stdout, &ux_stdout_bol, UX_STYLE_NONE, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, tag, fmt, ap);
 	va_end(ap);
 }
 

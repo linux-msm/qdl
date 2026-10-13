@@ -29,7 +29,17 @@ static void print_to(FILE *fp, bool *bol, enum ux_style style, const char *fmt, 
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vprint(fp, bol, style, fmt, ap);
+	ux_vprint(fp, bol, style, UX_TAG_NONE, fmt, ap);
+	va_end(ap);
+}
+
+static void print_tagged(FILE *fp, bool *bol, enum ux_style style, enum ux_tag tag,
+			 const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vprint(fp, bol, style, tag, fmt, ap);
 	va_end(ap);
 }
 
@@ -159,6 +169,50 @@ static void test_debug_prefix_alignment(void **state)
 	assert_string_equal(second + strlen(pad), "second\n");
 }
 
+static void test_tag_plain(void **state)
+{
+	bool bol = true;
+	FILE *fp = open_out();
+	(void)state;
+
+	/* Without color the tag is the same text the messages used to carry. */
+	print_tagged(fp, &bol, UX_STYLE_ERROR, UX_TAG_SAHARA, "bad packet %d\n", 3);
+	print_tagged(fp, &bol, UX_STYLE_NONE, UX_TAG_FIREHOSE_RAW, "WRITE: x\n");
+	assert_string_equal(read_out(fp),
+			    "SAHARA: bad packet 3\n"
+			    "FIREHOSE_RAW: WRITE: x\n");
+}
+
+static void test_tag_colored_once(void **state)
+{
+	bool bol = true;
+	FILE *fp = open_out();
+	(void)state;
+
+	/* The tag keeps its own color and leads only the first line. */
+	ux_set_color_mode(UX_COLOR_ALWAYS);
+	print_tagged(fp, &bol, UX_STYLE_ERROR, UX_TAG_VIP, "one\ntwo\n");
+	assert_string_equal(read_out(fp),
+			    "\033[1;32mVIP:\033[0m \033[31mone\033[0m\n"
+			    "\033[31mtwo\033[0m\n");
+}
+
+static void test_tag_after_debug_prefix(void **state)
+{
+	bool bol = true;
+	FILE *fp = open_out();
+	char *out;
+	(void)state;
+
+	qdl_debug = true;
+	print_tagged(fp, &bol, UX_STYLE_NONE, UX_TAG_USB, "chunk\n");
+	out = read_out(fp);
+
+	/* "HH:MM:SS.mmm USB: chunk" */
+	assert_int_equal(out[12], ' ');
+	assert_string_equal(out + 13, "USB: chunk\n");
+}
+
 int main(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -168,6 +222,9 @@ int main(void)
 		cmocka_unit_test_setup(test_always_continuation, setup),
 		cmocka_unit_test_setup(test_no_style_stays_plain, setup),
 		cmocka_unit_test_setup(test_debug_prefix_alignment, setup),
+		cmocka_unit_test_setup(test_tag_plain, setup),
+		cmocka_unit_test_setup(test_tag_colored_once, setup),
+		cmocka_unit_test_setup(test_tag_after_debug_prefix, setup),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
