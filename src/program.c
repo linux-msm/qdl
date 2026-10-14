@@ -88,20 +88,20 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 			return 1;
 		}
 
-		ux_err("[PROGRAM] Unable to parse sparse header at %s...failed\n",
-		       program->filename);
+		ux_err_tag(UX_TAG_SPARSE, "Unable to parse sparse header at %s...failed\n",
+			   program->filename);
 		return -1;
 	}
 
 	if (program->sector_size == 0) {
-		ux_err("[PROGRAM] SECTOR_SIZE_IN_BYTES is zero for sparse image %s\n",
-		       program->filename);
+		ux_err_tag(UX_TAG_SPARSE, "SECTOR_SIZE_IN_BYTES is zero for sparse image %s\n",
+			   program->filename);
 		return -1;
 	}
 
 	if (!program->start_sector) {
-		ux_err("[PROGRAM] missing start_sector for sparse image %s\n",
-		       program->filename);
+		ux_err_tag(UX_TAG_SPARSE, "missing start_sector for sparse image %s\n",
+			   program->filename);
 		return -1;
 	}
 
@@ -111,8 +111,8 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 						       &sparse_fill_value,
 						       &sparse_offset);
 		if (chunk_type < 0) {
-			ux_err("[PROGRAM] Unable to parse sparse chunk %i at %s...failed\n",
-			       i, program->filename);
+			ux_err_tag(UX_TAG_SPARSE, "Unable to parse sparse chunk %i at %s...failed\n",
+				   i, program->filename);
 			return -1;
 		}
 
@@ -120,8 +120,8 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 			continue;
 
 		if (chunk_size % program->sector_size != 0) {
-			ux_err("[SPARSE] File chunk #%u size %" PRIu64 " is not a sector-multiple\n",
-			       i, chunk_size);
+			ux_err_tag(UX_TAG_SPARSE, "File chunk #%u size %" PRIu64 " is not a sector-multiple\n",
+				   i, chunk_size);
 			return -1;
 		}
 
@@ -130,8 +130,8 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 			 * Perhaps the programmer can handle larger "num_sectors"?
 			 * Let's cap it for now, it's big enough for now...
 			 */
-			ux_err("[SPARSE] File chunk #%u size %" PRIu64 " is too large\n",
-			       i, chunk_size);
+			ux_err_tag(UX_TAG_SPARSE, "File chunk #%u size %" PRIu64 " is too large\n",
+				   i, chunk_size);
 			return -1;
 		}
 

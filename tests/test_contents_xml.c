@@ -48,6 +48,12 @@ void ux_debug(const char *fmt, ...)
 	(void)fmt;
 }
 
+void ux_info_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	(void)tag;
+	(void)fmt;
+}
+
 enum qdl_storage_type decode_storage_type(const char *storage)
 {
 	if (!strcmp(storage, "emmc"))

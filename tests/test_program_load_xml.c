@@ -160,6 +160,12 @@ void ux_err(const char *fmt, ...)
 	(void)fmt;
 }
 
+void ux_err_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	(void)tag;
+	(void)fmt;
+}
+
 void ux_info(const char *fmt, ...)
 {
 	(void)fmt;

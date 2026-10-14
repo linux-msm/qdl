@@ -265,6 +265,30 @@ int decode_backend(const char *name, enum QDL_DEVICE_TYPE *out)
 }
 
 /*
+ * Decode the value of --color. A bare --color (@name is NULL) means
+ * "always", matching the convention of git, grep and ls.
+ */
+int decode_color_mode(const char *name, enum ux_color_mode *out)
+{
+	if (!name || !strcmp(name, "always")) {
+		*out = UX_COLOR_ALWAYS;
+		return 0;
+	}
+
+	if (!strcmp(name, "auto")) {
+		*out = UX_COLOR_AUTO;
+		return 0;
+	}
+
+	if (!strcmp(name, "never")) {
+		*out = UX_COLOR_NEVER;
+		return 0;
+	}
+
+	return -1;
+}
+
+/*
  * Split a "<file>" or "<file>::<selector>" argument into its filename and
  * optional selector. Returns a newly allocated filename (which the caller
  * frees) with @specifier pointing into it (or NULL when absent), or NULL on

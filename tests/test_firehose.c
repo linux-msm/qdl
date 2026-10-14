@@ -23,6 +23,7 @@
 
 void ux_err(const char *fmt, ...) { (void)fmt; }
 void ux_log(const char *fmt, ...) { (void)fmt; }
+void ux_log_tag(enum ux_tag tag, const char *fmt, ...) { (void)tag; (void)fmt; }
 
 static xmlNode *mk(const char *name)
 {

@@ -253,7 +253,7 @@ int ufs_provisioning_execute(struct ufs_provisioning *ufs, struct qdl_device *qd
 	if (ufs->common->bConfigDescrLock) {
 		int i;
 
-		ux_info("WARNING: irreversible provisioning will start in 5s");
+		ux_warnx("irreversible provisioning will start in 5s");
 		for (i = 5; i > 0; i--) {
 			ux_info(".\a");
 			fflush(stdout);

@@ -221,6 +221,31 @@ static void test_decode_backend(void **state)
 	assert_int_equal(decode_backend("bogus", &t), -1);
 }
 
+/* --- decode_color_mode --- */
+
+static void test_decode_color_mode(void **state)
+{
+	enum ux_color_mode m = UX_COLOR_NEVER;
+	(void)state;
+
+	assert_int_equal(decode_color_mode("auto", &m), 0);
+	assert_int_equal(m, UX_COLOR_AUTO);
+
+	assert_int_equal(decode_color_mode("never", &m), 0);
+	assert_int_equal(m, UX_COLOR_NEVER);
+
+	assert_int_equal(decode_color_mode("always", &m), 0);
+	assert_int_equal(m, UX_COLOR_ALWAYS);
+
+	/* A bare --color (NULL value) means always. */
+	m = UX_COLOR_NEVER;
+	assert_int_equal(decode_color_mode(NULL, &m), 0);
+	assert_int_equal(m, UX_COLOR_ALWAYS);
+
+	assert_int_equal(decode_color_mode("bogus", &m), -1);
+	assert_int_equal(decode_color_mode("", &m), -1);
+}
+
 /* --- qdl_split_specifier --- */
 
 static void test_split_specifier(void **state)
@@ -262,6 +287,7 @@ int main(void)
 		cmocka_unit_test(test_storage_type_roundtrip),
 		cmocka_unit_test(test_attr_accessors),
 		cmocka_unit_test(test_decode_backend),
+		cmocka_unit_test(test_decode_color_mode),
 		cmocka_unit_test(test_split_specifier),
 	};
 

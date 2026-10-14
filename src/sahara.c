@@ -303,9 +303,9 @@ static int sahara_send_hello_resp(struct qdl_device *qdl, unsigned int version,
 	resp.hello_resp.status = SAHARA_SUCCESS;
 	resp.hello_resp.mode = mode;
 
-	ux_debug("SAHARA: HELLO_RESP version: 0x%x compatible: 0x%x mode: %u\n",
-		 resp.hello_resp.version, resp.hello_resp.compatible,
-		 resp.hello_resp.mode);
+	ux_debug_tag(UX_TAG_SAHARA, "%s HELLO_RESP version: 0x%x compatible: 0x%x mode: %u\n",
+		     ux_direction(true), resp.hello_resp.version, resp.hello_resp.compatible,
+		     resp.hello_resp.mode);
 
 	qdl_write(qdl, &resp, resp.length, SAHARA_CMD_TIMEOUT_MS);
 	return 0;
@@ -314,13 +314,14 @@ static int sahara_send_hello_resp(struct qdl_device *qdl, unsigned int version,
 static int sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
 	if (pkt->length != SAHARA_HELLO_LENGTH) {
-		ux_err("SAHARA: unexpected HELLO packet length %u\n", pkt->length);
+		ux_err_tag(UX_TAG_SAHARA, "unexpected HELLO packet length %u\n", pkt->length);
 		sahara_send_reset(qdl);
 		return -1;
 	}
 
-	ux_debug("SAHARA: HELLO version: 0x%x compatible: 0x%x max_len: %d mode: %d\n",
-		 pkt->hello_req.version, pkt->hello_req.compatible, pkt->hello_req.max_len, pkt->hello_req.mode);
+	ux_debug_tag(UX_TAG_SAHARA, "%s HELLO version: 0x%x compatible: 0x%x max_len: %d mode: %d\n",
+		     ux_direction(false), pkt->hello_req.version, pkt->hello_req.compatible,
+		     pkt->hello_req.max_len, pkt->hello_req.mode);
 
 	return sahara_send_hello_resp(qdl, SAHARA_VERSION, pkt->hello_req.mode);
 }
@@ -335,18 +336,18 @@ static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	int ret;
 
 	if (pkt->length != SAHARA_READ_DATA_LENGTH) {
-		ux_err("SAHARA: unexpected READ_DATA packet length %u\n", pkt->length);
+		ux_err_tag(UX_TAG_SAHARA, "unexpected READ_DATA packet length %u\n", pkt->length);
 		sahara_send_reset(qdl);
 		return -1;
 	}
 
-	ux_debug("SAHARA: READ image: %d offset: 0x%x length: 0x%x\n",
-		 pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
+	ux_debug_tag(UX_TAG_SAHARA, "%s READ_DATA image: %d offset: 0x%x length: 0x%x\n",
+		     ux_direction(false), pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
 	image_idx = pkt->read_req.image;
 	if (!images || image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
-		ux_err("SAHARA: device requested unknown image id %u, ensure that all Sahara images are provided\n",
-		       image_idx);
+		ux_err_tag(UX_TAG_SAHARA, "device requested unknown image id %u, "
+			   "ensure that all Sahara images are provided\n", image_idx);
 		sahara_send_reset(qdl);
 		return -1;
 	}
@@ -356,18 +357,18 @@ static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 
 	image = &images[image_idx];
 	if (offset > image->len || len > image->len - offset) {
-		ux_err("SAHARA: device requested invalid range of image %d\n", image_idx);
+		ux_err_tag(UX_TAG_SAHARA, "device requested invalid range of image %d\n", image_idx);
 		return -1;
 	}
 
 	if (offset == 0)
-		ux_info("SAHARA: sending %s (%zu bytes)\n",
-			image->name ? image->name : "(unknown)", image->len);
+		ux_info_tag(UX_TAG_SAHARA, "sending %s (%zu bytes)\n",
+			    image->name ? image->name : "(unknown)", image->len);
 	ux_progress("%s", offset + len, image->len, image->name ? image->name : "image");
 
 	ret = qdl_write(qdl, image->ptr + offset, len, SAHARA_CMD_TIMEOUT_MS);
 	if (ret < 0 || ((size_t)ret != len)) {
-		ux_err("SAHARA: failed to write %zu bytes\n", len);
+		ux_err_tag(UX_TAG_SAHARA, "failed to write %zu bytes\n", len);
 		return -1;
 	}
 
@@ -384,18 +385,19 @@ static int sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	int ret;
 
 	if (pkt->length != SAHARA_READ_DATA64_LENGTH) {
-		ux_err("SAHARA: unexpected READ_DATA64 packet length %u\n", pkt->length);
+		ux_err_tag(UX_TAG_SAHARA, "unexpected READ_DATA64 packet length %u\n", pkt->length);
 		sahara_send_reset(qdl);
 		return -1;
 	}
 
-	ux_debug("SAHARA: READ64 image: %" PRId64 " offset: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
-		 pkt->read64_req.image, pkt->read64_req.offset, pkt->read64_req.length);
+	ux_debug_tag(UX_TAG_SAHARA, "%s READ_DATA64 image: %" PRId64 " offset: 0x%" PRIx64
+		     " length: 0x%" PRIx64 "\n", ux_direction(false), pkt->read64_req.image,
+		     pkt->read64_req.offset, pkt->read64_req.length);
 
 	image_idx = pkt->read64_req.image;
 	if (!images || image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
-		ux_err("SAHARA: device requested unknown image id %u, ensure that all Sahara images are provided\n",
-		       image_idx);
+		ux_err_tag(UX_TAG_SAHARA, "device requested unknown image id %u, "
+			   "ensure that all Sahara images are provided\n", image_idx);
 		sahara_send_reset(qdl);
 		return -1;
 	}
@@ -405,18 +407,18 @@ static int sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 
 	image = &images[image_idx];
 	if (offset > image->len || len > image->len - offset) {
-		ux_err("SAHARA: device requested invalid range of image %d\n", image_idx);
+		ux_err_tag(UX_TAG_SAHARA, "device requested invalid range of image %d\n", image_idx);
 		return -1;
 	}
 
 	if (offset == 0)
-		ux_info("SAHARA: sending %s (%zu bytes)\n",
-			image->name ? image->name : "(unknown)", image->len);
+		ux_info_tag(UX_TAG_SAHARA, "sending %s (%zu bytes)\n",
+			    image->name ? image->name : "(unknown)", image->len);
 	ux_progress("%s", offset + len, image->len, image->name ? image->name : "image");
 
 	ret = qdl_write(qdl, image->ptr + offset, len, SAHARA_CMD_TIMEOUT_MS);
 	if (ret < 0 || ((size_t)ret != len)) {
-		ux_err("SAHARA: failed to write %zu bytes\n", len);
+		ux_err_tag(UX_TAG_SAHARA, "failed to write %zu bytes\n", len);
 		return -1;
 	}
 
@@ -428,19 +430,19 @@ static int sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	struct sahara_pkt done;
 
 	if (pkt->length != SAHARA_END_OF_IMAGE_LENGTH) {
-		ux_err("SAHARA: unexpected END_OF_IMAGE packet length %u\n", pkt->length);
+		ux_err_tag(UX_TAG_SAHARA, "unexpected END_OF_IMAGE packet length %u\n", pkt->length);
 		sahara_send_reset(qdl);
 		return -1;
 	}
 
-	ux_debug("SAHARA: END OF IMAGE image: %u status: 0x%x (%s)\n",
-		 pkt->eoi.image, pkt->eoi.status,
-		 sahara_status_str(pkt->eoi.status));
+	ux_debug_tag(UX_TAG_SAHARA, "%s END_OF_IMAGE image: %u status: 0x%x (%s)\n",
+		     ux_direction(false), pkt->eoi.image, pkt->eoi.status,
+		     sahara_status_str(pkt->eoi.status));
 
 	if (pkt->eoi.status != 0) {
-		ux_err("SAHARA: received non-successful end-of-image result: "
-		       "0x%x (%s)\n", pkt->eoi.status,
-		       sahara_status_str(pkt->eoi.status));
+		ux_err_tag(UX_TAG_SAHARA, "received non-successful end-of-image result: "
+			   "0x%x (%s)\n", pkt->eoi.status,
+			   sahara_status_str(pkt->eoi.status));
 		return -1;
 	}
 
@@ -453,15 +455,16 @@ static int sahara_eoi(struct qdl_device *qdl, struct sahara_pkt *pkt)
 static int sahara_done(struct qdl_device *qdl, struct sahara_pkt *pkt)
 {
 	if (pkt->length != SAHARA_DONE_RESP_LENGTH) {
-		ux_err("SAHARA: unexpected DONE_RESP packet length %u\n", pkt->length);
+		ux_err_tag(UX_TAG_SAHARA, "unexpected DONE_RESP packet length %u\n", pkt->length);
 		sahara_send_reset(qdl);
 		return -1;
 	}
 
 	// 0 == PENDING, 1 == COMPLETE.  Device expects more images if
 	// PENDING is set in status.
-	ux_debug("SAHARA: DONE status: %u (%s)\n", pkt->done_resp.status,
-		 pkt->done_resp.status ? "complete" : "pending");
+	ux_debug_tag(UX_TAG_SAHARA, "%s DONE status: %u (%s)\n", ux_direction(false),
+		     pkt->done_resp.status,
+		     pkt->done_resp.status ? "complete" : "pending");
 
 	return pkt->done_resp.status;
 }
@@ -492,7 +495,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 	 * device cannot direct the dump outside of ramdump_path.
 	 */
 	if (region.filename[0] == '\0' || strpbrk(region.filename, "/\\")) {
-		ux_err("SAHARA: device provided unsafe ramdump region filename\n");
+		ux_err_tag(UX_TAG_SAHARA, "device provided unsafe ramdump region filename\n");
 		free(buf);
 		return -1;
 	}
@@ -501,7 +504,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 
 	fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 	if (fd < 0) {
-		ux_warn("SAHARA: failed to open \"%s\"", region.filename);
+		ux_warn_tag(UX_TAG_SAHARA, "failed to open \"%s\"", region.filename);
 		free(buf);
 		return -1;
 	}
@@ -516,7 +519,7 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 		read_req.debug64_req.length = remain;
 		n = qdl_write(qdl, &read_req, read_req.length, SAHARA_CMD_TIMEOUT_MS);
 		if (n < 0) {
-			ux_warn("SAHARA: failed to send ramdump read request");
+			ux_warn_tag(UX_TAG_SAHARA, "failed to send ramdump read request");
 			goto out;
 		}
 
@@ -525,14 +528,15 @@ static ssize_t sahara_debug64_one(struct qdl_device *qdl,
 			buf_offset = 0;
 			n = qdl_read(qdl, buf, DEBUG_BLOCK_SIZE, 30000);
 			if (n < 0) {
-				ux_warn("SAHARA: failed to read ramdump chunk");
+				ux_warn_tag(UX_TAG_SAHARA, "failed to read ramdump chunk");
 				goto out;
 			}
 
 			while (buf_offset < (size_t)n) {
 				written = write(fd, buf + buf_offset, n - buf_offset);
 				if (written <= 0) {
-					ux_warn("SAHARA: failed to write ramdump chunk to \"%s\"", region.filename);
+					ux_warn_tag(UX_TAG_SAHARA, "failed to write ramdump chunk to \"%s\"",
+						    region.filename);
 					goto out;
 				}
 				buf_offset += written;
@@ -704,7 +708,7 @@ static void sahara_build_minidump_elf(const char *ramdump_path, const char *filt
 	snprintf(path, sizeof(path), "%s/%s", ramdump_path, table[kelf_idx].filename);
 	in = fopen(path, "rb");
 	if (!in) {
-		ux_err("SAHARA: minidump: failed to open KELF file %s\n", path);
+		ux_err_tag(UX_TAG_MINIDUMP, "failed to open KELF file %s\n", path);
 		return;
 	}
 
@@ -713,7 +717,7 @@ static void sahara_build_minidump_elf(const char *ramdump_path, const char *filt
 	fseek(in, 0, SEEK_END);
 	kelf_size_l = ftell(in);
 	if (kelf_size_l <= 0) {
-		ux_err("SAHARA: minidump: failed to get KELF file size\n");
+		ux_err_tag(UX_TAG_MINIDUMP, "failed to get KELF file size\n");
 		fclose(in);
 		return;
 	}
@@ -727,7 +731,7 @@ static void sahara_build_minidump_elf(const char *ramdump_path, const char *filt
 	}
 
 	if (fread(kelf_buf, 1, kelf_size, in) != kelf_size) {
-		ux_err("SAHARA: minidump: failed to read KELF file\n");
+		ux_err_tag(UX_TAG_MINIDUMP, "failed to read KELF file\n");
 		fclose(in);
 		goto out_free;
 	}
@@ -740,7 +744,7 @@ static void sahara_build_minidump_elf(const char *ramdump_path, const char *filt
 	    ehdr->e_phentsize != sizeof(Elf64_Phdr) ||
 	    ehdr->e_phoff > kelf_size ||
 	    (size_t)ehdr->e_phnum * sizeof(Elf64_Phdr) > kelf_size - ehdr->e_phoff) {
-		ux_err("SAHARA: minidump: KELF does not look like a 64-bit ELF core file\n");
+		ux_err_tag(UX_TAG_MINIDUMP, "KELF does not look like a 64-bit ELF core file\n");
 		goto out_free;
 	}
 
@@ -774,13 +778,13 @@ static void sahara_build_minidump_elf(const char *ramdump_path, const char *filt
 	snprintf(out_path, sizeof(out_path), "%s/minidump.elf", ramdump_path);
 	out = fopen(out_path, "wb");
 	if (!out) {
-		ux_err("SAHARA: minidump: failed to create %s\n", out_path);
+		ux_err_tag(UX_TAG_MINIDUMP, "failed to create %s\n", out_path);
 		goto out_free;
 	}
 
 	/* 1. Write KELF: provides the ELF header, phdrs, and partial PT_NOTE */
 	if (fwrite(kelf_buf, 1, kelf_size, out) != kelf_size) {
-		ux_err("SAHARA: minidump: failed to write KELF to output\n");
+		ux_err_tag(UX_TAG_MINIDUMP, "failed to write KELF to output\n");
 		goto out_close;
 	}
 
@@ -789,7 +793,8 @@ static void sahara_build_minidump_elf(const char *ramdump_path, const char *filt
 		snprintf(path, sizeof(path), "%s/%s",
 			 ramdump_path, table[vmcore_idx].filename);
 		if (copy_file_to(out, path) < 0)
-			ux_err("SAHARA: minidump: vmcoreinfo region missing, crash may not load correctly\n");
+			ux_err_tag(UX_TAG_MINIDUMP, "vmcoreinfo region missing, "
+				   "crash may not load correctly\n");
 	}
 
 	/*
@@ -810,8 +815,8 @@ static void sahara_build_minidump_elf(const char *ramdump_path, const char *filt
 				 ramdump_path, table[i].filename);
 			written = copy_file_to(out, path);
 			if (written < 0) {
-				ux_err("SAHARA: minidump: region %s missing, skipping\n",
-				       table[i].filename);
+				ux_err_tag(UX_TAG_MINIDUMP, "region %s missing, skipping\n",
+					   table[i].filename);
 				matched = true;
 				break;
 			}
@@ -819,8 +824,8 @@ static void sahara_build_minidump_elf(const char *ramdump_path, const char *filt
 			/* Zero-pad to p_filesz to keep offsets aligned */
 			if ((size_t)written < phdrs[j].p_filesz &&
 			    write_zeroes(out, phdrs[j].p_filesz - (size_t)written)) {
-				ux_err("SAHARA: minidump: failed to pad region %s\n",
-				       table[i].filename);
+				ux_err_tag(UX_TAG_MINIDUMP, "failed to pad region %s\n",
+					   table[i].filename);
 				goto out_close;
 			}
 
@@ -829,11 +834,11 @@ static void sahara_build_minidump_elf(const char *ramdump_path, const char *filt
 		}
 
 		if (!matched)
-			ux_err("SAHARA: minidump: no region found for PT_LOAD at paddr 0x%"
-			       PRIx64 "\n", phdrs[j].p_paddr);
+			ux_err_tag(UX_TAG_MINIDUMP, "no region found for PT_LOAD at paddr 0x%"
+				   PRIx64 "\n", phdrs[j].p_paddr);
 	}
 
-	ux_info("SAHARA: minidump: ELF written to %s\n", out_path);
+	ux_info_tag(UX_TAG_MINIDUMP, "ELF written to %s\n", out_path);
 
 out_close:
 	fclose(out);
@@ -851,13 +856,13 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 	size_t i;
 
 	if (pkt->length != SAHARA_MEM_DEBUG64_LENGTH) {
-		ux_err("SAHARA: unexpected MEM_DEBUG64 packet length %u\n", pkt->length);
+		ux_err_tag(UX_TAG_SAHARA, "unexpected MEM_DEBUG64 packet length %u\n", pkt->length);
 		sahara_send_reset(qdl);
 		return;
 	}
 
-	ux_debug("SAHARA: DEBUG64 address: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
-		 pkt->debug64_req.addr, pkt->debug64_req.length);
+	ux_debug_tag(UX_TAG_SAHARA, "%s MEMORY_DEBUG64 address: 0x%" PRIx64 " length: 0x%" PRIx64 "\n",
+		     ux_direction(false), pkt->debug64_req.addr, pkt->debug64_req.length);
 
 	read_req.cmd = SAHARA_MEM_READ64_CMD;
 	read_req.length = SAHARA_MEM_READ64_LENGTH;
@@ -869,12 +874,12 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		return;
 
 	if (read_req.debug64_req.length > 64 * 1024) {
-		ux_err("SAHARA: DEBUG64 table length 0x%" PRIx64 " exceeds limit\n",
-		       read_req.debug64_req.length);
+		ux_err_tag(UX_TAG_SAHARA, "DEBUG64 table length 0x%" PRIx64 " exceeds limit\n",
+			   read_req.debug64_req.length);
 		return;
 	}
 
-	table = malloc(read_req.debug64_req.length);
+	table = calloc(1, read_req.debug64_req.length);
 	if (!table)
 		return;
 
@@ -895,20 +900,20 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 
 	for (i = 0; i < num_regions; i++) {
 		if (sahara_debug64_filter(table[i].filename, filter)) {
-			ux_info("SAHARA: %s skipped per filter\n", table[i].filename);
+			ux_info_tag(UX_TAG_SAHARA, "%s skipped per filter\n", table[i].filename);
 			continue;
 		}
 
-		ux_debug("SAHARA: %-2d: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%"
-			 PRIx64 " region: %s filename: %s\n",
-			 i, table[i].type, table[i].addr, table[i].length,
-			 table[i].region, table[i].filename);
+		ux_debug_tag(UX_TAG_SAHARA, "%-2zu: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%"
+			     PRIx64 " region: %s filename: %s\n",
+			     i, table[i].type, table[i].addr, table[i].length,
+			     table[i].region, table[i].filename);
 
 		n = sahara_debug64_one(qdl, table[i], ramdump_path);
 		if (n < 0)
 			break;
 
-		ux_info("SAHARA: %s dumped successfully\n", table[i].filename);
+		ux_info_tag(UX_TAG_SAHARA, "%s dumped successfully\n", table[i].filename);
 	}
 
 	sahara_build_minidump_elf(ramdump_path, filter, table, num_regions);
@@ -942,10 +947,10 @@ static void sahara_debug_list_images(const struct sahara_image *images)
 {
 	int i;
 
-	ux_debug("SAHARA: images:\n");
+	ux_debug_tag(UX_TAG_SAHARA, "images:\n");
 	for (i = 0; i < MAPPING_SZ; i++) {
 		if (images[i].ptr)
-			ux_debug("SAHARA:   %2d: %s\n", i, images[i].name ? : "(unknown)");
+			ux_debug_tag(UX_TAG_SAHARA, "  %2d: %s\n", i, images[i].name ? : "(unknown)");
 	}
 }
 
@@ -1056,14 +1061,14 @@ static int sahara_command_exec(struct qdl_device *qdl, uint32_t client_cmd,
 
 	resp = (struct sahara_pkt *)rxbuf;
 	if ((size_t)n < 4 * sizeof(uint32_t) || resp->cmd != SAHARA_EXECUTE_RESP_CMD) {
-		ux_debug("SAHARA: unexpected reply to exec cmd 0x%x\n", client_cmd);
+		ux_debug_tag(UX_TAG_SAHARA, "unexpected reply to exec cmd 0x%x\n", client_cmd);
 		return -1;
 	}
 
 	data_len = resp->exec_resp.data_length;
 	if (data_len == 0 || data_len > buf_len) {
-		ux_debug("SAHARA: exec cmd 0x%x reported invalid length %u\n",
-			 client_cmd, data_len);
+		ux_debug_tag(UX_TAG_SAHARA, "exec cmd 0x%x reported invalid length %u\n",
+			     client_cmd, data_len);
 		return -1;
 	}
 
@@ -1140,7 +1145,7 @@ static int sahara_command_info(struct qdl_device *qdl, unsigned int version)
 	}
 
 	if (!have_serial && !have_hwid && !pkhash) {
-		ux_err("SAHARA: device did not return any chip identity information\n");
+		ux_err_tag(UX_TAG_SAHARA, "device did not return any chip identity information\n");
 		return -1;
 	}
 
@@ -1190,7 +1195,8 @@ int sahara_chipinfo(struct qdl_device *qdl)
 
 	/* A Firehose programmer is already running; chip info needs Sahara */
 	if (n >= 5 && !memcmp(buf, "<?xml", 5)) {
-		ux_err("SAHARA: device is already in Firehose mode; chip info is only available via Sahara\n");
+		ux_err_tag(UX_TAG_SAHARA, "device is already in Firehose mode; "
+			   "chip info is only available via Sahara\n");
 		return -1;
 	}
 
@@ -1202,39 +1208,39 @@ int sahara_chipinfo(struct qdl_device *qdl)
 		 */
 		if (n != -ETIMEDOUT ||
 		    (qdl->dev_type != QDL_DEVICE_QUD && qdl->dev_type != QDL_DEVICE_AUTO)) {
-			ux_err("SAHARA: failed to read HELLO from device\n");
+			ux_err_tag(UX_TAG_SAHARA, "failed to read HELLO from device\n");
 			return -1;
 		}
 		sahara_send_hello_resp(qdl, SAHARA_VERSION, SAHARA_MODE_COMMAND);
 	} else {
 		pkt = (struct sahara_pkt *)buf;
 		if ((uint32_t)n != pkt->length || pkt->cmd != SAHARA_HELLO_CMD) {
-			ux_err("SAHARA: unexpected packet 0x%x while waiting for HELLO\n",
-			       pkt->cmd);
+			ux_err_tag(UX_TAG_SAHARA, "unexpected packet 0x%x while waiting for HELLO\n",
+				   pkt->cmd);
 			return -1;
 		}
 
 		version = pkt->hello_req.version;
-		ux_debug("SAHARA: HELLO version %u mode %u\n",
-			 version, pkt->hello_req.mode);
+		ux_debug_tag(UX_TAG_SAHARA, "%s HELLO version %u mode %u\n",
+			     ux_direction(false), version, pkt->hello_req.mode);
 		sahara_send_hello_resp(qdl, version, SAHARA_MODE_COMMAND);
 	}
 
 	n = qdl_read(qdl, buf, sizeof(buf), SAHARA_CMD_TIMEOUT_MS);
 	if (n < 0) {
-		ux_err("SAHARA: no CMD_READY received; device may not support command mode\n");
+		ux_err_tag(UX_TAG_SAHARA, "no CMD_READY received; device may not support command mode\n");
 		return -1;
 	}
 
 	pkt = (struct sahara_pkt *)buf;
 	if (pkt->cmd != SAHARA_CMD_READY_CMD) {
 		if (pkt->cmd == SAHARA_END_OF_IMAGE_CMD)
-			ux_err("SAHARA: device rejected command mode: "
-			       "end-of-image status 0x%x (%s)\n",
-			       pkt->eoi.status, sahara_status_str(pkt->eoi.status));
+			ux_err_tag(UX_TAG_SAHARA, "device rejected command mode: "
+				   "end-of-image status 0x%x (%s)\n",
+				   pkt->eoi.status, sahara_status_str(pkt->eoi.status));
 		else
-			ux_err("SAHARA: unexpected packet 0x%x while entering command mode\n",
-			       pkt->cmd);
+			ux_err_tag(UX_TAG_SAHARA, "unexpected packet 0x%x while entering command mode\n",
+				   pkt->cmd);
 		return -1;
 	}
 
@@ -1277,7 +1283,7 @@ int sahara_device_reset(struct qdl_device *qdl)
 
 	if (n < 0) {
 		if (n != -ETIMEDOUT) {
-			ux_err("SAHARA: failed to read HELLO from device\n");
+			ux_err_tag(UX_TAG_SAHARA, "failed to read HELLO from device\n");
 			return -1;
 		}
 
@@ -1297,8 +1303,8 @@ int sahara_device_reset(struct qdl_device *qdl)
 	} else {
 		pkt = (struct sahara_pkt *)buf;
 		if ((uint32_t)n == pkt->length && pkt->cmd == SAHARA_HELLO_CMD) {
-			ux_debug("SAHARA: HELLO version %u mode %u\n",
-				 pkt->hello_req.version, pkt->hello_req.mode);
+			ux_debug_tag(UX_TAG_SAHARA, "%s HELLO version %u mode %u\n",
+				     ux_direction(false), pkt->hello_req.version, pkt->hello_req.mode);
 
 			/*
 			 * The target services a reset only in states where it
@@ -1318,7 +1324,7 @@ int sahara_device_reset(struct qdl_device *qdl)
 				n = qdl_read(qdl, buf, sizeof(buf),
 					     SAHARA_CMD_TIMEOUT_MS);
 				if (n < 0 || pkt->cmd != SAHARA_CMD_READY_CMD)
-					ux_debug("SAHARA: no CMD_READY after command mode request\n");
+					ux_debug_tag(UX_TAG_SAHARA, "no CMD_READY after command mode request\n");
 			}
 		}
 		/* On any other packet, proceed straight to the reset */
@@ -1351,7 +1357,7 @@ int sahara_device_reset(struct qdl_device *qdl)
 
 		pkt = (struct sahara_pkt *)buf;
 		if (pkt->cmd == SAHARA_RESET_RESP_CMD) {
-			ux_debug("SAHARA: reset acknowledged\n");
+			ux_debug_tag(UX_TAG_SAHARA, "reset acknowledged\n");
 			break;
 		}
 
@@ -1360,9 +1366,9 @@ int sahara_device_reset(struct qdl_device *qdl)
 		 * transfer packet carrying the error status.
 		 */
 		if (pkt->cmd == SAHARA_END_OF_IMAGE_CMD) {
-			ux_err("SAHARA: device rejected the reset request: "
-			       "end-of-image status 0x%x (%s)\n",
-			       pkt->eoi.status, sahara_status_str(pkt->eoi.status));
+			ux_err_tag(UX_TAG_SAHARA, "device rejected the reset request: "
+				   "end-of-image status 0x%x (%s)\n",
+				   pkt->eoi.status, sahara_status_str(pkt->eoi.status));
 			return -1;
 		}
 
@@ -1370,7 +1376,7 @@ int sahara_device_reset(struct qdl_device *qdl)
 	}
 
 	if (i == SAHARA_RESET_RETRIES) {
-		ux_err("SAHARA: no reset response from device\n");
+		ux_err_tag(UX_TAG_SAHARA, "no reset response from device\n");
 		return -1;
 	}
 
@@ -1384,16 +1390,18 @@ int sahara_device_reset(struct qdl_device *qdl)
 	 */
 	n = qdl_read(qdl, buf, sizeof(buf), SAHARA_RESET_VERIFY_TIMEOUT_MS);
 	if (n >= 0 || n == -ETIMEDOUT) {
-		ux_err("SAHARA: device acknowledged the reset but did not go down; power cycle it or reset through a Firehose programmer: qdl <programmer> reset\n");
+		ux_err_tag(UX_TAG_SAHARA, "device acknowledged the reset but did not go down; "
+			   "power cycle it or reset through a Firehose programmer: "
+			   "qdl <programmer> reset\n");
 		return -1;
 	}
 
-	ux_info("SAHARA: device reset\n");
+	ux_info_tag(UX_TAG_SAHARA, "device reset\n");
 
 	return 0;
 
 firehose:
-	ux_info("SAHARA: Firehose programmer is running\n");
+	ux_info_tag(UX_TAG_SAHARA, "Firehose programmer is running\n");
 
 	return 1;
 }
@@ -1444,23 +1452,24 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 					sahara_send_hello_resp(qdl, SAHARA_VERSION, 0);
 					continue;
 				}
-				ux_info("SAHARA: no HELLO received; assuming Firehose programmer is already running\n");
+				ux_info_tag(UX_TAG_SAHARA, "no HELLO received; "
+					    "assuming Firehose programmer is already running\n");
 				return 0;
 			}
-			ux_err("SAHARA: failed to read request from device\n");
+			ux_err_tag(UX_TAG_SAHARA, "failed to read request from device\n");
 			break;
 		}
 
 		if (first_read && detect_firehose &&
 		    n >= 5 && !memcmp(buf, "<?xml", 5)) {
-			ux_info("SAHARA: device is already in Firehose mode, skipping\n");
+			ux_info_tag(UX_TAG_SAHARA, "device is already in Firehose mode, skipping\n");
 			return 0;
 		}
 		first_read = false;
 
 		pkt = (struct sahara_pkt *)buf;
 		if ((uint32_t)n != pkt->length) {
-			ux_err("SAHARA: request length not matching received request\n");
+			ux_err_tag(UX_TAG_SAHARA, "request length not matching received request\n");
 			return -EINVAL;
 		}
 
@@ -1496,7 +1505,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 			break;
 		case SAHARA_RESET_RESP_CMD:
 			if (pkt->length != SAHARA_RESET_LENGTH) {
-				ux_err("SAHARA: unexpected RESET_RESP packet length %u\n", pkt->length);
+				ux_err_tag(UX_TAG_SAHARA, "unexpected RESET_RESP packet length %u\n", pkt->length);
 				return -1;
 			}
 			if (ramdump_path)
