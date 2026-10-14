@@ -904,7 +904,7 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 			continue;
 		}
 
-		ux_debug_tag(UX_TAG_SAHARA, "%-2d: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%"
+		ux_debug_tag(UX_TAG_SAHARA, "%-2zu: type 0x%" PRIx64 " address: 0x%" PRIx64 " length: 0x%"
 			     PRIx64 " region: %s filename: %s\n",
 			     i, table[i].type, table[i].addr, table[i].length,
 			     table[i].region, table[i].filename);
