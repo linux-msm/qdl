@@ -879,7 +879,7 @@ static void sahara_debug64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		return;
 	}
 
-	table = malloc(read_req.debug64_req.length);
+	table = calloc(1, read_req.debug64_req.length);
 	if (!table)
 		return;
 

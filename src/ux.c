@@ -200,7 +200,7 @@ static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, enum ux_level le
 		return;
 
 	if ((size_t)len >= sizeof(stack_buf)) {
-		buf = malloc(len + 1);
+		buf = calloc(1, len + 1);
 		if (!buf)
 			return;
 		vsnprintf(buf, len + 1, fmt, ap);
