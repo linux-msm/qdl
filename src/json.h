@@ -33,6 +33,7 @@
 #ifndef __JSON_H__
 #define __JSON_H__
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #define JSON_ERROR_SIZE 256
@@ -76,6 +77,7 @@ struct json_value *json_get_child(struct json_value *object, const char *key);
 struct json_value *json_get_element_object(struct json_value *object, unsigned int idx);
 const char *json_get_element_string(struct json_value *object, unsigned int idx);
 int json_get_number(struct json_value *object, const char *key, double *number);
+int json_get_bool(struct json_value *object, const char *key, bool *value);
 const char *json_get_string(struct json_value *object, const char *key);
 void json_free(struct json_value *value);
 
