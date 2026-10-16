@@ -804,6 +804,19 @@ const char *json_get_string(struct json_value *object, const char *key)
 	return it->u.string;
 }
 
+int json_get_bool(struct json_value *object, const char *key, bool *value)
+{
+	struct json_value *it;
+
+	it = json_get_child(object, key);
+	if (!it || (it->type != JSON_TYPE_TRUE && it->type != JSON_TYPE_FALSE))
+		return -1;
+
+	*value = it->type == JSON_TYPE_TRUE;
+
+	return 0;
+}
+
 void json_free(struct json_value *value)
 {
 	struct json_value *stack;
