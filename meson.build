@@ -96,6 +96,11 @@ qdl_exe = executable('qdl',
   install : true
 )
 
+if host_machine.system() == 'linux'
+  install_data('udev/70-qdl.rules',
+    install_dir : get_option('prefix') / 'lib' / 'udev' / 'rules.d')
+endif
+
 # --- optional nbdkit plugin ---
 # nbdkit dlopens plugins, so there is no library to link against; the plugin
 # just needs <nbdkit-plugin.h> and compiles all non-main sources into a shared
