@@ -784,39 +784,24 @@ int json_get_number(struct json_value *object, const char *key, double *number)
 {
 	struct json_value *it;
 
-	if (!object || object->type != JSON_TYPE_OBJECT)
+	it = json_get_child(object, key);
+	if (!it || it->type != JSON_TYPE_NUMBER)
 		return -1;
 
-	for (it = object->u.value; it; it = it->next) {
-		if (!strcmp(it->key, key)) {
-			if (it->type != JSON_TYPE_NUMBER)
-				return -1;
+	*number = it->u.number;
 
-			*number = it->u.number;
-			return 0;
-		}
-	}
-
-	return -1;
+	return 0;
 }
 
 const char *json_get_string(struct json_value *object, const char *key)
 {
 	struct json_value *it;
 
-	if (!object || object->type != JSON_TYPE_OBJECT)
+	it = json_get_child(object, key);
+	if (!it || it->type != JSON_TYPE_STRING)
 		return NULL;
 
-	for (it = object->u.value; it; it = it->next) {
-		if (!strcmp(it->key, key)) {
-			if (it->type != JSON_TYPE_STRING)
-				return NULL;
-
-			return it->u.string;
-		}
-	}
-
-	return NULL;
+	return it->u.string;
 }
 
 void json_free(struct json_value *value)
