@@ -819,6 +819,26 @@ const char *json_get_string(struct json_value *object, const char *key)
 	return NULL;
 }
 
+int json_get_bool(struct json_value *object, const char *key, bool *value)
+{
+	struct json_value *it;
+
+	if (!object || object->type != JSON_TYPE_OBJECT)
+		return -1;
+
+	for (it = object->u.value; it; it = it->next) {
+		if (!strcmp(it->key, key)) {
+			if (it->type != JSON_TYPE_FALSE && it->type != JSON_TYPE_TRUE)
+				return -1;
+
+			*value = it->type == JSON_TYPE_TRUE;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
 void json_free(struct json_value *value)
 {
 	struct json_value *stack;
