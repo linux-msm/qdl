@@ -148,6 +148,24 @@ if cmocka_dep.found()
       protocol: 'tap',
       env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
     )
+
+    test_sahara = executable('test_sahara',
+      sources : [
+        'test_sahara.c',
+      ],
+      dependencies : common_dep + [cmocka_dep],
+      include_directories : inc,
+      c_args : ['-ffunction-sections', '-fdata-sections'],
+      link_args : gc_sections,
+    )
+
+    test(
+      'sahara mode selection',
+      test_sahara,
+      suite: 'unit',
+      protocol: 'tap',
+      env: ['CMOCKA_MESSAGE_OUTPUT=TAP'],
+    )
   endif
 
   test_ufs = executable('test_ufs',

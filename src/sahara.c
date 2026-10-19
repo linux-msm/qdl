@@ -311,7 +311,24 @@ static int sahara_send_hello_resp(struct qdl_device *qdl, unsigned int version,
 	return 0;
 }
 
-static int sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
+static const char *sahara_mode_name(unsigned int mode)
+{
+	switch (mode) {
+	case SAHARA_MODE_IMAGE_TX_PENDING:
+		return "image transfer";
+	case SAHARA_MODE_IMAGE_TX_COMPLETE:
+		return "image transfer complete";
+	case SAHARA_MODE_MEMORY_DEBUG:
+		return "memory debug";
+	case SAHARA_MODE_COMMAND:
+		return "command";
+	default:
+		return "unknown";
+	}
+}
+
+static int sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt,
+			unsigned int expected_mode)
 {
 	if (pkt->length != SAHARA_HELLO_LENGTH) {
 		ux_err("SAHARA: unexpected HELLO packet length %u\n", pkt->length);
@@ -322,7 +339,14 @@ static int sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	ux_debug("SAHARA: HELLO version: 0x%x compatible: 0x%x max_len: %d mode: %d\n",
 		 pkt->hello_req.version, pkt->hello_req.compatible, pkt->hello_req.max_len, pkt->hello_req.mode);
 
-	return sahara_send_hello_resp(qdl, SAHARA_VERSION, pkt->hello_req.mode);
+	if (pkt->hello_req.mode != expected_mode) {
+		ux_err("Sahara mode mismatch: device is in %s mode, but %s was requested\n",
+		       sahara_mode_name(pkt->hello_req.mode),
+		       sahara_mode_name(expected_mode));
+		return -1;
+	}
+
+	return sahara_send_hello_resp(qdl, SAHARA_VERSION, expected_mode);
 }
 
 static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
@@ -1410,6 +1434,8 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	 * in ramdump mode, where Sahara is the only valid protocol.
 	 */
 	const bool detect_firehose = !ramdump_path;
+	const unsigned int mode = ramdump_path ? SAHARA_MODE_MEMORY_DEBUG :
+						 SAHARA_MODE_IMAGE_TX_PENDING;
 	bool first_read = true;
 	struct sahara_pkt *pkt;
 	char buf[4096];
@@ -1466,7 +1492,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 
 		switch (pkt->cmd) {
 		case SAHARA_HELLO_CMD:
-			if (sahara_hello(qdl, pkt) < 0)
+			if (sahara_hello(qdl, pkt, mode) < 0)
 				return -1;
 			break;
 		case SAHARA_READ_DATA_CMD:
