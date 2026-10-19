@@ -375,12 +375,12 @@ static int qud_open(struct qdl_device *qdl, const char *serial)
 	} else {
 		found = win_enumerate_qcom(matches, ARRAY_SIZE(matches));
 		if (found < 0) {
-			ux_err("qud: SetupDiGetClassDevs failed (error %lu)\n",
-			       (unsigned long)GetLastError());
+			ux_err_tag(UX_TAG_QUD, "SetupDiGetClassDevs failed (error %lu)\n",
+				   (unsigned long)GetLastError());
 			return -1;
 		}
 		if (found == 0) {
-			ux_err("qud: no Qualcomm COM ports found\n");
+			ux_err_tag(UX_TAG_QUD, "no Qualcomm COM ports found\n");
 			return -1;
 		}
 
@@ -393,8 +393,8 @@ static int qud_open(struct qdl_device *qdl, const char *serial)
 		}
 
 		if (!path) {
-			ux_err("qud: no Qualcomm device matching serial \"%s\"\n",
-			       serial);
+			ux_err_tag(UX_TAG_QUD, "no Qualcomm device matching serial \"%s\"\n",
+				   serial);
 			return -1;
 		}
 	}
@@ -402,14 +402,14 @@ static int qud_open(struct qdl_device *qdl, const char *serial)
 	h = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 0, NULL,
 			OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
 	if (h == INVALID_HANDLE_VALUE) {
-		ux_err("qud: CreateFile(%s) failed (error %lu)\n",
-		       path, (unsigned long)GetLastError());
+		ux_err_tag(UX_TAG_QUD, "CreateFile(%s) failed (error %lu)\n",
+			   path, (unsigned long)GetLastError());
 		return -1;
 	}
 
 	if (win_configure_handle(h) < 0) {
-		ux_err("qud: failed to configure %s (error %lu)\n",
-		       path, (unsigned long)GetLastError());
+		ux_err_tag(UX_TAG_QUD, "failed to configure %s (error %lu)\n",
+			   path, (unsigned long)GetLastError());
 		CloseHandle(h);
 		return -1;
 	}
@@ -417,7 +417,7 @@ static int qud_open(struct qdl_device *qdl, const char *serial)
 	qd->handle = h;
 	snprintf(qd->path, sizeof(qd->path), "%s", path);
 
-	ux_debug("qud: opened %s\n", path);
+	ux_debug_tag(UX_TAG_QUD, "opened %s\n", path);
 	return 0;
 }
 
@@ -586,8 +586,8 @@ struct qud_device_desc *qud_list(unsigned int *devices_found)
 	}
 
 	if (found > 16) {
-		ux_err("qud: %d devices present, only the first 16 will be listed\n",
-		       found);
+		ux_err_tag(UX_TAG_QUD, "%d devices present, only the first 16 will be listed\n",
+			   found);
 		found = 16;
 	}
 

@@ -129,6 +129,8 @@ err_deinit:
 static void qdl_plugin_load(void)
 {
 	ux_set_progname("nbdkit-qdl-plugin");
+	/* Diagnostics end up in nbdkit's log, never on a terminal of ours */
+	ux_set_color_mode(UX_COLOR_NEVER);
 }
 
 static void qdl_plugin_unload(void)

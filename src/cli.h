@@ -40,6 +40,7 @@ enum {
 };
 
 int qdl_parse_args(int argc, char **argv, struct qdl_opts *opts);
+int qdl_take_color_option(int *argc, char **argv);
 void print_usage(FILE *out);
 void print_version(void);
 

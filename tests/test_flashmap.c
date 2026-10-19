@@ -353,6 +353,18 @@ void ux_debug(const char *fmt, ...)
 	(void)fmt;
 }
 
+void ux_err_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	(void)tag;
+	(void)fmt;
+}
+
+void ux_debug_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	(void)tag;
+	(void)fmt;
+}
+
 void ux_progress(const char *fmt, unsigned int value, unsigned int size, ...)
 {
 	(void)fmt;

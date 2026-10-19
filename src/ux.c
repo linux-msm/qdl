@@ -9,6 +9,7 @@
 #include <string.h>
 #include <time.h>
 #ifdef _WIN32
+#include <io.h>
 #include <windows.h>
 #else
 #include <sys/ioctl.h>
@@ -47,6 +48,71 @@ static const char *ux_progname_str = "qdl";
 static bool ux_stdout_bol = true;
 static bool ux_stderr_bol = true;
 
+/* Color policy from --color, and the per-stream decision (-1: undecided) */
+static enum ux_color_mode ux_color = UX_COLOR_AUTO;
+static int ux_color_stdout = -1;
+static int ux_color_stderr = -1;
+
+/* --quiet: only results, warnings and errors are printed */
+static bool ux_quiet;
+
+static const char * const ux_styles[] = {
+	[UX_STYLE_NONE]		= "",
+	[UX_STYLE_RESET]	= "\033[0m",
+	[UX_STYLE_HEADING]	= "\033[1m",
+	[UX_STYLE_OPTION]	= "\033[1;36m",
+	[UX_STYLE_ERROR]	= "\033[31m",
+	[UX_STYLE_WARNING]	= "\033[33m",
+	[UX_STYLE_LOG]		= "\033[36m",
+	[UX_STYLE_TX]		= "\033[32m",
+	[UX_STYLE_RX]		= "\033[36m",
+	[UX_STYLE_DIM]		= "\033[2m",
+	[UX_STYLE_PROGRESS]	= "\033[32m",
+	[UX_STYLE_SUCCESS]	= "\033[32m",
+	[UX_STYLE_SKIPPED]	= "\033[34m",
+};
+
+/* Name and color of each subsystem tag */
+static const struct {
+	const char *name;
+	const char *sgr;
+} ux_tags[] = {
+	[UX_TAG_NONE]			= { NULL, "" },
+	[UX_TAG_SAHARA]			= { "SAHARA", "\033[1;35m" },
+	[UX_TAG_FIREHOSE]		= { "FIREHOSE", "\033[1;34m" },
+	[UX_TAG_FIREHOSE_RAW]	= { "FIREHOSE_RAW", "\033[34m" },
+	[UX_TAG_VIP]			= { "VIP", "\033[1;32m" },
+	[UX_TAG_USB]			= { "USB", "\033[1;36m" },
+	[UX_TAG_SPARSE]			= { "SPARSE", "\033[1m" },
+	[UX_TAG_FLASHMAP]		= { "FLASHMAP", "\033[1m" },
+	[UX_TAG_CONTENTS]		= { "CONTENTS", "\033[1m" },
+	[UX_TAG_SIM]			= { "SIM", "\033[2m" },
+	[UX_TAG_QUD]			= { "QUD", "\033[1;36m" },
+	[UX_TAG_MINIDUMP]		= { "MINIDUMP", "\033[35m" },
+};
+
+/* Severity of a message, printed as "NAME: " at the start of its line */
+enum ux_level {
+	UX_LEVEL_NONE,
+	UX_LEVEL_ERR,
+	UX_LEVEL_WARN,
+	UX_LEVEL_INFO,
+	UX_LEVEL_DEBUG,
+	UX_LEVEL_LOG,
+};
+
+static const struct {
+	const char *name;
+	const char *sgr;
+} ux_levels[] = {
+	[UX_LEVEL_NONE]		= { NULL, "" },
+	[UX_LEVEL_ERR]		= { "ERR", "\033[1;31m" },
+	[UX_LEVEL_WARN]		= { "WARN", "\033[1;33m" },
+	[UX_LEVEL_INFO]		= { "INFO", "\033[1m" },
+	[UX_LEVEL_DEBUG]	= { "DEBUG", "\033[2m" },
+	[UX_LEVEL_LOG]		= { "LOG", "\033[36m" },
+};
+
 /*
  * Levels of output:
  *
@@ -67,7 +133,9 @@ static bool ux_stderr_bol = true;
  * on the same stream without a new prefix.
  */
 
-/* Write the "<time> " prefix, return its width */
+static bool ux_color_enabled(FILE *fp);
+
+/* Write the "<time> " prefix, return its width on screen */
 static int ux_print_prefix(FILE *fp)
 {
 	const char *stamp = "00:00:00";
@@ -83,7 +151,19 @@ static int ux_print_prefix(FILE *fp)
 	if (tm && strftime(buf, sizeof(buf), "%H:%M:%S", tm))
 		stamp = buf;
 
-	return fprintf(fp, "%s.%03ld ", stamp, (long)(tv.tv_usec / 1000));
+	fprintf(fp, "%s%s.%03ld%s ", ux_style(fp, UX_STYLE_DIM), stamp,
+		(long)(tv.tv_usec / 1000), ux_style(fp, UX_STYLE_RESET));
+
+	return strlen(stamp) + strlen(".000 ");
+}
+
+/* Write a "NAME: " prefix, in color @sgr when @fp is colorized */
+static void ux_print_label(FILE *fp, const char *name, const char *sgr)
+{
+	bool color = ux_color_enabled(fp);
+
+	fprintf(fp, "%s%s:%s ", color ? sgr : "", name,
+		color ? ux_styles[UX_STYLE_RESET] : "");
 }
 
 /*
@@ -91,22 +171,27 @@ static int ux_print_prefix(FILE *fp)
  * message is prefixed, the first with the timestamp header and the rest
  * with padding of the same width, unless the line continues a previous
  * message that did not end with a newline. Blank lines are left bare.
+ * Each line is styled with @style separately; @level and @tag are printed
+ * ahead of the text, the level only at the start of a line.
  */
-static void ux_vprint(FILE *fp, bool *bol, const char *fmt, va_list ap)
+static void ux_vprint(FILE *fp, bool *bol, enum ux_style style, enum ux_level level,
+		      enum ux_tag tag, const char *fmt, va_list ap)
 {
+	const char *on = ux_style(fp, style);
+	const char *off = *on ? ux_style(fp, UX_STYLE_RESET) : "";
 	char stack_buf[512];
 	char *buf = stack_buf;
 	const char *line;
 	const char *end;
+	size_t text_len;
 	int width = 0;
 	va_list aq;
 	int len;
 
-	if (!qdl_debug) {
-		vfprintf(fp, fmt, ap);
-		fflush(fp);
-		return;
-	}
+	if ((size_t)tag >= ARRAY_SIZE(ux_tags))
+		tag = UX_TAG_NONE;
+	if ((size_t)level >= ARRAY_SIZE(ux_levels) || !*bol)
+		level = UX_LEVEL_NONE;
 
 	va_copy(aq, ap);
 	len = vsnprintf(stack_buf, sizeof(stack_buf), fmt, aq);
@@ -115,7 +200,7 @@ static void ux_vprint(FILE *fp, bool *bol, const char *fmt, va_list ap)
 		return;
 
 	if ((size_t)len >= sizeof(stack_buf)) {
-		buf = malloc(len + 1);
+		buf = calloc(1, len + 1);
 		if (!buf)
 			return;
 		vsnprintf(buf, len + 1, fmt, ap);
@@ -125,14 +210,31 @@ static void ux_vprint(FILE *fp, bool *bol, const char *fmt, va_list ap)
 		end = strchr(line, '\n');
 		end = end ? end + 1 : line + strlen(line);
 
-		if (*bol && *line != '\n') {
+		if (qdl_debug && *bol && *line != '\n') {
 			if (!width)
 				width = ux_print_prefix(fp);
 			else
 				fprintf(fp, "%*s", width, "");
 		}
 
-		fwrite(line, 1, end - line, fp);
+		if (level != UX_LEVEL_NONE) {
+			ux_print_label(fp, ux_levels[level].name, ux_levels[level].sgr);
+			level = UX_LEVEL_NONE;
+		}
+		if (tag != UX_TAG_NONE) {
+			ux_print_label(fp, ux_tags[tag].name, ux_tags[tag].sgr);
+			tag = UX_TAG_NONE;
+		}
+
+		text_len = end - line - (end[-1] == '\n');
+		if (text_len) {
+			fputs(on, fp);
+			fwrite(line, 1, text_len, fp);
+			fputs(off, fp);
+		}
+		if (end[-1] == '\n')
+			fputc('\n', fp);
+
 		*bol = end[-1] == '\n';
 	}
 
@@ -187,13 +289,125 @@ const char *ux_progname(void)
 	return ux_progname_str;
 }
 
-/* Clear ux_cur_line_length characters of the progress bar from the screen */
+/*
+ * Auto mode colors a stream only if it is a terminal, NO_COLOR is unset
+ * and TERM is not "dumb".
+ */
+void ux_set_color_mode(enum ux_color_mode mode)
+{
+	ux_color = mode;
+	ux_color_stdout = -1;
+	ux_color_stderr = -1;
+}
+
+/* Quiet mode drops info messages, status lines and the progress bar */
+void ux_set_quiet(bool quiet)
+{
+	ux_quiet = quiet;
+}
+
+/* Whether informational output is suppressed by --quiet */
+static bool ux_silenced(void)
+{
+	return ux_quiet && !qdl_debug;
+}
+
+#ifdef _WIN32
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
+
+/* Let a Windows 10+ console interpret ANSI sequences on @fp */
+static bool ux_enable_vt(FILE *fp)
+{
+	HANDLE h = (HANDLE)_get_osfhandle(_fileno(fp));
+	DWORD mode;
+
+	if (h == INVALID_HANDLE_VALUE || !GetConsoleMode(h, &mode))
+		return false;
+
+	if (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+		return true;
+
+	return SetConsoleMode(h, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+}
+#endif
+
+static bool ux_color_detect(FILE *fp)
+{
+	const char *env;
+	bool vt = true;
+
+	if (ux_color == UX_COLOR_NEVER)
+		return false;
+
+#ifdef _WIN32
+	vt = ux_enable_vt(fp);
+#endif
+
+	if (ux_color == UX_COLOR_ALWAYS)
+		return true;
+
+	env = getenv("NO_COLOR");
+	if (env && *env)
+		return false;
+
+	env = getenv("TERM");
+	if (env && !strcmp(env, "dumb"))
+		return false;
+
+	return vt && isatty(fileno(fp));
+}
+
+static bool ux_color_enabled(FILE *fp)
+{
+	int *cached;
+
+	if (fp == stdout)
+		cached = &ux_color_stdout;
+	else if (fp == stderr)
+		cached = &ux_color_stderr;
+	else
+		return ux_color_detect(fp);
+
+	if (*cached < 0)
+		*cached = ux_color_detect(fp);
+
+	return *cached;
+}
+
+/* ANSI sequence for @style, or "" when @fp is not colorized */
+const char *ux_style(FILE *fp, enum ux_style style)
+{
+	if ((size_t)style >= ARRAY_SIZE(ux_styles) || !ux_color_enabled(fp))
+		return "";
+
+	return ux_styles[style];
+}
+
+/* "TX:" or "RX:" for a protocol trace, colored by direction on a terminal */
+const char *ux_direction(bool tx)
+{
+	static char label[2][24];
+	int i = tx ? 0 : 1;
+
+	snprintf(label[i], sizeof(label[i]), "%s%s:%s",
+		 ux_style(stdout, tx ? UX_STYLE_TX : UX_STYLE_RX), tx ? "TX" : "RX",
+		 ux_style(stdout, UX_STYLE_RESET));
+
+	return label[i];
+}
+
+/* Remove the progress bar, erasing the line on a terminal */
 static void ux_clear_line(void)
 {
 	if (!ux_cur_line_length)
 		return;
 
-	printf("%*s\r", ux_cur_line_length, "");
+	if (ux_color_enabled(stdout))
+		fputs("\r\033[2K", stdout);
+	else
+		printf("%*s\r", ux_cur_line_length, "");
 	fflush(stdout);
 	ux_cur_line_length = 0;
 }
@@ -263,29 +477,70 @@ void ux_init(void)
 
 #endif
 
+/* Print one message, clearing the progress bar first */
+static void ux_vmsg(FILE *fp, bool *bol, enum ux_style style, enum ux_level level,
+		    enum ux_tag tag, const char *fmt, va_list ap)
+{
+	ux_clear_line();
+	ux_vprint(fp, bol, style, level, tag, fmt, ap);
+}
+
+/*
+ * Info, debug and log messages are bare outside debug mode; in debug mode
+ * they show their tag, or @level when they have none.
+ */
+static enum ux_level ux_quiet_prefix(enum ux_level level, enum ux_tag *tag)
+{
+	if (!qdl_debug) {
+		*tag = UX_TAG_NONE;
+		return UX_LEVEL_NONE;
+	}
+
+	return *tag == UX_TAG_NONE ? level : UX_LEVEL_NONE;
+}
+
 void ux_err(const char *fmt, ...)
 {
 	va_list ap;
 
-	ux_clear_line();
+	va_start(ap, fmt);
+	ux_vmsg(stderr, &ux_stderr_bol, UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_NONE, fmt, ap);
+	va_end(ap);
+}
+
+void ux_err_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vprint(stderr, &ux_stderr_bol, fmt, ap);
+	ux_vmsg(stderr, &ux_stderr_bol, UX_STYLE_ERROR, UX_LEVEL_ERR, tag, fmt, ap);
+	va_end(ap);
+}
+
+static void ux_report(enum ux_style style, enum ux_level level, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vprint(stderr, &ux_stderr_bol, style, level, UX_TAG_NONE, fmt, ap);
 	va_end(ap);
 }
 
 /* Keep the err(3)/warn(3) text and errno semantics in the shared logger. */
-static void ux_vreport(int error, bool with_errno, const char *fmt, va_list ap)
+static void ux_vreport(enum ux_style style, enum ux_level level, enum ux_tag tag,
+		       int error, bool with_errno, const char *fmt, va_list ap)
 {
-	ux_err("%s: ", ux_progname());
+	ux_clear_line();
+
+	ux_report(style, level, "%s: ", ux_progname());
 	if (fmt) {
-		ux_vprint(stderr, &ux_stderr_bol, fmt, ap);
+		ux_vprint(stderr, &ux_stderr_bol, style, UX_LEVEL_NONE, tag, fmt, ap);
 		if (with_errno)
-			ux_err(": ");
+			ux_report(style, UX_LEVEL_NONE, ": ");
 	}
 	if (with_errno)
-		ux_err("%s", strerror(error));
-	ux_err("\n");
+		ux_report(style, UX_LEVEL_NONE, "%s", strerror(error));
+	ux_report(style, UX_LEVEL_NONE, "\n");
 	errno = error;
 }
 
@@ -295,7 +550,27 @@ void ux_warn(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(error, true, fmt, ap);
+	ux_vreport(UX_STYLE_WARNING, UX_LEVEL_WARN, UX_TAG_NONE, error, true, fmt, ap);
+	va_end(ap);
+}
+
+void ux_warn_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	int error = errno;
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vreport(UX_STYLE_WARNING, UX_LEVEL_WARN, tag, error, true, fmt, ap);
+	va_end(ap);
+}
+
+void ux_warnx_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	int error = errno;
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vreport(UX_STYLE_WARNING, UX_LEVEL_WARN, tag, error, false, fmt, ap);
 	va_end(ap);
 }
 
@@ -305,7 +580,7 @@ void ux_warnx(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(error, false, fmt, ap);
+	ux_vreport(UX_STYLE_WARNING, UX_LEVEL_WARN, UX_TAG_NONE, error, false, fmt, ap);
 	va_end(ap);
 }
 
@@ -315,7 +590,7 @@ void ux_die(int status, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(error, true, fmt, ap);
+	ux_vreport(UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_NONE, error, true, fmt, ap);
 	va_end(ap);
 	exit(status);
 }
@@ -326,53 +601,170 @@ void ux_diex(int status, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	ux_vreport(error, false, fmt, ap);
+	ux_vreport(UX_STYLE_ERROR, UX_LEVEL_ERR, UX_TAG_NONE, error, false, fmt, ap);
 	va_end(ap);
 	exit(status);
 }
 
 void ux_info(const char *fmt, ...)
 {
+	enum ux_tag tag = UX_TAG_NONE;
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_INFO, &tag);
 	va_list ap;
 
-	ux_clear_line();
+	if (ux_silenced())
+		return;
 
 	va_start(ap, fmt);
-	ux_vprint(stdout, &ux_stdout_bol, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
+	va_end(ap);
+}
+
+void ux_info_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_INFO, &tag);
+	va_list ap;
+
+	if (ux_silenced())
+		return;
+
+	va_start(ap, fmt);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
+	va_end(ap);
+}
+
+/* Like ux_info_tag(), but printed even in quiet mode */
+void ux_result_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_INFO, &tag);
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
 	va_end(ap);
 }
 
 void ux_log(const char *fmt, ...)
 {
+	enum ux_tag tag = UX_TAG_NONE;
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_LOG, &tag);
 	va_list ap;
 
 	if (!qdl_debug)
 		return;
 
-	ux_clear_line();
+	va_start(ap, fmt);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_LOG, level, tag, fmt, ap);
+	va_end(ap);
+}
+
+void ux_log_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_LOG, &tag);
+	va_list ap;
+
+	if (!qdl_debug)
+		return;
 
 	va_start(ap, fmt);
-	ux_vprint(stdout, &ux_stdout_bol, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_LOG, level, tag, fmt, ap);
 	va_end(ap);
 }
 
 void ux_debug(const char *fmt, ...)
 {
+	enum ux_tag tag = UX_TAG_NONE;
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_DEBUG, &tag);
 	va_list ap;
 
 	if (!qdl_debug)
 		return;
 
-	ux_clear_line();
+	va_start(ap, fmt);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
+	va_end(ap);
+}
+
+void ux_debug_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_DEBUG, &tag);
+	va_list ap;
+
+	if (!qdl_debug)
+		return;
 
 	va_start(ap, fmt);
-	ux_vprint(stdout, &ux_stdout_bol, fmt, ap);
+	ux_vmsg(stdout, &ux_stdout_bol, UX_STYLE_NONE, level, tag, fmt, ap);
 	va_end(ap);
+}
+
+static void ux_msgf(FILE *fp, bool *bol, enum ux_level level, enum ux_tag tag,
+		    const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	ux_vmsg(fp, bol, UX_STYLE_NONE, level, tag, fmt, ap);
+	va_end(ap);
+}
+
+/*
+ * Print '<verb> "<name>"<rest>' as an informational message, with the
+ * verb colored by @status and the name in bold on a terminal.
+ */
+void ux_status(enum ux_tag tag, enum ux_status status, const char *verb,
+	       const char *name, const char *fmt, ...)
+{
+	enum ux_level level = ux_quiet_prefix(UX_LEVEL_INFO, &tag);
+	const char *on;
+	const char *bold;
+	const char *off;
+	char rest[256];
+	va_list ap;
+
+	if (ux_silenced())
+		return;
+
+	va_start(ap, fmt);
+	vsnprintf(rest, sizeof(rest), fmt, ap);
+	va_end(ap);
+
+	on = ux_style(stdout, status == UX_STATUS_DONE ? UX_STYLE_SUCCESS : UX_STYLE_SKIPPED);
+	bold = ux_style(stdout, UX_STYLE_HEADING);
+	off = ux_style(stdout, UX_STYLE_RESET);
+
+	ux_msgf(stdout, &ux_stdout_bol, level, tag, "%s%s%s \"%s%s%s\"%s\n",
+		on, verb, off, bold, name ? name : "", off, rest);
+}
+
+/* Format @bytes as e.g. "512 B" or "3.2 MiB"; returns @buf */
+const char *ux_format_size(char *buf, size_t len, uint64_t bytes)
+{
+	static const char * const units[] = { "KiB", "MiB", "GiB", "TiB" };
+	double value = bytes;
+	size_t unit = 0;
+
+	if (bytes < 1024) {
+		snprintf(buf, len, "%llu B", (unsigned long long)bytes);
+		return buf;
+	}
+
+	value /= 1024;
+	while (value >= 1024 && unit < ARRAY_SIZE(units) - 1) {
+		value /= 1024;
+		unit++;
+	}
+
+	snprintf(buf, len, "%.1f %s", value, units[unit]);
+
+	return buf;
 }
 
 void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 {
 	static struct timeval last_progress_update;
+	const char *on = ux_style(stdout, UX_STYLE_PROGRESS);
+	const char *off = *on ? ux_style(stdout, UX_STYLE_RESET) : "";
 	unsigned long elapsed_us;
 	unsigned int bar_length;
 	unsigned int bars;
@@ -383,7 +775,7 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 	va_list ap;
 
 	/* Don't print progress is window is too narrow, or if stdout is redirected */
-	if (ux_width < 30)
+	if (ux_width < 30 || ux_silenced())
 		return;
 
 	/* Avoid updating the console more than UX_PROGRESS_REFRESH_RATE per second */
@@ -408,11 +800,13 @@ void ux_progress(const char *fmt, unsigned int value, unsigned int max, ...)
 	bars = percent * bar_length;
 	dashes = bar_length - bars;
 
-	printf("%-20.20s [%.*s%.*s] %1.2f%%%n\r", task_name,
-	       bars, progress_hashes,
+	printf("%-20.20s [%s%.*s%s%.*s] %1.2f%%%n\r", task_name,
+	       on, bars, progress_hashes, off,
 	       dashes, progress_dashes,
 	       percent * 100,
 	       &ux_cur_line_length);
+	/* Only count what takes up columns, so clearing never wraps the line */
+	ux_cur_line_length -= strlen(on) + strlen(off);
 	fflush(stdout);
 
 	gettimeofday(&last_progress_update, NULL);

@@ -25,7 +25,7 @@ enum {
 static int flashmap_resolve_path(char *path, size_t path_size, const char *filename, const char *incdir)
 {
 	if (!filename) {
-		ux_err("flashmap: filename is null\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "filename is null\n");
 		return -1;
 	}
 
@@ -50,26 +50,26 @@ static int flashmap_get_legacy_programmer(struct qdl_zip *zip, struct json_value
 
 	programmers = json_get_child(layout, "programmer");
 	if (!programmers) {
-		ux_err("flashmap: parse error when decoding programmer\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "parse error when decoding programmer\n");
 		return -1;
 	}
 
 	count = json_count_children(programmers);
 	if (count != 1) {
-		ux_err("flashmap: single programmer expected, found %d\n", count);
+		ux_err_tag(UX_TAG_FLASHMAP, "single programmer expected, found %d\n", count);
 		return -1;
 	}
 
 	filename = json_get_element_string(programmers, 0);
 	if (!filename) {
-		ux_err("flashmap: parse error when decoding programmer\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "parse error when decoding programmer\n");
 		return -1;
 	}
 
 	if (flashmap_resolve_path(path, sizeof(path), filename, incdir))
 		return -1;
 
-	ux_debug("flashmap: selected programmer: %s\n", path);
+	ux_debug_tag(UX_TAG_FLASHMAP, "selected programmer: %s\n", path);
 
 	return load_sahara_image(zip, path, &images[SAHARA_ID_EHOSTDL_IMG]);
 }
@@ -88,7 +88,7 @@ static int flashmap_get_programmer_map(struct qdl_zip *zip, struct json_value *l
 
 	programmers = json_get_child(layout, "programmer");
 	if (!programmers || programmers->type != JSON_TYPE_OBJECT) {
-		ux_err("flashmap: programmer map must be an object for version 1.2.0-qdl\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "programmer map must be an object for version 1.2.0-qdl\n");
 		return -1;
 	}
 
@@ -96,12 +96,12 @@ static int flashmap_get_programmer_map(struct qdl_zip *zip, struct json_value *l
 		errno = 0;
 		image_id = strtoul(entry->key, &end, 0);
 		if (errno || end == entry->key || *end || image_id == 0 || image_id >= MAPPING_SZ) {
-			ux_err("flashmap: invalid programmer image id \"%s\"\n", entry->key);
+			ux_err_tag(UX_TAG_FLASHMAP, "invalid programmer image id \"%s\"\n", entry->key);
 			return -1;
 		}
 
 		if (entry->type != JSON_TYPE_STRING || !entry->u.string) {
-			ux_err("flashmap: programmer entry \"%s\" must be a filename string\n", entry->key);
+			ux_err_tag(UX_TAG_FLASHMAP, "programmer entry \"%s\" must be a filename string\n", entry->key);
 			return -1;
 		}
 
@@ -110,7 +110,7 @@ static int flashmap_get_programmer_map(struct qdl_zip *zip, struct json_value *l
 		if (ret)
 			return ret;
 
-		ux_debug("flashmap: selected programmer %lu: %s\n", image_id, path);
+		ux_debug_tag(UX_TAG_FLASHMAP, "selected programmer %lu: %s\n", image_id, path);
 
 		ret = load_sahara_image(zip, path, &images[image_id]);
 		if (ret)
@@ -120,7 +120,7 @@ static int flashmap_get_programmer_map(struct qdl_zip *zip, struct json_value *l
 	}
 
 	if (!count) {
-		ux_err("flashmap: programmer map is empty\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "programmer map is empty\n");
 		return -1;
 	}
 
@@ -239,11 +239,11 @@ static int flashmap_enumerate_programmables(struct json_value *list, struct list
 
 	count = json_count_children(list);
 	if (count < 0) {
-		ux_err("flashmap: programmable list is not an array\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "programmable list is not an array\n");
 		return -1;
 	}
 	if (count == 0) {
-		ux_err("flashmap: programmable list is empty\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "programmable list is empty\n");
 		return -1;
 	}
 
@@ -269,14 +269,14 @@ static int flashmap_enumerate_programmables(struct json_value *list, struct list
 
 		file_count = json_count_children(files);
 		if (file_count < 0) {
-			ux_err("flashmap: files list is not an array\n");
+			ux_err_tag(UX_TAG_FLASHMAP, "files list is not an array\n");
 			return -1;
 		}
 
 		for (file_idx = 0; file_idx < file_count; file_idx++) {
 			file = json_get_element_string(files, file_idx);
 			if (!file) {
-				ux_err("flashmap: parse error when decoding files\n");
+				ux_err_tag(UX_TAG_FLASHMAP, "parse error when decoding files\n");
 				return -1;
 			}
 
@@ -360,12 +360,12 @@ static void flashmap_print_available_layouts(struct json_value *layouts)
 	if (count <= 0)
 		return;
 
-	ux_err("flashmap: available layouts:\n");
+	ux_err_tag(UX_TAG_FLASHMAP, "available layouts:\n");
 	for (i = 0; i < count; i++) {
 		layout = json_get_element_object(layouts, i);
 		name = json_get_string(layout, "name");
 		if (name)
-			ux_err("flashmap:   %s\n", name);
+			ux_err_tag(UX_TAG_FLASHMAP, "  %s\n", name);
 	}
 }
 
@@ -378,11 +378,11 @@ static struct json_value *flashmap_select_layout(struct json_value *layouts, con
 
 	count = json_count_children(layouts);
 	if (count < 0) {
-		ux_err("flashmap: layouts is not an array\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "layouts is not an array\n");
 		return NULL;
 	}
 	if (!count) {
-		ux_err("flashmap: layouts list is empty\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "layouts list is empty\n");
 		return NULL;
 	}
 
@@ -390,7 +390,8 @@ static struct json_value *flashmap_select_layout(struct json_value *layouts, con
 		if (count == 1)
 			return json_get_element_object(layouts, 0);
 
-		ux_err("flashmap: multiple layouts found, select one with ::<layout> or ::<layout>/<storage>[,<storage>...]\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "multiple layouts found, select one with "
+			   "::<layout> or ::<layout>/<storage>[,<storage>...]\n");
 		flashmap_print_available_layouts(layouts);
 		return NULL;
 	}
@@ -399,12 +400,12 @@ static struct json_value *flashmap_select_layout(struct json_value *layouts, con
 		layout = json_get_element_object(layouts, i);
 		name = json_get_string(layout, "name");
 		if (name && !strcmp(name, selector)) {
-			ux_debug("flashmap: selected layout: %s\n", name);
+			ux_debug_tag(UX_TAG_FLASHMAP, "selected layout: %s\n", name);
 			return layout;
 		}
 	}
 
-	ux_err("flashmap: layout \"%s\" not found\n", selector);
+	ux_err_tag(UX_TAG_FLASHMAP, "layout \"%s\" not found\n", selector);
 	flashmap_print_available_layouts(layouts);
 
 	return NULL;
@@ -489,7 +490,7 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 
 	count = json_count_children(obj);
 	if (count != 1) {
-		ux_err("flashmap: only single product map supported, found %d\n", count);
+		ux_err_tag(UX_TAG_FLASHMAP, "only single product map supported, found %d\n", count);
 		ret = -1;
 		goto out_free_json;
 	}
@@ -497,7 +498,7 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 	product = json_get_element_object(obj, 0);
 
 	name = json_get_string(product, "name");
-	ux_debug("product: %s\n", name);
+	ux_debug_tag(UX_TAG_FLASHMAP, "product: %s\n", name);
 
 	obj = json_get_child(product, "layouts");
 
@@ -513,7 +514,7 @@ int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
 
 	programmable = json_get_child(layout, "programmable");
 	if (!programmable) {
-		ux_err("flashmap: parse error when decoding programmables\n");
+		ux_err_tag(UX_TAG_FLASHMAP, "parse error when decoding programmables\n");
 		sahara_images_free(images, MAPPING_SZ);
 		ret = -1;
 		goto out_free_json;
