@@ -96,6 +96,39 @@ qdl_exe = executable('qdl',
   install : true
 )
 
+# --- udev rules ---
+# Prefer the rules directory advertised by udev.pc so a /usr/local prefix
+# still installs where udev looks; packagers can override it explicitly.
+if host_machine.system() == 'linux' and not get_option('udev').disabled()
+  udevrulesdir = get_option('udevrulesdir')
+  if udevrulesdir == ''
+    udev_dep = dependency('udev', required : false)
+    if udev_dep.found()
+      udevrulesdir = udev_dep.get_variable(pkgconfig : 'udevdir') / 'rules.d'
+    else
+      udevrulesdir = get_option('prefix') / 'lib' / 'udev' / 'rules.d'
+    endif
+  endif
+
+  # Device access is granted to the active local session via uaccess; an
+  # additional group (e.g. plugdev on Debian) is opt-in as group names
+  # differ between distributions.
+  udev_conf = configuration_data()
+  udev_group = get_option('udev_group')
+  if udev_group != ''
+    udev_conf.set('UDEV_GROUP_ATTRS', 'MODE="0660", GROUP="' + udev_group + '", ')
+  else
+    udev_conf.set('UDEV_GROUP_ATTRS', '')
+  endif
+
+  configure_file(
+    input : 'udev/70-qdl.rules.in',
+    output : '70-qdl.rules',
+    configuration : udev_conf,
+    install_dir : udevrulesdir
+  )
+endif
+
 # --- optional nbdkit plugin ---
 # nbdkit dlopens plugins, so there is no library to link against; the plugin
 # just needs <nbdkit-plugin.h> and compiles all non-main sources into a shared

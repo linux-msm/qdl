@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Grant local users access to Qualcomm EDL/crashdump devices used by qdl,
+# and keep ModemManager from probing them.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="05c6", ENV{ID_USB_INTERFACES}=="*:ffff10:*", @UDEV_GROUP_ATTRS@TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="05c6", ENV{ID_USB_INTERFACES}=="*:ffff11:*", @UDEV_GROUP_ATTRS@TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="05c6", ENV{ID_USB_INTERFACES}=="*:ffff13:*", @UDEV_GROUP_ATTRS@TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="05c6", ENV{ID_USB_INTERFACES}=="*:ffffff:*", @UDEV_GROUP_ATTRS@TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
