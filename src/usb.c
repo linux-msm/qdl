@@ -48,6 +48,7 @@ struct qdl_device_usb {
 	size_t in_maxpktsize;
 	size_t out_maxpktsize;
 	size_t out_chunk_size;
+	bool expect_zlp;
 };
 
 /* libusb-typed wrapper around the shared EDL identity check */
@@ -294,6 +295,7 @@ static int usb_open_device(libusb_device *dev,
 	qdl->out_ep = edl.out_ep;
 	qdl->in_maxpktsize = edl.in_maxpktsize;
 	qdl->out_maxpktsize = edl.out_maxpktsize;
+	qdl->expect_zlp = false;
 
 	if (qdl->out_chunk_size && qdl->out_chunk_size % edl.out_maxpktsize) {
 		ux_warnx("requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld",
@@ -513,22 +515,32 @@ static int usb_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int 
 	int actual;
 	int ret;
 
-	ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->in_ep, buf, len, &actual, timeout);
-	if (ret == LIBUSB_ERROR_NO_DEVICE)
-		return -ENODEV;
-	if (ret != 0 && ret != LIBUSB_ERROR_TIMEOUT)
-		return -EIO;
-
-	if (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)
-		return -ETIMEDOUT;
-
-	/* If what we read equals the endpoint's Max Packet Size, consume the ZLP explicitly */
-	if (len == (size_t)actual && !(actual % qdl_usb->in_maxpktsize)) {
+	/*
+	 * On Ubuntu 24.04, an ASMedia ASM2142/ASM3142 xHCI controller completed
+	 * a zero-length host request while the Firehose exchange remained stalled.
+	 * Instead, remember when a transfer may be followed by a ZLP and consume it
+	 * with the caller's next real IN request. If the device omitted the ZLP,
+	 * return the received data directly without a speculative wait.
+	 */
+	for (;;) {
 		ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->in_ep,
-					   NULL, 0, NULL, timeout);
-		if (ret)
-			ux_warnx("Unable to read ZLP: %s", libusb_strerror(ret));
+					   buf, len, &actual, timeout);
+		if (ret != 0 && ret != LIBUSB_ERROR_TIMEOUT) {
+			qdl_usb->expect_zlp = false;
+			return ret == LIBUSB_ERROR_NO_DEVICE ? -ENODEV : -EIO;
+		}
+
+		if (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)
+			return -ETIMEDOUT;
+
+		if (!qdl_usb->expect_zlp || actual != 0)
+			break;
+
+		qdl_usb->expect_zlp = false;
 	}
+
+	qdl_usb->expect_zlp = actual > 0 && len == (size_t)actual &&
+			      !(actual % qdl_usb->in_maxpktsize);
 
 	return actual;
 }
