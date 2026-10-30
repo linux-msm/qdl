@@ -4,6 +4,82 @@ All notable changes to QDL, mirroring the [GitHub releases](https://github.com/l
 
 This project uses `vMAJOR.MINOR` tags. Releases prior to v2.4 were tagged but not published as GitHub releases; see the [git tags](https://github.com/linux-msm/qdl/tags) for their history.
 
+## [v2.9](https://github.com/linux-msm/qdl/releases/tag/v2.9) - 2026-10-28
+
+### Highlights
+
+- Standalone `qdl reset` subcommand: kicks a board out of EDL or crash mode over Sahara without uploading a programmer, falling back to a
+  Firehose power reset when one is already running ([#307](https://github.com/linux-msm/qdl/pull/307))
+- `qdl ks` no longer needs a device node: it uses the standard usb/qud backends, so kickstart works over libusb and on Windows and can
+  replace QSaharaServer on flashless boards ([#300](https://github.com/linux-msm/qdl/pull/300))
+- New `create-sahara-archive` subcommand to build a Sahara programmer archive from a `contents.xml` or a list of images
+  ([#303](https://github.com/linux-msm/qdl/pull/303))
+- UFS provisioning fixes: the commit step gets a longer timeout and a device that resets right after committing the configuration descriptor
+  is reported as success ([#314](https://github.com/linux-msm/qdl/pull/314), [#322](https://github.com/linux-msm/qdl/pull/322))
+- NAND program tags carry the partition label, so programmers that resolve partitions by name apply the bad-block adjusted offset
+  ([#306](https://github.com/linux-msm/qdl/pull/306))
+- Sahara end-of-image and done status codes are decoded into human-readable descriptions ([#336](https://github.com/linux-msm/qdl/pull/336))
+- Millisecond timestamps on `--debug` diagnostics to spot stalls and correlate host and device activity ([#321](https://github.com/linux-msm/qdl/pull/321))
+- Second hardening batch across parsers, backends and the build ([#302](https://github.com/linux-msm/qdl/pull/302))
+- Readable output: `--color[=auto|always|never]`, `ERR:`/`WARN:` prefixes, uppercase subsystem tags, result lines with size and rate,
+  a single run summary line and `-q/--quiet` for CI and production lines ([#341](https://github.com/linux-msm/qdl/pull/341))
+- Linux udev rules are installed with qdl, granting local users access to EDL and crashdump devices without running as root
+  ([#342](https://github.com/linux-msm/qdl/pull/342))
+- Leaner builds: zip container support is a meson feature option (`-Dzip-container=disabled`) and the meson floor is lowered to 0.56 so qdl
+  can be packaged for EL9 ([#299](https://github.com/linux-msm/qdl/pull/299), [#333](https://github.com/linux-msm/qdl/pull/333))
+- Document official packages: qdl is in Debian, Ubuntu, Fedora and EPEL, and an official [Homebrew formula](https://formulae.brew.sh/formula/qdl)
+  is available in homebrew-core (`brew install qdl`) ([#338](https://github.com/linux-msm/qdl/pull/338))
+- The HIL suite runs unattended on self-hosted Linux and macOS runners with real boards, including VIP end to end
+  ([#296](https://github.com/linux-msm/qdl/pull/296), [#340](https://github.com/linux-msm/qdl/pull/340))
+- Documentation refreshed and split into per-topic guides under `docs/` ([#329](https://github.com/linux-msm/qdl/pull/329),
+  [#317](https://github.com/linux-msm/qdl/pull/317))
+
+### What's Changed
+
+- qdl: let kickstart use the standard device backends by @igoropaniuk in [#300](https://github.com/linux-msm/qdl/pull/300)
+- meson: make zip container support optional by @igoropaniuk in [#299](https://github.com/linux-msm/qdl/pull/299)
+- For linux msm/create sahara archive by @quic-bjorande in [#303](https://github.com/linux-msm/qdl/pull/303)
+- qdl: add a standalone reset subcommand by @igoropaniuk in [#307](https://github.com/linux-msm/qdl/pull/307)
+- Harden error paths across parsers, backends and the build by @igoropaniuk in [#302](https://github.com/linux-msm/qdl/pull/302)
+- Run the HIL suite unattended on self-hosted runners by @igoropaniuk in [#296](https://github.com/linux-msm/qdl/pull/296)
+- firehose: deduplicate the chunk-streaming loop by @igoropaniuk in [#308](https://github.com/linux-msm/qdl/pull/308)
+- ufs: replace module globals with a caller-owned context by @igoropaniuk in [#309](https://github.com/linux-msm/qdl/pull/309)
+- firehose: send the partition label in NAND program tags by @franciscojsfc in [#306](https://github.com/linux-msm/qdl/pull/306)
+- README: document installer package creation by @quic-bjorande in [#317](https://github.com/linux-msm/qdl/pull/317)
+- commitlint: recognize Closes as a footer trailer by @igoropaniuk in [#319](https://github.com/linux-msm/qdl/pull/319)
+- firehose: give the UFS provisioning commit a longer timeout by @igoropaniuk in [#314](https://github.com/linux-msm/qdl/pull/314)
+- qdl: decouple helper modules from the CLI front-end by @igoropaniuk in [#313](https://github.com/linux-msm/qdl/pull/313)
+- Add missing stdint.h include by @aekoroglu in [#324](https://github.com/linux-msm/qdl/pull/324)
+- github: build on ubuntu 26.04 runners by @igoropaniuk in [#327](https://github.com/linux-msm/qdl/pull/327)
+- github: drop macos-14 and build on macos-15 and macos-26 runners by @igoropaniuk in [#328](https://github.com/linux-msm/qdl/pull/328)
+- README: refresh and split into docs/ by @igoropaniuk in [#329](https://github.com/linux-msm/qdl/pull/329)
+- ux: add consistent timestamps to debug diagnostics by @igoropaniuk in [#321](https://github.com/linux-msm/qdl/pull/321)
+- meson: lower the required meson version to 0.56 by @igoropaniuk in [#333](https://github.com/linux-msm/qdl/pull/333)
+- firehose: treat -ENODEV on commit=1 as success after UFS provisioning by @JohnSagaQuic in [#322](https://github.com/linux-msm/qdl/pull/322)
+- qdl: split the flashing front-end from the CLI plumbing by @igoropaniuk in [#323](https://github.com/linux-msm/qdl/pull/323)
+- sahara: describe status codes in end-of-image and done packets by @bhavyaVeera in [#336](https://github.com/linux-msm/qdl/pull/336)
+- github: prepare CI for the move to the Qualcomm GitHub organization by @igoropaniuk in [#335](https://github.com/linux-msm/qdl/pull/335)
+- README: document distribution packages and Homebrew by @igoropaniuk in [#338](https://github.com/linux-msm/qdl/pull/338)
+- github: run the HIL suite on the macOS runner by @igoropaniuk in [#340](https://github.com/linux-msm/qdl/pull/340)
+- ux: colored output, level and subsystem prefixes, run summary and --quiet by @igoropaniuk in [#341](https://github.com/linux-msm/qdl/pull/341)
+- udev: install rules for EDL device access by @lool in [#342](https://github.com/linux-msm/qdl/pull/342)
+
+### New Contributors
+
+- @franciscojsfc made their first contribution in [#306](https://github.com/linux-msm/qdl/pull/306)
+- @aekoroglu made their first contribution in [#324](https://github.com/linux-msm/qdl/pull/324)
+- @JohnSagaQuic made their first contribution in [#322](https://github.com/linux-msm/qdl/pull/322)
+- @bhavyaVeera made their first contribution in [#336](https://github.com/linux-msm/qdl/pull/336)
+- @lool made their first contribution in [#342](https://github.com/linux-msm/qdl/pull/342)
+
+### Testing credits
+
+Thanks to everyone who helped test v2.9-rc1 in [#NNN](https://github.com/linux-msm/qdl/pull/NNN):
+
+- TBD
+
+**Full Changelog**: [v2.8...v2.9](https://github.com/linux-msm/qdl/compare/v2.8...v2.9)
+
 ## [v2.8](https://github.com/linux-msm/qdl/releases/tag/v2.8) - 2026-08-02
 
 ### Highlights
