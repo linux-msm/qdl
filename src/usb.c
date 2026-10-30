@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <libusb.h>
 #include "oscompat.h"
@@ -112,6 +113,40 @@ static int usb_enumerate_edl_devices(usb_edl_device_cb_t cb, void *data)
 #define LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK LIBUSB_TRANSFER_TYPE_BULK
 #endif
 
+#define USB_STRING_ATTEMPTS	3
+#define USB_STRING_RETRY_US	20000
+
+static bool usb_string_error_transient(int ret)
+{
+	return ret == LIBUSB_ERROR_IO ||
+	       ret == LIBUSB_ERROR_PIPE ||
+	       ret == LIBUSB_ERROR_TIMEOUT;
+}
+
+static int usb_read_string(struct libusb_device_handle *handle, uint8_t index,
+			   char *buf, size_t len)
+{
+	int attempt;
+	int ret;
+
+	if (!index)
+		return LIBUSB_ERROR_NOT_FOUND;
+
+	for (attempt = 1;; attempt++) {
+		ret = libusb_get_string_descriptor_ascii(handle, index,
+							 (unsigned char *)buf, len);
+		if (ret >= 0 || attempt == USB_STRING_ATTEMPTS ||
+		    !usb_string_error_transient(ret))
+			return ret;
+
+		usleep(USB_STRING_RETRY_US);
+	}
+}
+
+/*
+ * EDL devices carry the serial in iProduct as "_SN:<serial>", other
+ * modes report it in iSerialNumber.
+ */
 static bool usb_read_serial(struct libusb_device_handle *handle,
 			    const struct libusb_device_descriptor *desc,
 			    char *out, size_t out_len)
@@ -120,21 +155,28 @@ static bool usb_read_serial(struct libusb_device_handle *handle,
 	char *p;
 	int ret;
 
-	ret = libusb_get_string_descriptor_ascii(handle, desc->iProduct, (unsigned char *)buf, sizeof(buf));
-	if (ret < 0) {
+	ret = usb_read_string(handle, desc->iProduct, buf, sizeof(buf));
+	if (ret >= 0) {
+		p = strstr(buf, "_SN:");
+		if (p) {
+			p += strlen("_SN:");
+			p[strcspn(p, " _")] = '\0';
+			snprintf(out, out_len, "%s", p);
+			return true;
+		}
+	} else if (ret != LIBUSB_ERROR_NOT_FOUND) {
 		ux_warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
+	}
+
+	ret = usb_read_string(handle, desc->iSerialNumber, out, out_len);
+	if (ret < 0) {
+		if (ret != LIBUSB_ERROR_NOT_FOUND)
+			ux_warnx("failed to read iSerialNumber descriptor: %s",
+				 libusb_strerror(ret));
 		return false;
 	}
 
-	p = strstr(buf, "_SN:");
-	if (!p)
-		return false;
-
-	p += strlen("_SN:");
-	p[strcspn(p, " _")] = '\0';
-
-	snprintf(out, out_len, "%s", p);
-	return true;
+	return ret > 0;
 }
 
 static bool usb_match_serial(struct libusb_device_handle *handle, const char *serial,
@@ -149,7 +191,7 @@ static bool usb_match_serial(struct libusb_device_handle *handle, const char *se
 	if (!usb_read_serial(handle, desc, buf, sizeof(buf)))
 		return false;
 
-	return strcmp(buf, serial) == 0;
+	return strcasecmp(buf, serial) == 0;
 }
 
 /*
