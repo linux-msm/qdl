@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <libusb.h>
 #include "oscompat.h"
@@ -190,7 +191,7 @@ static bool usb_match_serial(struct libusb_device_handle *handle, const char *se
 	if (!usb_read_serial(handle, desc, buf, sizeof(buf)))
 		return false;
 
-	return strcmp(buf, serial) == 0;
+	return strcasecmp(buf, serial) == 0;
 }
 
 /*

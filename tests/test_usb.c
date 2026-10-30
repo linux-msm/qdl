@@ -335,9 +335,27 @@ static void test_serial_no_retry_on_fatal_error(void **state)
 	assert_int_equal(string_index, 1);
 }
 
+static void test_serial_match_ignores_case(void **state)
+{
+	const struct mock_string edl[] = {
+		{ 2, 0, "QUSB_BULK_CID:0402_SN:9DBBF967" },
+	};
+
+	(void)state;
+	set_strings(edl, ARRAY_SIZE(edl));
+	assert_true(usb_match_serial(NULL, "9dbbf967", &edl_desc));
+
+	set_strings(edl, ARRAY_SIZE(edl));
+	assert_false(usb_match_serial(NULL, "9dbbf968", &edl_desc));
+
+	set_strings(edl, 0);
+	assert_true(usb_match_serial(NULL, NULL, &edl_desc));
+}
+
 int main(void)
 {
 	const struct CMUnitTest tests[] = {
+		cmocka_unit_test(test_serial_match_ignores_case),
 		cmocka_unit_test(test_serial_from_iproduct_token),
 		cmocka_unit_test(test_serial_falls_back_to_iserial),
 		cmocka_unit_test(test_serial_prefers_iproduct_token),

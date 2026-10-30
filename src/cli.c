@@ -48,7 +48,8 @@ void print_usage(FILE *out)
 	usage_opt(out, " ", "-s, --storage=T", "\t\tSet target storage type T: <emmc|nand|nvme|spinor|ufs>");
 	usage_opt(out, " ", "-l, --finalize-provisioning", "\tProvision the target storage");
 	usage_opt(out, " ", "-i, --include=T", "\t\tSet an optional folder T to search for files");
-	usage_opt(out, " ", "-S, --serial=T", "\t\t\tSelect target by serial number T (e.g. <0AA94EFD>)");
+	usage_opt(out, " ", "-S, --serial=T",
+		  "\t\t\tSelect target by serial number T (e.g. <0AA94EFD>, case-insensitive)");
 	usage_opt(out, " ", "-u, --out-chunk-size=T", "\t\tOverride chunk size for transaction with T");
 	usage_opt(out, " ", "-t, --create-digests=T", "\t\tGenerate table of digests in the T folder");
 	usage_opt(out, " ", "-T, --slot=T", "\t\t\tSet slot number T for multiple storage devices");
