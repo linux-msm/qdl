@@ -291,6 +291,50 @@ static void test_serial_rejects_empty_iserial(void **state)
 	assert_int_equal(string_index, 2);
 }
 
+static void test_serial_retries_transient_error(void **state)
+{
+	const struct mock_string flaky[] = {
+		{ 2, LIBUSB_ERROR_IO, NULL },
+		{ 2, LIBUSB_ERROR_PIPE, NULL },
+		{ 2, 0, "QUSB_BULK_CID:0402_SN:9DBBF967" },
+	};
+	char serial[16];
+
+	(void)state;
+	set_strings(flaky, ARRAY_SIZE(flaky));
+	assert_true(usb_read_serial(NULL, &edl_desc, serial, sizeof(serial)));
+	assert_string_equal(serial, "9DBBF967");
+	assert_int_equal(string_index, 3);
+}
+
+static void test_serial_gives_up_after_retries(void **state)
+{
+	const struct mock_string wedged[] = {
+		{ 2, LIBUSB_ERROR_IO, NULL },
+		{ 2, LIBUSB_ERROR_IO, NULL },
+		{ 2, LIBUSB_ERROR_IO, NULL },
+	};
+	char serial[16];
+
+	(void)state;
+	set_strings(wedged, ARRAY_SIZE(wedged));
+	assert_false(usb_read_serial(NULL, &edl_desc, serial, sizeof(serial)));
+	assert_int_equal(string_index, USB_STRING_ATTEMPTS);
+}
+
+static void test_serial_no_retry_on_fatal_error(void **state)
+{
+	const struct mock_string gone[] = {
+		{ 2, LIBUSB_ERROR_NO_DEVICE, NULL },
+	};
+	char serial[16];
+
+	(void)state;
+	set_strings(gone, ARRAY_SIZE(gone));
+	assert_false(usb_read_serial(NULL, &edl_desc, serial, sizeof(serial)));
+	assert_int_equal(string_index, 1);
+}
+
 int main(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -299,6 +343,9 @@ int main(void)
 		cmocka_unit_test(test_serial_prefers_iproduct_token),
 		cmocka_unit_test(test_serial_missing_without_iserial),
 		cmocka_unit_test(test_serial_rejects_empty_iserial),
+		cmocka_unit_test(test_serial_retries_transient_error),
+		cmocka_unit_test(test_serial_gives_up_after_retries),
+		cmocka_unit_test(test_serial_no_retry_on_fatal_error),
 		cmocka_unit_test(test_zlp_consumed_by_next_read),
 		cmocka_unit_test(test_omitted_zlp_returns_data),
 		cmocka_unit_test(test_zlp_timeout_preserves_state),

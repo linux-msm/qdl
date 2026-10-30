@@ -112,14 +112,34 @@ static int usb_enumerate_edl_devices(usb_edl_device_cb_t cb, void *data)
 #define LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK LIBUSB_TRANSFER_TYPE_BULK
 #endif
 
+#define USB_STRING_ATTEMPTS	3
+#define USB_STRING_RETRY_US	20000
+
+static bool usb_string_error_transient(int ret)
+{
+	return ret == LIBUSB_ERROR_IO ||
+	       ret == LIBUSB_ERROR_PIPE ||
+	       ret == LIBUSB_ERROR_TIMEOUT;
+}
+
 static int usb_read_string(struct libusb_device_handle *handle, uint8_t index,
 			   char *buf, size_t len)
 {
+	int attempt;
+	int ret;
+
 	if (!index)
 		return LIBUSB_ERROR_NOT_FOUND;
 
-	return libusb_get_string_descriptor_ascii(handle, index,
-						  (unsigned char *)buf, len);
+	for (attempt = 1;; attempt++) {
+		ret = libusb_get_string_descriptor_ascii(handle, index,
+							 (unsigned char *)buf, len);
+		if (ret >= 0 || attempt == USB_STRING_ATTEMPTS ||
+		    !usb_string_error_transient(ret))
+			return ret;
+
+		usleep(USB_STRING_RETRY_US);
+	}
 }
 
 /*
