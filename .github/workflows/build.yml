@@ -168,14 +168,16 @@ jobs:
             mingw-w64-x86_64-xz
             zip
 
+      - name: Configure git line endings
+        run: git config --global core.autocrlf true
+        shell: msys2 {0}
+
       - name: Configure
         run: meson setup build
         shell: msys2 {0}
 
       - name: Build
-        run: |
-          git config --global core.autocrlf true
-          meson compile -C build
+        run: meson compile -C build
         shell: msys2 {0}
 
       - name: Generate man pages
