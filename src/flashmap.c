@@ -373,7 +373,9 @@ static struct json_value *flashmap_select_layout(struct json_value *layouts, con
 {
 	struct json_value *layout;
 	const char *name;
+	bool default_layout;
 	int count;
+	int ret;
 	int i;
 
 	count = json_count_children(layouts);
@@ -386,26 +388,30 @@ static struct json_value *flashmap_select_layout(struct json_value *layouts, con
 		return NULL;
 	}
 
-	if (!selector) {
-		if (count == 1)
-			return json_get_element_object(layouts, 0);
-
-		ux_err_tag(UX_TAG_FLASHMAP, "multiple layouts found, select one with "
-			   "::<layout> or ::<layout>/<storage>[,<storage>...]\n");
-		flashmap_print_available_layouts(layouts);
-		return NULL;
-	}
+	if (!selector && count == 1)
+		return json_get_element_object(layouts, 0);
 
 	for (i = 0; i < count; i++) {
 		layout = json_get_element_object(layouts, i);
 		name = json_get_string(layout, "name");
-		if (name && !strcmp(name, selector)) {
+		ret = json_get_bool(layout, "default", &default_layout);
+		if (!selector && !ret && default_layout) {
+			ux_debug_tag(UX_TAG_FLASHMAP,
+				     "flashmap: selected default layout: %s\n",
+				     name ? name : "(unnamed)");
+			return layout;
+		}
+		if (selector && name && !strcmp(name, selector)) {
 			ux_debug_tag(UX_TAG_FLASHMAP, "selected layout: %s\n", name);
 			return layout;
 		}
 	}
 
-	ux_err_tag(UX_TAG_FLASHMAP, "layout \"%s\" not found\n", selector);
+	if (selector)
+		ux_err_tag(UX_TAG_FLASHMAP, "layout \"%s\" not found\n", selector);
+	else
+		ux_err_tag(UX_TAG_FLASHMAP, "no default layout found\n");
+
 	flashmap_print_available_layouts(layouts);
 
 	return NULL;
