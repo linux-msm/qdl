@@ -78,6 +78,45 @@ jobs:
           name: qdl-binary-ubuntu-${{matrix.os}}-${{ matrix.arch }}
           path: dist/*
 
+  build-centos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, os: 10, runner: ubuntu-24.04 }
+          - { arch: arm64, os: 10, runner: ubuntu-24.04-arm }
+          - { arch: x64, os: 9, runner: ubuntu-24.04 }
+          - { arch: arm64, os: 9, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    container: quay.io/centos/centos:stream${{ matrix.os }}
+    steps:
+      - name: Dependencies
+        run: |
+          dnf install -y --enablerepo=crb \
+            gcc git help2man meson ninja-build pkgconf-pkg-config zip \
+            'pkgconfig(cmocka)' 'pkgconfig(libusb-1.0)' \
+            'pkgconfig(libxml-2.0)' 'pkgconfig(libzip)'
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Configure
+        run: meson setup build -Dtests=enabled
+
+      - name: Build
+        run: meson compile -C build
+
+      - name: Run tests
+        run: meson test -C build --print-errorlogs
+
+      - name: Generate man pages
+        run: meson compile manpages -C build
+
 
   build-mac:
     strategy:
