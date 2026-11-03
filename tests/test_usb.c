@@ -13,6 +13,8 @@
 #include <cmocka.h>
 #include <libusb.h>
 
+#include "ux.h"
+
 struct mock_transfer {
 	int ret;
 	int actual;
@@ -73,8 +75,24 @@ int libusb_get_string_descriptor_ascii(libusb_device_handle *dev_handle,
 	return (int)len;
 }
 
+void ux_err(const char *fmt, ...)
+{
+	(void)fmt;
+}
+
 void ux_warnx(const char *fmt, ...)
 {
+	(void)fmt;
+}
+
+void ux_info(const char *fmt, ...)
+{
+	(void)fmt;
+}
+
+void ux_debug_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	(void)tag;
 	(void)fmt;
 }
 
