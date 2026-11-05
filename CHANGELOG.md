@@ -2,7 +2,23 @@
 
 All notable changes to QDL, mirroring the [GitHub releases](https://github.com/linux-msm/qdl/releases). Each entry lists the pull requests merged for that release.
 
-This project uses `vMAJOR.MINOR` tags. Releases prior to v2.4 were tagged but not published as GitHub releases; see the [git tags](https://github.com/linux-msm/qdl/tags) for their history.
+This project uses `vMAJOR.MINOR` tags, with `vMAJOR.MINOR.PATCH` point
+releases cut from the `qdl-X.Y.y` stable branches. Releases prior to v2.4 were
+tagged but not published as GitHub releases; see the
+[git tags](https://github.com/linux-msm/qdl/tags) for their history.
+
+## [v2.9.1](https://github.com/linux-msm/qdl/releases/tag/v2.9.1) - 2026-11-05
+
+Windows-only fix release with no changes to qdl itself: the v2.9 Windows
+binaries report `v2.9-dirty` in `qdl --version` although they are clean builds
+of the tag. The Linux and macOS binaries are unchanged from v2.9.
+
+### What's Changed
+
+- github: set autocrlf before meson setup on Windows by @igoropaniuk in [#350](https://github.com/linux-msm/qdl/pull/350),
+  backported in [#356](https://github.com/linux-msm/qdl/pull/356)
+
+**Full Changelog**: [v2.9...v2.9.1](https://github.com/linux-msm/qdl/compare/v2.9...v2.9.1)
 
 ## [v2.9](https://github.com/linux-msm/qdl/releases/tag/v2.9) - 2026-11-02
 
