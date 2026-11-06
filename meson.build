@@ -163,19 +163,35 @@ run_target('markdown-lint',
 )
 
 # --- man generation ---
-if help2man.found()
-  # Test if we can run the built executable (might fail in cross-compilation)
-  can_run_exe = not meson.is_cross_build()
+cat = find_program('cat', required: false)
+if help2man.found() and cat.found()
+  # The built executable can be run natively, or through the cross file's
+  # exe_wrapper when cross-compiling.
+  can_run_exe = meson.can_run_host_binaries()
 
   if can_run_exe
     manpage_targets = []
     foreach prog : [
       ['qdl', qdl_exe, 'Qualcomm Download'],
     ]
+      # help2man runs the program itself, bypassing the exe_wrapper. Capture
+      # the --help and --version output from custom targets instead, which
+      # meson runs through the exe_wrapper, and let help2man read them back
+      # with cat. help2man takes the program name from the --version output.
+      help_txt = custom_target(prog[0] + '-help.txt',
+        output: prog[0] + '-help.txt',
+        command: [prog[1], '--help'],
+        capture: true)
+      version_txt = custom_target(prog[0] + '-version.txt',
+        output: prog[0] + '-version.txt',
+        command: [prog[1], '--version'],
+        capture: true)
       manpage_targets += custom_target(prog[0] + '.1',
-        input: prog[1],
+        input: [help_txt, version_txt],
         output: prog[0] + '.1',
-        command: [help2man, '-N', '-n', prog[2], prog[1].full_path()],
+        command: [help2man, '-N', '-n', prog[2],
+                  '--help-option=@INPUT0@', '--version-option=@INPUT1@',
+                  cat],
         capture: true,
         install: true,
         install_dir: get_option('mandir') / 'man1')
