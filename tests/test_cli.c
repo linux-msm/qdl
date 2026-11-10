@@ -9,6 +9,7 @@
  * usage helpers are stubbed. Only valid inputs are exercised - the unknown
  * storage/backend/skipblock cases ux_diex() out of the process by design.
  */
+#include <fcntl.h>
 #include <getopt.h>
 #include <limits.h>
 #include <setjmp.h>
@@ -18,8 +19,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <cmocka.h>
+
+#ifdef _WIN32
+#define NULL_DEVICE "NUL"
+#else
+#define NULL_DEVICE "/dev/null"
+#endif
 
 #include "qdl.h"
 #include "file.h"
@@ -60,24 +68,105 @@ int qdl_file_open(struct qdl_zip *z, const char *f, struct qdl_file *file)
 void *qdl_file_load(struct qdl_file *file, size_t *len) { (void)file; (void)len; return NULL; }
 void qdl_file_close(struct qdl_file *file) { (void)file; }
 
+#define MAX_ARGS 24
+
 /*
  * Copy a NULL-terminated argv template into a mutable array (getopt permutes
- * its argv), reset getopt, and parse.
+ * its argv) and return argc.
  */
-static int parse(struct qdl_opts *opts, const char *const *tmpl)
+static int copy_args(char **argv, const char *const *tmpl)
 {
-	char *argv[24];
 	int argc = 0;
 
 	while (tmpl[argc]) {
-		assert_true((size_t)argc < ARRAY_SIZE(argv) - 1);
+		assert_true(argc < MAX_ARGS - 1);
 		argv[argc] = (char *)tmpl[argc];
 		argc++;
 	}
 	argv[argc] = NULL;
 
+	return argc;
+}
+
+static int run_parse(int argc, char **argv, struct qdl_opts *opts)
+{
 	optind = 0; /* force glibc getopt to reinitialise between calls */
 	return qdl_parse_args(argc, argv, opts);
+}
+
+static int parse(struct qdl_opts *opts, const char *const *tmpl)
+{
+	char *argv[MAX_ARGS];
+	int argc = copy_args(argv, tmpl);
+
+	return run_parse(argc, argv, opts);
+}
+
+/*
+ * Point @fp at the null device. Returns a duplicate of the original
+ * descriptor for unsilence(), or -1 if @fp was left untouched.
+ */
+static int silence(FILE *fp)
+{
+	int null_fd;
+	int saved;
+
+	fflush(fp);
+	saved = dup(fileno(fp));
+	if (saved < 0)
+		return -1;
+
+	null_fd = open(NULL_DEVICE, O_WRONLY);
+	/* POSIX dup2() returns the new fd, the Windows CRT returns 0. */
+	if (null_fd < 0 || dup2(null_fd, fileno(fp)) < 0) {
+		if (null_fd >= 0)
+			close(null_fd);
+		close(saved);
+		return -1;
+	}
+	close(null_fd);
+
+	return saved;
+}
+
+static void unsilence(FILE *fp, int saved)
+{
+	if (saved < 0)
+		return;
+
+	fflush(fp);
+	dup2(saved, fileno(fp));
+	close(saved);
+}
+
+/*
+ * Like parse(), but with stdout and stderr pointed at the null device. The
+ * --help/--version and usage-error paths print through the real cli.c
+ * helpers, and anything they write to stdout would land in the TAP stream,
+ * which meson reports as UNKNOWN lines. Nothing may assert while the
+ * streams are silenced: a failing assertion longjmp()s past the restore
+ * and every later TAP line would be lost.
+ */
+static int parse_silent(struct qdl_opts *opts, const char *const *tmpl)
+{
+	char *argv[MAX_ARGS];
+	int argc = copy_args(argv, tmpl);
+	int saved_out;
+	int saved_err;
+	int ret;
+
+	saved_out = silence(stdout);
+	saved_err = silence(stderr);
+
+	ret = run_parse(argc, argv, opts);
+
+	unsilence(stderr, saved_err);
+	unsilence(stdout, saved_out);
+
+	assert_true(saved_out >= 0);
+	assert_true(saved_err >= 0);
+
+	return ret;
 }
 
 static void test_defaults(void **state)
@@ -172,12 +261,12 @@ static void test_help_version_and_usage(void **state)
 	struct qdl_opts o;
 	(void)state;
 
-	assert_int_equal(parse(&o, ver), QDL_ARGS_DONE);
-	assert_int_equal(parse(&o, help), QDL_ARGS_DONE);
+	assert_int_equal(parse_silent(&o, ver), QDL_ARGS_DONE);
+	assert_int_equal(parse_silent(&o, help), QDL_ARGS_DONE);
 
 	/* Fewer than two positional arguments is a usage error. */
-	assert_int_equal(parse(&o, too_few), QDL_ARGS_ERROR);
-	assert_int_equal(parse(&o, none), QDL_ARGS_ERROR);
+	assert_int_equal(parse_silent(&o, too_few), QDL_ARGS_ERROR);
+	assert_int_equal(parse_silent(&o, none), QDL_ARGS_ERROR);
 }
 
 /*
