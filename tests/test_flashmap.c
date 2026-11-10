@@ -289,7 +289,8 @@ void firehose_free_ops(struct list_head *ops)
 }
 
 int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, const char *program_file,
-		     bool is_nand, bool allow_missing, struct contents_filter *contents_filter, const char *incdir)
+		     bool is_nand, bool allow_missing, struct contents_filter *contents_filter,
+		     struct list_head *incdirs)
 {
 	struct firehose_op *op;
 
@@ -298,7 +299,7 @@ int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, co
 	(void)is_nand;
 	(void)allow_missing;
 	(void)contents_filter;
-	(void)incdir;
+	(void)incdirs;
 
 	op = firehose_alloc_op(FIREHOSE_OP_PROGRAM);
 	op->filename = strdup(program_file);

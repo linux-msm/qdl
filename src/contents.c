@@ -878,7 +878,7 @@ err_free_valid_selectors:
 }
 
 int contents_load(struct list_head *ops, const char *filename, char *specifier,
-		  struct sahara_image *images, const char *incdir)
+		  struct sahara_image *images, struct list_head *incdirs)
 {
 	struct contents_filter filter = {};
 	struct contents_entry *entry;
@@ -939,7 +939,7 @@ int contents_load(struct list_head *ops, const char *filename, char *specifier,
 			filter.flavor = flavor;
 
 			ret = program_load(ops, qdl_pathbuf_str(&entry->path),
-					   storage_type == QDL_STORAGE_NAND, false, &filter, incdir);
+					   storage_type == QDL_STORAGE_NAND, false, &filter, incdirs);
 			if (ret < 0) {
 				ux_err("failed to load program: %s\n", entry->filename);
 				goto out_free_contents;

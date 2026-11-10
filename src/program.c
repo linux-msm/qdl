@@ -173,7 +173,7 @@ static int program_load_sparse(struct list_head *ops, struct firehose_op *progra
 }
 
 static int program_resolve_path(struct firehose_op *program, const char *program_file,
-				struct contents_filter *contents_filter, const char *incdir)
+				struct contents_filter *contents_filter, struct list_head *incdirs)
 {
 	char *program_file_copy;
 	char candidate[PATH_MAX];
@@ -181,6 +181,7 @@ static int program_resolve_path(struct firehose_op *program, const char *program
 	const char *program_dir;
 	struct pathbuf pathbuf = {};
 	char *resolved;
+	struct qdl_incdir *incdir;
 	size_t len;
 	int ret;
 
@@ -200,9 +201,9 @@ static int program_resolve_path(struct firehose_op *program, const char *program
 		return 0;
 	}
 
-	/* Look for the file in include directory */
-	if (incdir) {
-		snprintf(candidate, sizeof(candidate), "%s/%s", incdir, filename);
+	/* Look for the file in the include directories, first match wins */
+	list_for_each_entry(incdir, incdirs, node) {
+		snprintf(candidate, sizeof(candidate), "%s/%s", incdir->path, filename);
 		if (!access(candidate, F_OK)) {
 			resolved = strdup(candidate);
 			if (!resolved)
@@ -237,7 +238,8 @@ static int program_resolve_path(struct firehose_op *program, const char *program
 
 static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand,
 			    bool allow_missing, struct qdl_zip *zip,
-			    const char *program_file, struct contents_filter *contents_filter, const char *incdir)
+			    const char *program_file, struct contents_filter *contents_filter,
+			    struct list_head *incdirs)
 {
 	struct firehose_op *program;
 	struct qdl_file file = {};
@@ -274,7 +276,7 @@ static int load_program_tag(struct list_head *ops, xmlNode *node, bool is_nand,
 	}
 
 	if (program->filename) {
-		ret = program_resolve_path(program, program_file, contents_filter, incdir);
+		ret = program_resolve_path(program, program_file, contents_filter, incdirs);
 		if (ret < 0)
 			goto err_free_op;
 
@@ -328,7 +330,8 @@ err_free_op:
 }
 
 int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, const char *program_file,
-		     bool is_nand, bool allow_missing, struct contents_filter *contents_filter, const char *incdir)
+		     bool is_nand, bool allow_missing, struct contents_filter *contents_filter,
+		     struct list_head *incdirs)
 {
 	xmlNode *node;
 	xmlNode *root;
@@ -343,7 +346,7 @@ int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, co
 			errors = load_erase_tag(ops, node, is_nand);
 		else if (!xmlStrcmp(node->name, (xmlChar *)"program"))
 			errors = load_program_tag(ops, node, is_nand, allow_missing, zip,
-						  program_file, contents_filter, incdir);
+						  program_file, contents_filter, incdirs);
 		else {
 			ux_err("unrecognized tag \"%s\" in program-type file \"%s\"\n", node->name, program_file);
 			errors = -EINVAL;
@@ -357,7 +360,8 @@ int program_load_xml(struct list_head *ops, xmlDoc *doc, struct qdl_zip *zip, co
 }
 
 int program_load(struct list_head *ops, const char *program_file, bool is_nand,
-		 bool allow_missing, struct contents_filter *contents_filter, const char *incdir)
+		 bool allow_missing, struct contents_filter *contents_filter,
+		 struct list_head *incdirs)
 {
 	xmlDoc *doc;
 	int errors;
@@ -368,7 +372,8 @@ int program_load(struct list_head *ops, const char *program_file, bool is_nand,
 		return -EINVAL;
 	}
 
-	errors = program_load_xml(ops, doc, NULL, program_file, is_nand, allow_missing, contents_filter, incdir);
+	errors = program_load_xml(ops, doc, NULL, program_file, is_nand, allow_missing,
+				  contents_filter, incdirs);
 
 	xmlFreeDoc(doc);
 

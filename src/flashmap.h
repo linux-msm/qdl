@@ -11,7 +11,7 @@
 struct sahara_image;
 
 int flashmap_load(struct list_head *ops, const char *filename, char *specifier,
-		  struct sahara_image *images, const char *incdir);
+		  struct sahara_image *images, struct list_head *incdirs);
 
 /*
  * Implemented in zipper.c, which is only built with zip-container

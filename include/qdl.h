@@ -225,6 +225,11 @@ const char *encode_storage_type(enum qdl_storage_type storage);
 int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images,
 			 struct contents_filter *contents_filter);
 
+struct qdl_incdir {
+	const char *path;
+	struct list_head node;
+};
+
 extern bool qdl_debug;
 
 #endif

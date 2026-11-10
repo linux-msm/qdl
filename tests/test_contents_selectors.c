@@ -102,14 +102,14 @@ int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images,
 
 int program_load(struct list_head *ops, const char *program_file, bool is_nand,
 		 bool allow_missing, struct contents_filter *contents_filter,
-		 const char *incdir)
+		 struct list_head *incdirs)
 {
 	(void)ops;
 	(void)program_file;
 	(void)is_nand;
 	(void)allow_missing;
 	(void)contents_filter;
-	(void)incdir;
+	(void)incdirs;
 
 	return -1;
 }

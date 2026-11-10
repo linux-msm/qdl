@@ -47,7 +47,7 @@ void print_usage(FILE *out)
 	usage_opt(out, " ", "-f, --allow-missing", "\t\tAllow skipping of missing files during flashing");
 	usage_opt(out, " ", "-s, --storage=T", "\t\tSet target storage type T: <emmc|nand|nvme|spinor|ufs>");
 	usage_opt(out, " ", "-l, --finalize-provisioning", "\tProvision the target storage");
-	usage_opt(out, " ", "-i, --include=T", "\t\tSet an optional folder T to search for files");
+	usage_opt(out, " ", "-i, --include=T", "\t\tAdd a folder T to search for files, may be repeated");
 	usage_opt(out, " ", "-S, --serial=T",
 		  "\t\t\tSelect target by serial number T (e.g. <0AA94EFD>, case-insensitive)");
 	usage_opt(out, " ", "-u, --out-chunk-size=T", "\t\tOverride chunk size for transaction with T");
@@ -82,6 +82,15 @@ void print_usage(FILE *out)
 		ux_style(out, UX_STYLE_HEADING), ux_style(out, UX_STYLE_RESET), ux_progname());
 	fprintf(out, "         %s flash contents.xml::ufs,spinor/safe_rtos\n", ux_progname());
 	fprintf(out, "         %s flash installer.zip::layout1/ufs\n", ux_progname());
+}
+
+void qdl_free_opts(struct qdl_opts *opts)
+{
+	struct qdl_incdir *incdir, *next;
+
+	list_for_each_entry_safe(incdir, next, &opts->incdirs, node)
+		free(incdir);
+	list_init(&opts->incdirs);
 }
 
 /*
@@ -167,6 +176,7 @@ int qdl_parse_args(int argc, char **argv, struct qdl_opts *opts)
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
+	struct qdl_incdir *incdir;
 	int opt;
 
 	*opts = (struct qdl_opts){
@@ -175,6 +185,7 @@ int qdl_parse_args(int argc, char **argv, struct qdl_opts *opts)
 		.skipblock_mode = QDL_SKIPBLOCK_NONE,
 		.slot = UINT_MAX,
 	};
+	list_init(&opts->incdirs);
 
 	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:T:Rqh", options, NULL)) != -1) {
 		switch (opt) {
@@ -199,7 +210,13 @@ int qdl_parse_args(int argc, char **argv, struct qdl_opts *opts)
 			opts->allow_missing = true;
 			break;
 		case 'i':
-			opts->incdir = optarg;
+			incdir = calloc(1, sizeof(*incdir));
+			if (!incdir) {
+				ux_err("failed to allocate include directory\n");
+				return QDL_ARGS_ERROR;
+			}
+			incdir->path = optarg;
+			list_append(&opts->incdirs, &incdir->node);
 			break;
 		case 'l':
 			opts->finalize_provisioning = true;
