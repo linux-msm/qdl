@@ -128,6 +128,12 @@ if cmocka_dep.found()
     # so only the ux_* logging stubs are required. GNU ld spells the
     # stripping --gc-sections, Apple's ld64 spells it -dead_strip; ask the
     # linker which one it supports.
+    #
+    # On ppc64 switch jump tables are addressed through the per-object
+    # .toc section, which every function shares and so is always kept.
+    # Its reference to firehose_run()'s jump table would then keep
+    # firehose_run() and all of its callees alive, so build test_firehose
+    # without jump tables to let that dead code be discarded.
     gc_sections = meson.get_compiler('c').get_supported_link_arguments(
       ['-Wl,--gc-sections', '-Wl,-dead_strip'])
 
@@ -137,7 +143,7 @@ if cmocka_dep.found()
       ],
       dependencies : common_dep + [cmocka_dep],
       include_directories : inc,
-      c_args : ['-ffunction-sections', '-fdata-sections'],
+      c_args : ['-ffunction-sections', '-fdata-sections', '-fno-jump-tables'],
       link_args : gc_sections,
     )
 
