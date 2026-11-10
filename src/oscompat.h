@@ -15,6 +15,7 @@
 #ifndef _WIN32
 
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -48,6 +49,25 @@ static inline bool path_is_absolute(const char *path)
 		return false;
 	return (isalpha((unsigned char)path[0]) && path[1] == ':') ||
 	       (path[0] == '\\' && path[1] == '\\');
+#endif
+}
+
+static inline bool qdl_host_is_wsl(void)
+{
+#ifndef _WIN32
+	struct utsname u;
+
+	if (uname(&u) < 0)
+		return false;
+
+	return strstr(u.release, "microsoft") ||
+	       strstr(u.release, "Microsoft") ||
+	       strstr(u.release, "WSL") ||
+	       strstr(u.version, "microsoft") ||
+	       strstr(u.version, "Microsoft") ||
+	       strstr(u.version, "WSL");
+#else
+	return false;
 #endif
 }
 

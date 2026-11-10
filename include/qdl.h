@@ -84,6 +84,7 @@ struct qdl_device {
 	enum qdl_storage_type current_storage_type;
 	enum qdl_skipblock_mode skipblock_mode;
 	unsigned int slot;
+	bool zlp_aware_host;
 
 	int (*open)(struct qdl_device *qdl, const char *serial);
 	int (*read)(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);

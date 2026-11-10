@@ -34,6 +34,7 @@ static void auto_bind_inner(struct qdl_device_auto *wrap, struct qdl_device *inn
 {
 	wrap->inner = inner;
 	wrap->base.max_payload_size = inner->max_payload_size;
+	wrap->base.zlp_aware_host = inner->zlp_aware_host;
 	if (wrap->chunk_size_set)
 		inner->set_out_chunk_size(inner, wrap->pending_chunk_size);
 }
