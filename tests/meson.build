@@ -22,6 +22,16 @@ test(
   suite: 'integration',
 )
 
+appstreamcli = find_program('appstreamcli', required: false)
+if appstreamcli.found()
+  test(
+    'AppStream metainfo validation',
+    appstreamcli,
+    args: ['validate', '--no-net', meson.project_source_root() / 'data' / 'com.github.linux_msm.qdl.metainfo.xml'],
+    suite: 'integration',
+  )
+endif
+
 # --- hardware-in-the-loop tests ---
 # Each step is a separate test in the "hil" suite. Run explicitly against an
 # attached EDL device with:

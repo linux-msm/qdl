@@ -129,6 +129,15 @@ if host_machine.system() == 'linux' and not get_option('udev').disabled()
   )
 endif
 
+# --- AppStream metainfo ---
+# Advertises the USB modaliases qdl handles so software centres and
+# distribution tooling can suggest qdl when an EDL device is plugged in.
+if host_machine.system() == 'linux'
+  install_data('data/com.github.linux_msm.qdl.metainfo.xml',
+    install_dir : get_option('datadir') / 'metainfo'
+  )
+endif
+
 # --- optional nbdkit plugin ---
 # nbdkit dlopens plugins, so there is no library to link against; the plugin
 # just needs <nbdkit-plugin.h> and compiles all non-main sources into a shared
