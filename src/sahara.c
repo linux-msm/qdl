@@ -1406,6 +1406,14 @@ firehose:
 	return 1;
 }
 
+/*
+ * Run the Sahara protocol, serving @images to the device or collecting a
+ * ramdump into @ramdump_path.
+ *
+ * Returns 0 once Sahara is done, 1 if the device turned out to be already
+ * running a Firehose programmer (so nothing was uploaded), or a negative
+ * value on failure.
+ */
 int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	       const char *ramdump_path,
 	       const char *ramdump_filter)
@@ -1454,7 +1462,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 				}
 				ux_info_tag(UX_TAG_SAHARA, "no HELLO received; "
 					    "assuming Firehose programmer is already running\n");
-				return 0;
+				return 1;
 			}
 			ux_err_tag(UX_TAG_SAHARA, "failed to read request from device\n");
 			break;
@@ -1463,7 +1471,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 		if (first_read && detect_firehose &&
 		    n >= 5 && !memcmp(buf, "<?xml", 5)) {
 			ux_info_tag(UX_TAG_SAHARA, "device is already in Firehose mode, skipping\n");
-			return 0;
+			return 1;
 		}
 		first_read = false;
 
