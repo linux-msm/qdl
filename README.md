@@ -203,6 +203,14 @@ A few maintenance commands do not need a programmer at all and only speak
 Sahara to the device: `qdl chipinfo` prints the chip identification the
 device reports, and `qdl reset` reboots a device stuck in EDL mode.
 
+`qdl reset --mode=edl` reboots the device back into EDL instead, and
+`--mode=off` powers it off. Both go through a Firehose programmer, so pass
+one unless it is still running from a `--skip-reset` run:
+
+```bash
+qdl reset --mode=edl prog_firehose_ddr.elf
+```
+
 ### Output
 
 A flashing run prints one line per region and ends with a summary of

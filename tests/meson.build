@@ -51,6 +51,7 @@ hil_steps = [
   ['write EFI partition',     'write_image',         20],
   ['write chunked',           'write_chunked',       18],
   ['verify write integrity',  'verify_write',        15],
+  ['reset back into EDL',     'reset_edl',           12],
   ['reset board',             'reset',               10],
 ]
 

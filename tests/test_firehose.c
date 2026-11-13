@@ -3,8 +3,8 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 /*
- * Unit tests for the Firehose XML response parsers and the reset mode
- * mapping. They are file-local in firehose.c, so the module is #included
+ * Unit tests for the Firehose XML response parsers, including the drain
+ * parser, and the reset mode mapping. They are file-local in firehose.c, so the module is #included
  * directly. Only these helpers are exercised; the rest of firehose.c (and its device / vip /
  * ufs dependencies) is dropped at link time via --gc-sections, so only
  * the ux_* logging stubs are needed.
@@ -157,6 +157,28 @@ static void test_configure_log_and_missing(void **state)
 	xmlFreeNode(n);
 }
 
+/* --- firehose_drain_parser --- */
+
+static void test_drain_parser(void **state)
+{
+	bool rawmode = false;
+	xmlNode *n;
+	(void)state;
+
+	/* Logs and responses alike end the drain once output pauses. */
+	n = mk("log");
+	attr(n, "value", "INFO: Binary build date");
+	assert_int_equal(firehose_drain_parser(n, NULL, &rawmode), 0);
+	xmlFreeNode(n);
+
+	n = mk("response");
+	attr(n, "value", "NAK");
+	assert_int_equal(firehose_drain_parser(n, NULL, &rawmode), 0);
+	xmlFreeNode(n);
+
+	assert_false(rawmode);
+}
+
 /* --- firehose_reset_mode_str --- */
 
 static void test_reset_mode_str(void **state)
@@ -179,6 +201,7 @@ int main(void)
 		cmocka_unit_test(test_configure_nak_negotiates),
 		cmocka_unit_test(test_configure_ack_without_supported),
 		cmocka_unit_test(test_configure_log_and_missing),
+		cmocka_unit_test(test_drain_parser),
 		cmocka_unit_test(test_reset_mode_str),
 	};
 

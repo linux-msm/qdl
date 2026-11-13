@@ -1705,6 +1705,25 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	return 0;
 }
 
+/* Treat any message as the awaited one, so draining ends once output stops */
+static int firehose_drain_parser(xmlNode *node, void *data, bool *rawmode)
+{
+	firehose_generic_parser(node, data, rawmode);
+
+	return 0;
+}
+
+/*
+ * Consume the output a programmer has queued up, such as its startup banner,
+ * for callers that would otherwise send a command before anything reads it.
+ * Returns as soon as the output pauses, or after @timeout_ms if there is
+ * none at all.
+ */
+void firehose_drain(struct qdl_device *qdl, unsigned int timeout_ms)
+{
+	firehose_read(qdl, timeout_ms, firehose_drain_parser, NULL);
+}
+
 /* Map @mode onto the value attribute of <power>, or NULL if it is invalid */
 static const char *firehose_reset_mode_str(enum qdl_reset_mode mode)
 {

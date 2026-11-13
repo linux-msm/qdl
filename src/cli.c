@@ -31,7 +31,7 @@ void print_usage(FILE *out)
 	fprintf(out, "       %s [options] <prog.mbn> (reset)\n", ux_progname());
 	fprintf(out, "       %s list\n", ux_progname());
 	fprintf(out, "       %s chipinfo\n", ux_progname());
-	fprintf(out, "       %s reset\n", ux_progname());
+	fprintf(out, "       %s reset [--mode=M] [<prog.mbn>]\n", ux_progname());
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", ux_progname());
 	fprintf(out, "       %s ks [-p <sahara-dev-node> | --serial=T] -s <id:file-path>...\n", ux_progname());
 	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", ux_progname());
@@ -58,6 +58,9 @@ void print_usage(FILE *out)
 		  "\t\tDo not send the reset command after flashing completes");
 	usage_opt(out, "     ", "--reset-mode=M",
 		  "\t\tLeave the device in state M after flashing: <system|edl|off> (default: system)");
+	usage_opt(out, "     ", "--mode=M",
+		  "\t\tReset into state M: <system|edl|off> (reset); edl and off need a");
+	fprintf(out, "                 \t\tprogrammer, so pass <prog.mbn> unless one is running\n");
 	usage_opt(out, "     ", "--backend=B", "\t\tSelect device backend B: <auto|usb|qud> (default: auto)");
 	usage_opt(out, "     ", "--skipblock=M",
 		  "\t\tUse readback mechanism M to skip <program> entries already on flash;");

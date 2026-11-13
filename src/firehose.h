@@ -72,6 +72,7 @@ struct firehose_op {
 };
 
 struct firehose_op *firehose_alloc_op(int type);
+void firehose_drain(struct qdl_device *qdl, unsigned int timeout_ms);
 void firehose_free_ops(struct list_head *ops);
 
 #endif

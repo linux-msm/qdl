@@ -251,14 +251,12 @@ static int qdl_sahara_cmd(int argc, char **argv, int (*run)(struct qdl_device *q
 }
 
 /*
- * Device reset ("reset") subcommand body.
- *
- * Resets the device from whichever state it is in: over the Sahara
- * protocol when the device sits in EDL or crash mode, falling back to a
- * Firehose power reset when a programmer is already running. Unlike the
- * "reset" flashing verb, no programmer needs to be uploaded.
+ * Reset a device into the system from whichever state it is in: over the
+ * Sahara protocol when the device sits in EDL or crash mode, falling back to
+ * a Firehose power reset when a programmer is already running. No programmer
+ * needs to be uploaded.
  */
-static int qdl_reset_run(struct qdl_device *qdl)
+static int qdl_reset_system(struct qdl_device *qdl)
 {
 	int ret;
 
@@ -269,6 +267,106 @@ static int qdl_reset_run(struct qdl_device *qdl)
 	}
 
 	return ret;
+}
+
+/*
+ * Reset through a Firehose <power> command, the only way to reboot back into
+ * EDL or to power the device off. @images holds the programmer to upload, or
+ * is NULL when one is expected to be running already.
+ */
+static int qdl_reset_firehose(struct qdl_device *qdl, const struct sahara_image *images,
+			      enum qdl_reset_mode mode)
+{
+	int ret;
+
+	ret = sahara_run(qdl, images, NULL, NULL);
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * A programmer that has just started does not read its input until
+	 * it has printed its startup banner, and <power> is the only command
+	 * sent here, so nothing else would consume it.
+	 */
+	if (ret == 0)
+		firehose_drain(qdl, 1000);
+
+	return firehose_reset(qdl, mode);
+}
+
+/*
+ * Device reset ("reset") subcommand.
+ *
+ * Without options the device is reset into the system without uploading a
+ * programmer. --mode=edl or --mode=off need Firehose, so the programmer can
+ * be passed and is uploaded like in a flashing run; sahara_run() skips the
+ * upload when a programmer is already running, so it can also be omitted
+ * then, e.g. after a --skip-reset flashing run.
+ */
+static int qdl_reset(int argc, char **argv)
+{
+	struct sahara_image sahara_images[MAPPING_SZ] = {};
+	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_AUTO;
+	enum qdl_reset_mode mode = QDL_RESET_SYSTEM;
+	struct qdl_device *qdl;
+	char *programmer = NULL;
+	char *serial = NULL;
+	int ret;
+	int opt;
+
+	static struct option options[] = {
+		{"debug", no_argument, 0, 'd'},
+		{"version", no_argument, 0, 'v'},
+		{"serial", required_argument, 0, 'S'},
+		{"backend", required_argument, 0, OPT_BACKEND},
+		{"mode", required_argument, 0, OPT_RESET_MODE},
+		{"help", no_argument, 0, 'h'},
+		{0, 0, 0, 0}
+	};
+
+	while ((opt = getopt_long(argc, argv, "dvS:h", options, NULL)) != -1) {
+		if (opt == OPT_RESET_MODE) {
+			if (decode_reset_mode(optarg, &mode) < 0)
+				ux_diex(1, "unknown reset mode \"%s\" (expected system|edl|off)",
+					optarg);
+			continue;
+		}
+
+		ret = qdl_common_opt(opt, &serial, &qdl_dev_type);
+		if (ret == QDL_OPT_EXIT_OK)
+			return 0;
+		if (ret == QDL_OPT_EXIT_FAIL)
+			return 1;
+	}
+
+	if (optind < argc)
+		programmer = argv[optind++];
+
+	if (optind != argc) {
+		print_usage(stderr);
+		return 1;
+	}
+
+	ux_init();
+
+	if (programmer && decode_programmer(programmer, sahara_images) < 0)
+		return 1;
+
+	qdl = qdl_session_open(qdl_dev_type, serial);
+	if (!qdl) {
+		sahara_images_free(sahara_images, MAPPING_SZ);
+		return 1;
+	}
+
+	if (!programmer && mode == QDL_RESET_SYSTEM)
+		ret = qdl_reset_system(qdl);
+	else
+		ret = qdl_reset_firehose(qdl, programmer ? sahara_images : NULL, mode);
+
+	qdl_session_close(qdl);
+	sahara_images_free(sahara_images, MAPPING_SZ);
+
+	return ret < 0 ? 1 : 0;
 }
 
 /*
@@ -950,7 +1048,7 @@ int main(int argc, char **argv)
 		if (!strcmp(argv[i], "chipinfo"))
 			return qdl_sahara_cmd(argc - i, argv + i, sahara_chipinfo);
 		if (!strcmp(argv[i], "reset"))
-			return qdl_sahara_cmd(argc - i, argv + i, qdl_reset_run);
+			return qdl_reset(argc - i, argv + i);
 		if (!strcmp(argv[i], "ks"))
 			return qdl_ks(argc - i, argv + i);
 		if (!strcmp(argv[i], "create-zip"))
