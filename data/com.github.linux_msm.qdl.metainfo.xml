@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. -->
 <!-- SPDX-License-Identifier: MIT OR BSD-3-Clause -->
-<!-- The modaliases below must match the interfaces in udev/70-qdl.rules.in. -->
+<!--
+  The modaliases below cover the interfaces in udev/70-qdl.rules.in.
+  Protocol ff is also used by DIAG and other vendor-specific interfaces,
+  so it is limited to the EDL (9008) and crashdump (900e) product IDs.
+-->
 <component type="console-application">
   <id>com.github.linux_msm.qdl</id>
   <metadata_license>MIT OR BSD-3-Clause</metadata_license>
@@ -10,10 +14,7 @@
   <summary>Flash firmware on Qualcomm devices in Emergency Download mode</summary>
   <description>
     <p>
-      qdl communicates with Qualcomm processors using the Emergency Download
-      (EDL), Validated Image Programming (VIP) and Sahara protocols over USB.
-    </p>
-    <p>
+      qdl flashes Qualcomm devices over USB in Emergency Download (EDL) mode.
       It can upload a Firehose programmer to a device, flash device storage,
       read device storage and collect a RAM dump from a crashed device.
     </p>
@@ -24,6 +25,7 @@
     <modalias>usb:v05C6p*d*dc*dsc*dp*icFFiscFFip10in*</modalias>
     <modalias>usb:v05C6p*d*dc*dsc*dp*icFFiscFFip11in*</modalias>
     <modalias>usb:v05C6p*d*dc*dsc*dp*icFFiscFFip13in*</modalias>
-    <modalias>usb:v05C6p*d*dc*dsc*dp*icFFiscFFipFFin*</modalias>
+    <modalias>usb:v05C6p9008d*dc*dsc*dp*icFFiscFFipFFin*</modalias>
+    <modalias>usb:v05C6p900Ed*dc*dsc*dp*icFFiscFFipFFin*</modalias>
   </provides>
 </component>
