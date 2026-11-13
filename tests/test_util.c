@@ -221,6 +221,28 @@ static void test_decode_backend(void **state)
 	assert_int_equal(decode_backend("bogus", &t), -1);
 }
 
+/* --- decode_reset_mode --- */
+
+static void test_decode_reset_mode(void **state)
+{
+	enum qdl_reset_mode m = QDL_RESET_OFF;
+	(void)state;
+
+	assert_int_equal(decode_reset_mode("system", &m), 0);
+	assert_int_equal(m, QDL_RESET_SYSTEM);
+
+	assert_int_equal(decode_reset_mode("edl", &m), 0);
+	assert_int_equal(m, QDL_RESET_EDL);
+
+	assert_int_equal(decode_reset_mode("off", &m), 0);
+	assert_int_equal(m, QDL_RESET_OFF);
+
+	/* Unknown names and NULL leave the output untouched. */
+	assert_int_equal(decode_reset_mode("reset_to_edl", &m), -1);
+	assert_int_equal(decode_reset_mode(NULL, &m), -1);
+	assert_int_equal(m, QDL_RESET_OFF);
+}
+
 /* --- decode_color_mode --- */
 
 static void test_decode_color_mode(void **state)
@@ -287,6 +309,7 @@ int main(void)
 		cmocka_unit_test(test_storage_type_roundtrip),
 		cmocka_unit_test(test_attr_accessors),
 		cmocka_unit_test(test_decode_backend),
+		cmocka_unit_test(test_decode_reset_mode),
 		cmocka_unit_test(test_decode_color_mode),
 		cmocka_unit_test(test_split_specifier),
 	};

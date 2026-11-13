@@ -265,6 +265,33 @@ int decode_backend(const char *name, enum QDL_DEVICE_TYPE *out)
 }
 
 /*
+ * Decode a reset mode name: "system" reboots into the system, "edl" back
+ * into EDL and "off" powers the device off.
+ */
+int decode_reset_mode(const char *name, enum qdl_reset_mode *out)
+{
+	if (!name)
+		return -1;
+
+	if (!strcmp(name, "system")) {
+		*out = QDL_RESET_SYSTEM;
+		return 0;
+	}
+
+	if (!strcmp(name, "edl")) {
+		*out = QDL_RESET_EDL;
+		return 0;
+	}
+
+	if (!strcmp(name, "off")) {
+		*out = QDL_RESET_OFF;
+		return 0;
+	}
+
+	return -1;
+}
+
+/*
  * Decode the value of --color. A bare --color (@name is NULL) means
  * "always", matching the convention of git, grep and ls.
  */

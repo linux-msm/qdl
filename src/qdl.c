@@ -516,13 +516,14 @@ static int qdl_cmd_flash(struct list_head *firehose_ops, const char *arg,
 	return ret;
 }
 
-static int qdl_cmd_reset(struct list_head *ops)
+static int qdl_cmd_reset(struct list_head *ops, enum qdl_reset_mode mode)
 {
 	struct firehose_op *reset_op = firehose_alloc_op(FIREHOSE_OP_RESET);
 
 	if (!reset_op)
 		return -1;
 
+	reset_op->reset_mode = mode;
 	list_append(ops, &reset_op->node);
 
 	return 0;
@@ -801,7 +802,7 @@ static int qdl_build_op_list(int argc, char **argv, int start,
 		case QDL_CMD_RESET:
 			/* Do not allocate two reset commands */
 			opts->skip_reset = true;
-			ret = qdl_cmd_reset(ops);
+			ret = qdl_cmd_reset(ops, opts->reset_mode);
 			if (ret < 0)
 				return -1;
 			/* Reset ends the run; stop processing chained commands */
@@ -882,7 +883,7 @@ static int qdl_flash(int argc, char **argv)
 	 * to leave the programmer alive across qdl invocations.
 	 */
 	if (!opts.skip_reset) {
-		ret = qdl_cmd_reset(&firehose_ops);
+		ret = qdl_cmd_reset(&firehose_ops, opts.reset_mode);
 		if (ret < 0)
 			goto out_cleanup;
 	}
@@ -896,7 +897,7 @@ static int qdl_flash(int argc, char **argv)
 		goto out_cleanup;
 
 	if (ufs_need_provisioning(&ufs))
-		ret = firehose_provision(qdl, &ufs, opts.skip_reset);
+		ret = firehose_provision(qdl, &ufs, opts.skip_reset, opts.reset_mode);
 	else
 		ret = firehose_run(qdl, &firehose_ops);
 	if (ret < 0)

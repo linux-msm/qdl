@@ -193,6 +193,9 @@ Other options that commonly matter when flashing:
   makes reflashing an unchanged build much faster.
 - `--skip-reset` leaves the device in EDL mode after flashing instead of
   sending the final reset.
+- `--reset-mode=<system|edl|off>` selects what the final reset does:
+  reboot into the system (the default), reboot back into EDL, ready for
+  the next run, or power the device off.
 - `--finalize-provisioning` is required, together with a matching UFS
   provisioning XML, to perform irreversible UFS provisioning.
 

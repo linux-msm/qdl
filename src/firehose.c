@@ -1838,7 +1838,8 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 	return 0;
 }
 
-int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, bool skip_reset)
+int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, bool skip_reset,
+		       enum qdl_reset_mode reset_mode)
 {
 	int ret;
 
@@ -1861,7 +1862,7 @@ int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, boo
 		ux_info_tag(UX_TAG_FIREHOSE, "UFS provisioning failed\n");
 
 	if (!skip_reset)
-		firehose_reset(qdl, QDL_RESET_SYSTEM);
+		firehose_reset(qdl, reset_mode);
 
 	return ret;
 
@@ -1969,7 +1970,7 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 			firehose_set_bootable(qdl, op->partition);
 			break;
 		case FIREHOSE_OP_RESET:
-			ret = firehose_reset(qdl, QDL_RESET_SYSTEM);
+			ret = firehose_reset(qdl, op->reset_mode);
 			if (ret < 0)
 				return ret;
 			break;

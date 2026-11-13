@@ -63,6 +63,9 @@ struct firehose_op {
 	/* configure */
 	enum qdl_storage_type storage_type;
 
+	/* reset */
+	enum qdl_reset_mode reset_mode;
+
 	/* getsha256digest */
 	uint8_t digest[SHA256_DIGEST_LENGTH];
 	bool digest_valid;
