@@ -22,7 +22,9 @@ a **::storage1[,storage2...]** suffix to the file name.
 
 If a flashmap contains multiple layouts, select the desired layout by appending
 **::layout-name**. The layout selector can be combined with storage filters
-using **::layout-name/storage1[,storage2...]**, for example:
+using **::layout-name/storage1[,storage2...]**. If no layout is selected and the
+flashmap contains multiple layouts, the one marked with `"default": true` is
+used. For example:
 
 ```bash
 qdl flash installer.zip::layout1/ufs
