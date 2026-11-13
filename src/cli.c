@@ -31,7 +31,7 @@ void print_usage(FILE *out)
 	fprintf(out, "       %s [options] <prog.mbn> (reset)\n", ux_progname());
 	fprintf(out, "       %s list\n", ux_progname());
 	fprintf(out, "       %s chipinfo\n", ux_progname());
-	fprintf(out, "       %s reset\n", ux_progname());
+	fprintf(out, "       %s reset [--mode=M] [<prog.mbn>]\n", ux_progname());
 	fprintf(out, "       %s ramdump [--debug] [-o <ramdump-path>] [<segment-filter>,...]\n", ux_progname());
 	fprintf(out, "       %s ks [-p <sahara-dev-node> | --serial=T] -s <id:file-path>...\n", ux_progname());
 	fprintf(out, "       %s flash (<flashmap>[::specifier] | <contents>[::<specifier>])\n", ux_progname());
@@ -56,6 +56,11 @@ void print_usage(FILE *out)
 	usage_opt(out, " ", "-D, --vip-table-path=T", "\t\tUse digest tables in the T folder for VIP");
 	usage_opt(out, " ", "-R, --skip-reset",
 		  "\t\tDo not send the reset command after flashing completes");
+	usage_opt(out, "     ", "--reset-mode=M",
+		  "\t\tLeave the device in state M after flashing: <system|edl|off> (default: system)");
+	usage_opt(out, "     ", "--mode=M",
+		  "\t\tReset into state M: <system|edl|off> (reset); edl and off need a");
+	fprintf(out, "                 \t\tprogrammer, so pass <prog.mbn> unless one is running\n");
 	usage_opt(out, "     ", "--backend=B", "\t\tSelect device backend B: <auto|usb|qud> (default: auto)");
 	usage_opt(out, "     ", "--skipblock=M",
 		  "\t\tUse readback mechanism M to skip <program> entries already on flash;");
@@ -161,18 +166,21 @@ int qdl_parse_args(int argc, char **argv, struct qdl_opts *opts)
 		{"create-digests", required_argument, 0, 't'},
 		{"slot", required_argument, 0, 'T'},
 		{"skip-reset", no_argument, 0, 'R'},
+		{"reset-mode", required_argument, 0, OPT_RESET_MODE},
 		{"quiet", no_argument, 0, 'q'},
 		{"backend", required_argument, 0, OPT_BACKEND},
 		{"skipblock", required_argument, 0, OPT_SKIPBLOCK},
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
+	bool reset_mode_set = false;
 	int opt;
 
 	*opts = (struct qdl_opts){
 		.storage_type = QDL_STORAGE_UFS,
 		.dev_type = QDL_DEVICE_AUTO,
 		.skipblock_mode = QDL_SKIPBLOCK_NONE,
+		.reset_mode = QDL_RESET_SYSTEM,
 		.slot = UINT_MAX,
 	};
 
@@ -227,6 +235,11 @@ int qdl_parse_args(int argc, char **argv, struct qdl_opts *opts)
 		case 'R':
 			opts->skip_reset = true;
 			break;
+		case OPT_RESET_MODE:
+			if (decode_reset_mode(optarg, &opts->reset_mode) < 0)
+				ux_diex(1, "unknown reset mode \"%s\" (expected system|edl|off)", optarg);
+			reset_mode_set = true;
+			break;
 		case OPT_BACKEND:
 			/*
 			 * --dry-run / --create-digests already pinned the backend to
@@ -252,6 +265,11 @@ int qdl_parse_args(int argc, char **argv, struct qdl_opts *opts)
 			print_usage(stderr);
 			return QDL_ARGS_ERROR;
 		}
+	}
+
+	if (opts->skip_reset && reset_mode_set) {
+		ux_err("--reset-mode cannot be combined with --skip-reset\n");
+		return QDL_ARGS_ERROR;
 	}
 
 	/* at least 2 non optional args required */

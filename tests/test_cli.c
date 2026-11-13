@@ -186,7 +186,26 @@ static void test_defaults(void **state)
 	assert_false(o.allow_fusing);
 	assert_false(o.finalize_provisioning);
 	assert_false(o.skip_reset);
+	assert_int_equal(o.reset_mode, QDL_RESET_SYSTEM);
 	assert_int_equal(o.out_chunk_size, 0);
+}
+
+static void test_reset_mode(void **state)
+{
+	static const char *const edl[] = { "qdl", "--reset-mode", "edl", "prog", "f", NULL };
+	static const char *const off[] = { "qdl", "--reset-mode=off", "prog", "f", NULL };
+	static const char *const skip[] = { "qdl", "-R", "--reset-mode=edl", "prog", "f", NULL };
+	struct qdl_opts o;
+	(void)state;
+
+	assert_int_equal(parse(&o, edl), QDL_ARGS_OK);
+	assert_int_equal(o.reset_mode, QDL_RESET_EDL);
+
+	assert_int_equal(parse(&o, off), QDL_ARGS_OK);
+	assert_int_equal(o.reset_mode, QDL_RESET_OFF);
+
+	/* There is no reset to select a mode for. */
+	assert_int_equal(parse_silent(&o, skip), QDL_ARGS_ERROR);
 }
 
 static void test_storage_and_backend(void **state)
@@ -383,6 +402,7 @@ int main(void)
 {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_defaults),
+		cmocka_unit_test(test_reset_mode),
 		cmocka_unit_test(test_storage_and_backend),
 		cmocka_unit_test(test_dry_run_and_skipblock),
 		cmocka_unit_test(test_flags_and_values),

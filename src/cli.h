@@ -13,6 +13,7 @@ enum {
 	OPT_BACKEND = 0x100,
 	OPT_SKIPBLOCK,
 	OPT_SERIAL,
+	OPT_RESET_MODE,
 };
 
 /* Command-line options and flags for a flashing run. */
@@ -20,6 +21,7 @@ struct qdl_opts {
 	enum qdl_storage_type storage_type;
 	enum QDL_DEVICE_TYPE dev_type;
 	enum qdl_skipblock_mode skipblock_mode;
+	enum qdl_reset_mode reset_mode;
 	char *incdir;
 	char *serial;
 	const char *vip_generate_dir;

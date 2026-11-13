@@ -1705,19 +1705,59 @@ static int firehose_set_bootable(struct qdl_device *qdl, int part)
 	return 0;
 }
 
-int firehose_reset(struct qdl_device *qdl)
+/* Treat any message as the awaited one, so draining ends once output stops */
+static int firehose_drain_parser(xmlNode *node, void *data, bool *rawmode)
 {
+	firehose_generic_parser(node, data, rawmode);
+
+	return 0;
+}
+
+/*
+ * Consume the output a programmer has queued up, such as its startup banner,
+ * for callers that would otherwise send a command before anything reads it.
+ * Returns as soon as the output pauses, or after @timeout_ms if there is
+ * none at all.
+ */
+void firehose_drain(struct qdl_device *qdl, unsigned int timeout_ms)
+{
+	firehose_read(qdl, timeout_ms, firehose_drain_parser, NULL);
+}
+
+/* Map @mode onto the value attribute of <power>, or NULL if it is invalid */
+static const char *firehose_reset_mode_str(enum qdl_reset_mode mode)
+{
+	switch (mode) {
+	case QDL_RESET_SYSTEM:
+		return "reset";
+	case QDL_RESET_EDL:
+		return "reset_to_edl";
+	case QDL_RESET_OFF:
+		return "off";
+	}
+
+	return NULL;
+}
+
+int firehose_reset(struct qdl_device *qdl, enum qdl_reset_mode mode)
+{
+	const char *value = firehose_reset_mode_str(mode);
 	xmlNode *root;
 	xmlNode *node;
 	xmlDoc *doc;
 	int ret;
+
+	if (!value) {
+		ux_err("internal error: unknown reset mode %d\n", mode);
+		return -EINVAL;
+	}
 
 	doc = xmlNewDoc((xmlChar *)"1.0");
 	root = xmlNewNode(NULL, (xmlChar *)"data");
 	xmlDocSetRootElement(doc, root);
 
 	node = xmlNewChild(root, NULL, (xmlChar *)"power", NULL);
-	xml_setpropf(node, "value", "reset");
+	xml_setpropf(node, "value", "%s", value);
 	xml_setpropf(node, "DelayInSeconds", "10"); // Add a delay to prevent reboot fail
 
 	ret = firehose_write(qdl, doc);
@@ -1727,7 +1767,7 @@ int firehose_reset(struct qdl_device *qdl)
 
 	ret = firehose_read(qdl, 5000, firehose_generic_parser, NULL);
 	if (ret < 0)
-		ux_err("failed to request device reset\n");
+		ux_err("failed to request device reset (%s)\n", value);
 	/* drain any remaining log messages for reset */
 	else
 		firehose_read(qdl, 1000, firehose_generic_parser, NULL);
@@ -1817,7 +1857,8 @@ static int firehose_detect_and_configure(struct qdl_device *qdl,
 	return 0;
 }
 
-int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, bool skip_reset)
+int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, bool skip_reset,
+		       enum qdl_reset_mode reset_mode)
 {
 	int ret;
 
@@ -1840,7 +1881,7 @@ int firehose_provision(struct qdl_device *qdl, struct ufs_provisioning *ufs, boo
 		ux_info_tag(UX_TAG_FIREHOSE, "UFS provisioning failed\n");
 
 	if (!skip_reset)
-		firehose_reset(qdl);
+		firehose_reset(qdl, reset_mode);
 
 	return ret;
 
@@ -1948,7 +1989,7 @@ static int firehose_execute_ops(struct qdl_device *qdl, struct list_head *ops)
 			firehose_set_bootable(qdl, op->partition);
 			break;
 		case FIREHOSE_OP_RESET:
-			ret = firehose_reset(qdl);
+			ret = firehose_reset(qdl, op->reset_mode);
 			if (ret < 0)
 				return ret;
 			break;

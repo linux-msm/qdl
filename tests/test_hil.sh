@@ -277,6 +277,37 @@ t_write_image() {
     qdl_noreset "${PROGRAMMER}" write "${PARTITION}" "${IMAGE}"
 }
 
+# Wait for the device to drop off the bus. A Firehose reset is delayed by
+# its DelayInSeconds, so the old session stays visible to "qdl list" for a
+# while and must not be mistaken for the device coming back.
+wait_gone() {
+    local deadline=$(( SECONDS + ${QDL_HIL_SETTLE:-30} ))
+
+    while "${QEXE}" list 2>/dev/null | grep -qiE "^[0-9a-f]{4}:[0-9a-f]{4}.*${SERIAL}"; do
+        if (( SECONDS >= deadline )); then
+            echo "device did not go down within ${QDL_HIL_SETTLE:-30}s" >&2
+            return 1
+        fi
+        sleep 1
+    done
+}
+
+# Reboot back into EDL with the reset subcommand, twice: first through the
+# programmer the earlier steps left running, then from EDL, which uploads
+# the programmer again. The device must re-enumerate in EDL each time.
+t_reset_edl() {
+    need_programmer
+    local args=()
+    [[ -n "${SERIAL}" ]] && args+=( -S "${SERIAL}" )
+    local pass
+    for pass in running uploaded; do
+        "${QEXE}" "${QDLDBG[@]}" reset "${args[@]}" --mode=edl "${PROGRAMMER}" ||
+            { echo "reset --mode=edl failed (programmer ${pass})" >&2; return 1; }
+        wait_gone || return 1
+        t_list || return 1
+    done
+}
+
 # Final step: reset the board with the explicit reset verb, ending the
 # Firehose session that every other step kept alive with --skip-reset.
 t_reset() {
@@ -436,6 +467,7 @@ case "${step}" in
     write_image)        t_write_image ;;
     write_chunked)      t_write_chunked ;;
     verify_write)       t_verify_write ;;
+    reset_edl)          t_reset_edl ;;
     reset)              t_reset ;;
     *) echo "unknown step: ${step}" >&2; exit 99 ;;
 esac

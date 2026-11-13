@@ -326,6 +326,29 @@ static int sahara_hello(struct qdl_device *qdl, struct sahara_pkt *pkt)
 	return sahara_send_hello_resp(qdl, SAHARA_VERSION, pkt->hello_req.mode);
 }
 
+/*
+ * Check that the device's request for image @idx can be served, reporting
+ * why not otherwise. A NULL @images means the caller had nothing to upload,
+ * typically because it expected a programmer to be running already.
+ */
+static bool sahara_image_available(const struct sahara_image *images,
+				   unsigned int idx)
+{
+	if (!images) {
+		ux_err_tag(UX_TAG_SAHARA, "device requested image id %u, but no "
+			   "programmer was given; pass one to upload it\n", idx);
+		return false;
+	}
+
+	if (idx >= MAPPING_SZ || !images[idx].ptr) {
+		ux_err_tag(UX_TAG_SAHARA, "device requested unknown image id %u, "
+			   "ensure that all Sahara images are provided\n", idx);
+		return false;
+	}
+
+	return true;
+}
+
 static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		       const struct sahara_image *images)
 {
@@ -345,9 +368,7 @@ static int sahara_read(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		     ux_direction(false), pkt->read_req.image, pkt->read_req.offset, pkt->read_req.length);
 
 	image_idx = pkt->read_req.image;
-	if (!images || image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
-		ux_err_tag(UX_TAG_SAHARA, "device requested unknown image id %u, "
-			   "ensure that all Sahara images are provided\n", image_idx);
+	if (!sahara_image_available(images, image_idx)) {
 		sahara_send_reset(qdl);
 		return -1;
 	}
@@ -395,9 +416,7 @@ static int sahara_read64(struct qdl_device *qdl, struct sahara_pkt *pkt,
 		     pkt->read64_req.offset, pkt->read64_req.length);
 
 	image_idx = pkt->read64_req.image;
-	if (!images || image_idx >= MAPPING_SZ || !images[image_idx].ptr) {
-		ux_err_tag(UX_TAG_SAHARA, "device requested unknown image id %u, "
-			   "ensure that all Sahara images are provided\n", image_idx);
+	if (!sahara_image_available(images, image_idx)) {
 		sahara_send_reset(qdl);
 		return -1;
 	}
@@ -1406,6 +1425,14 @@ firehose:
 	return 1;
 }
 
+/*
+ * Run the Sahara protocol, serving @images to the device or collecting a
+ * ramdump into @ramdump_path.
+ *
+ * Returns 0 once Sahara is done, 1 if the device turned out to be already
+ * running a Firehose programmer (so nothing was uploaded), or a negative
+ * value on failure.
+ */
 int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 	       const char *ramdump_path,
 	       const char *ramdump_filter)
@@ -1454,7 +1481,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 				}
 				ux_info_tag(UX_TAG_SAHARA, "no HELLO received; "
 					    "assuming Firehose programmer is already running\n");
-				return 0;
+				return 1;
 			}
 			ux_err_tag(UX_TAG_SAHARA, "failed to read request from device\n");
 			break;
@@ -1463,7 +1490,7 @@ int sahara_run(struct qdl_device *qdl, const struct sahara_image *images,
 		if (first_read && detect_firehose &&
 		    n >= 5 && !memcmp(buf, "<?xml", 5)) {
 			ux_info_tag(UX_TAG_SAHARA, "device is already in Firehose mode, skipping\n");
-			return 0;
+			return 1;
 		}
 		first_read = false;
 

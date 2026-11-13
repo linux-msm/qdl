@@ -193,12 +193,23 @@ Other options that commonly matter when flashing:
   makes reflashing an unchanged build much faster.
 - `--skip-reset` leaves the device in EDL mode after flashing instead of
   sending the final reset.
+- `--reset-mode=<system|edl|off>` selects what the final reset does:
+  reboot into the system (the default), reboot back into EDL, ready for
+  the next run, or power the device off.
 - `--finalize-provisioning` is required, together with a matching UFS
   provisioning XML, to perform irreversible UFS provisioning.
 
 A few maintenance commands do not need a programmer at all and only speak
 Sahara to the device: `qdl chipinfo` prints the chip identification the
 device reports, and `qdl reset` reboots a device stuck in EDL mode.
+
+`qdl reset --mode=edl` reboots the device back into EDL instead, and
+`--mode=off` powers it off. Both go through a Firehose programmer, so pass
+one unless it is still running from a `--skip-reset` run:
+
+```bash
+qdl reset --mode=edl prog_firehose_ddr.elf
+```
 
 ### Output
 
