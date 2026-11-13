@@ -178,6 +178,10 @@ if help2man.found() and cat.found()
       # the --help and --version output from custom targets instead, which
       # meson runs through the exe_wrapper, and let help2man read them back
       # with cat. help2man takes the program name from the --version output.
+      #
+      # help2man passes the program through a shell, which treats the
+      # backslashes in a Windows path (e.g. from MSYS2) as escapes, so use
+      # forward slashes.
       help_txt = custom_target(prog[0] + '-help.txt',
         output: prog[0] + '-help.txt',
         command: [prog[1], '--help'],
@@ -191,7 +195,7 @@ if help2man.found() and cat.found()
         output: prog[0] + '.1',
         command: [help2man, '-N', '-n', prog[2],
                   '--help-option=@INPUT0@', '--version-option=@INPUT1@',
-                  cat],
+                  cat.full_path().replace('\\', '/')],
         capture: true,
         install: true,
         install_dir: get_option('mandir') / 'man1')
