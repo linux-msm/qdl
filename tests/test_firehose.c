@@ -3,9 +3,9 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 /*
- * Unit tests for the Firehose XML response parsers. They are file-local
- * in firehose.c, so the module is #included directly. Only the response
- * parsers are exercised; the rest of firehose.c (and its device / vip /
+ * Unit tests for the Firehose XML response parsers and the reset mode
+ * mapping. They are file-local in firehose.c, so the module is #included
+ * directly. Only these helpers are exercised; the rest of firehose.c (and its device / vip /
  * ufs dependencies) is dropped at link time via --gc-sections, so only
  * the ux_* logging stubs are needed.
  */
@@ -157,6 +157,18 @@ static void test_configure_log_and_missing(void **state)
 	xmlFreeNode(n);
 }
 
+/* --- firehose_reset_mode_str --- */
+
+static void test_reset_mode_str(void **state)
+{
+	(void)state;
+
+	assert_string_equal(firehose_reset_mode_str(QDL_RESET_SYSTEM), "reset");
+	assert_string_equal(firehose_reset_mode_str(QDL_RESET_EDL), "reset_to_edl");
+	assert_string_equal(firehose_reset_mode_str(QDL_RESET_OFF), "off");
+	assert_null(firehose_reset_mode_str((enum qdl_reset_mode)-1));
+}
+
 int main(void)
 {
 	const struct CMUnitTest tests[] = {
@@ -167,6 +179,7 @@ int main(void)
 		cmocka_unit_test(test_configure_nak_negotiates),
 		cmocka_unit_test(test_configure_ack_without_supported),
 		cmocka_unit_test(test_configure_log_and_missing),
+		cmocka_unit_test(test_reset_mode_str),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

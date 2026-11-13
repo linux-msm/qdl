@@ -76,6 +76,13 @@ enum qdl_skipblock_mode {
 	QDL_SKIPBLOCK_SHA256,
 };
 
+/* State the Firehose <power> command leaves the device in */
+enum qdl_reset_mode {
+	QDL_RESET_SYSTEM,	/* reboot into the system */
+	QDL_RESET_EDL,		/* reboot back into EDL */
+	QDL_RESET_OFF,		/* power off */
+};
+
 struct qdl_device {
 	enum QDL_DEVICE_TYPE dev_type;
 	int fd;
@@ -195,7 +202,7 @@ int firehose_read_buf(struct qdl_device *qdl, struct firehose_op *read_op, void 
 
 /* Block-level entry points used by the nbdkit plugin */
 int firehose_open(struct qdl_device *qdl, enum qdl_storage_type storage);
-int firehose_reset(struct qdl_device *qdl);
+int firehose_reset(struct qdl_device *qdl, enum qdl_reset_mode mode);
 int firehose_getsize(struct qdl_device *qdl, int lun, size_t *sector_size,
 		     size_t *num_sectors);
 ssize_t firehose_pread(struct qdl_device *qdl, int lun, size_t sector_offset,
